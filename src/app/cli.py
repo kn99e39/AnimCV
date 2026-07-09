@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import platform
 import shutil
 import subprocess
 import sys
@@ -194,6 +195,72 @@ def _optimize(args: argparse.Namespace) -> None:
     print(f"[motion-tool] optimized {len(optimized_clip.tracks)} bone tracks -> {args.out}")
 
 
+def _default_blender_search_paths(
+    system: str | None = None,
+    *,
+    windows_program_files: Path | None = None,
+    macos_application_dirs: list[Path] | None = None,
+    linux_candidates: list[Path] | None = None,
+) -> list[Path]:
+    """Candidate blender executable paths for the platforms Blender ships
+    an installer for. Existence is checked by the caller — this only
+    enumerates plausible locations, newest version first where a
+    version number is part of the path.
+
+    The keyword overrides exist so this can be unit-tested against a
+    fake filesystem layout for every branch regardless of which OS
+    actually runs the test suite; production callers never pass them.
+    """
+    system = system or platform.system()
+
+    if system == "Windows":
+        # Blender doesn't add itself to PATH on Windows.
+        program_files = windows_program_files or Path(
+            os.environ.get("ProgramFiles", r"C:\Program Files")
+        )
+        foundation_dir = program_files / "Blender Foundation"
+        if not foundation_dir.is_dir():
+            return []
+        return [
+            entry / "blender.exe" for entry in sorted(foundation_dir.iterdir(), reverse=True)
+        ]
+
+    if system == "Darwin":
+        # The macOS installer drops Blender.app into /Applications (or
+        # ~/Applications for a per-user install); it isn't added to PATH
+        # either. Some installs are versioned ("Blender 4.5.app"), so
+        # check both plain and per-user Applications, newest name first.
+        application_dirs = macos_application_dirs or [
+            Path("/Applications"),
+            Path.home() / "Applications",
+        ]
+        candidates: list[Path] = []
+        for apps_dir in application_dirs:
+            if not apps_dir.is_dir():
+                continue
+            for entry in sorted(apps_dir.iterdir(), reverse=True):
+                if entry.suffix == ".app" and entry.stem.lower().startswith("blender"):
+                    candidates.append(entry / "Contents" / "MacOS" / "Blender")
+        return candidates
+
+    if system == "Linux":
+        if linux_candidates is not None:
+            return linux_candidates
+        # Linux has no single standard install location (tarball
+        # extracted anywhere, distro package, Snap, Flatpak); PATH
+        # (already checked via shutil.which before this runs) is the
+        # primary mechanism. These cover the most common non-PATH cases.
+        return [
+            Path("/usr/bin/blender"),
+            Path("/usr/local/bin/blender"),
+            Path("/opt/blender/blender"),
+            Path("/snap/blender/current/blender"),
+            Path("/var/lib/flatpak/exports/bin/org.blender.Blender"),
+        ]
+
+    return []
+
+
 def _find_blender_executable(override: str | None = None) -> str:
     if override:
         return override
@@ -206,15 +273,9 @@ def _find_blender_executable(override: str | None = None) -> str:
     if found:
         return found
 
-    # Blender doesn't add itself to PATH on Windows; check the usual
-    # install location and prefer the newest version found there.
-    program_files = os.environ.get("ProgramFiles", r"C:\Program Files")
-    foundation_dir = Path(program_files) / "Blender Foundation"
-    if foundation_dir.is_dir():
-        for entry in sorted(foundation_dir.iterdir(), reverse=True):
-            candidate = entry / "blender.exe"
-            if candidate.exists():
-                return str(candidate)
+    for candidate in _default_blender_search_paths():
+        if candidate.exists():
+            return str(candidate)
 
     raise FileNotFoundError(
         "Could not find the Blender executable. Set BLENDER_EXECUTABLE, add "

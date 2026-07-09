@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import cv2
 import numpy as np
 import pytest
@@ -312,10 +314,114 @@ def test_find_blender_executable_raises_when_not_found(monkeypatch, tmp_path):
 
     monkeypatch.delenv("BLENDER_EXECUTABLE", raising=False)
     monkeypatch.setattr("shutil.which", lambda name: None)
+    # Force the Windows branch deterministically -- whichever OS actually
+    # runs this test suite shouldn't matter for a "nothing found" check.
+    monkeypatch.setattr("platform.system", lambda: "Windows")
     monkeypatch.setenv("ProgramFiles", str(tmp_path))  # empty dir: no Blender Foundation here
 
     with pytest.raises(FileNotFoundError):
         _find_blender_executable()
+
+
+def test_default_blender_search_paths_windows_lists_newest_version_first(tmp_path):
+    from app.cli import _default_blender_search_paths
+
+    foundation = tmp_path / "Blender Foundation"
+    (foundation / "Blender 4.5").mkdir(parents=True)
+    (foundation / "Blender 5.1").mkdir(parents=True)
+
+    paths = _default_blender_search_paths(system="Windows", windows_program_files=tmp_path)
+
+    assert paths == [
+        foundation / "Blender 5.1" / "blender.exe",
+        foundation / "Blender 4.5" / "blender.exe",
+    ]
+
+
+def test_default_blender_search_paths_windows_no_foundation_dir(tmp_path):
+    from app.cli import _default_blender_search_paths
+
+    assert _default_blender_search_paths(system="Windows", windows_program_files=tmp_path) == []
+
+
+def test_default_blender_search_paths_macos_finds_versioned_app_bundles(tmp_path):
+    from app.cli import _default_blender_search_paths
+
+    apps_dir = tmp_path / "Applications"
+    (apps_dir / "Blender.app" / "Contents" / "MacOS").mkdir(parents=True)
+    (apps_dir / "NotBlender.app" / "Contents" / "MacOS").mkdir(parents=True)
+
+    paths = _default_blender_search_paths(system="Darwin", macos_application_dirs=[apps_dir])
+
+    assert paths == [apps_dir / "Blender.app" / "Contents" / "MacOS" / "Blender"]
+
+
+def test_default_blender_search_paths_macos_checks_multiple_application_dirs(tmp_path):
+    from app.cli import _default_blender_search_paths
+
+    system_apps = tmp_path / "Applications"
+    user_apps = tmp_path / "home" / "Applications"
+    (system_apps / "Blender.app" / "Contents" / "MacOS").mkdir(parents=True)
+    (user_apps / "Blender 4.5.app" / "Contents" / "MacOS").mkdir(parents=True)
+
+    paths = _default_blender_search_paths(
+        system="Darwin", macos_application_dirs=[system_apps, user_apps]
+    )
+
+    assert paths == [
+        system_apps / "Blender.app" / "Contents" / "MacOS" / "Blender",
+        user_apps / "Blender 4.5.app" / "Contents" / "MacOS" / "Blender",
+    ]
+
+
+def test_default_blender_search_paths_macos_missing_applications_dir(tmp_path):
+    from app.cli import _default_blender_search_paths
+
+    assert (
+        _default_blender_search_paths(
+            system="Darwin", macos_application_dirs=[tmp_path / "does_not_exist"]
+        )
+        == []
+    )
+
+
+def test_default_blender_search_paths_linux_default_candidates():
+    from app.cli import _default_blender_search_paths
+
+    paths = _default_blender_search_paths(system="Linux")
+
+    assert Path("/usr/bin/blender") in paths
+    assert Path("/opt/blender/blender") in paths
+
+
+def test_default_blender_search_paths_linux_override():
+    from app.cli import _default_blender_search_paths
+
+    custom = [Path("/custom/blender")]
+
+    assert _default_blender_search_paths(system="Linux", linux_candidates=custom) == custom
+
+
+def test_default_blender_search_paths_unknown_system_returns_empty():
+    from app.cli import _default_blender_search_paths
+
+    assert _default_blender_search_paths(system="Plan9") == []
+
+
+def test_find_blender_executable_falls_back_to_macos_application_bundle(monkeypatch, tmp_path):
+    from app.cli import _find_blender_executable
+
+    apps_dir = tmp_path / "Applications"
+    blender_path = apps_dir / "Blender.app" / "Contents" / "MacOS" / "Blender"
+    blender_path.parent.mkdir(parents=True)
+    blender_path.write_text("fake blender binary")
+
+    monkeypatch.delenv("BLENDER_EXECUTABLE", raising=False)
+    monkeypatch.setattr("shutil.which", lambda name: None)
+    monkeypatch.setattr("platform.system", lambda: "Darwin")
+    monkeypatch.setattr("app.cli.Path.home", lambda: tmp_path)
+
+    assert _find_blender_executable() == str(blender_path)
 
 
 def test_cli_export_blender_invokes_expected_subprocess_command(tmp_path, monkeypatch):

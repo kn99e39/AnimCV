@@ -27,7 +27,8 @@ Everything else matches the documented structure.
 
 ```bash
 python -m venv .venv
-.venv/Scripts/activate   # Windows
+.venv/Scripts/activate    # Windows
+source .venv/bin/activate # macOS / Linux
 pip install -e ".[dev]"
 ```
 
@@ -76,10 +77,13 @@ step on its own.
 (`--background --python scripts/apply_motion.py -- ...`, section
 4.10's "Headless Batch Mode") since this project's own venv Python
 cannot `import bpy`. It autodetects Blender via `BLENDER_EXECUTABLE`,
-`PATH`, or the default Windows install location under
-`Program Files\Blender Foundation`, or takes an explicit
-`--blender-executable`. `--fbx-out` is optional; without it, only the
-`.blend` is written.
+`PATH`, then a per-OS default install location (Windows:
+`Program Files\Blender Foundation\Blender <version>\blender.exe`;
+macOS: `/Applications/Blender*.app` or `~/Applications/Blender*.app`;
+Linux: `/usr/bin/blender`, `/opt/blender/blender`, Snap/Flatpak paths —
+see `_default_blender_search_paths` in `src/app/cli.py`), or takes an
+explicit `--blender-executable`. `--fbx-out` is optional; without it,
+only the `.blend` is written.
 
 `optimize` runs an RDP-style simplification (section 8.3): the
 first/last sample of every bone track, any frame passed as

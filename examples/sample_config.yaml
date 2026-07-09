@@ -1,0 +1,10 @@
+video_path: input/reference.mp4
+rig_path: input/character.fbx
+mapping_path: profiles/character_mapping.json
+output_path: outputs/result.blend
+fps_override: null
+frame_start: null
+frame_end: null
+collapse_preset: medium
+collapse_threshold: null
+pose_backend: mmpose

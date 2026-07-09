@@ -1,0 +1,34 @@
+{
+  "rig_id": "character_01",
+  "created_from_frame": 0,
+  "user_notes": "Demo mapping for a humanoid rig, upper body only.",
+  "entries": [
+    {
+      "target_bone": "upper_arm.L",
+      "source_type": "landmark",
+      "source_names": ["left_shoulder", "left_elbow"],
+      "mapping_mode": "direction",
+      "weight": 1.0,
+      "axis_hint": "+Y",
+      "locked": false
+    },
+    {
+      "target_bone": "forearm.L",
+      "source_type": "landmark",
+      "source_names": ["left_elbow", "left_wrist"],
+      "mapping_mode": "direction",
+      "weight": 1.0,
+      "axis_hint": "+Y",
+      "locked": false
+    },
+    {
+      "target_bone": "head",
+      "source_type": "landmark",
+      "source_names": ["neck", "head"],
+      "mapping_mode": "direction",
+      "weight": 1.0,
+      "axis_hint": null,
+      "locked": false
+    }
+  ]
+}

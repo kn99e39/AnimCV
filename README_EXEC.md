@@ -1,18 +1,23 @@
 # README_EXEC — AnimCV 실행 가이드
 
-이 문서는 `Architecture_v2.md`에 정의된 7개 마일스톤이 모두 구현된 현재 상태 기준으로, **실제로 이 프로그램을 어떻게 설치하고 실행하는지**를 정리한 실행 가이드입니다. 설계 배경은 `Architecture_v2.md`, 마일스톤별 구현 상세와 검증 내역은 `result/result_mil1.txt` ~ `result_mil7.txt`, 실제로 발견되어 고쳐진 버그 목록은 `result/result_occurred_errors.txt`를 참고하세요.
+이 문서는 `Architecture_v2.md`에 정의된 7개 마일스톤 + 그 이후 추가된 품질 개선(깊이 기반 3D 리타게팅, 2-bone IK, rest-pose 축 보정)까지 반영된 현재 상태 기준으로, **실제로 이 프로그램을 어떻게 설치하고 실행하는지**를 정리한 실행 가이드입니다. 설계 배경은 `Architecture_v2.md`, 마일스톤별 구현 상세와 검증 내역은 `result/result_mil1.txt` ~ `result_mil8.txt`, 실제로 발견되어 고쳐진 버그 목록은 `result/result_occurred_errors.txt`를 참고하세요.
 
 ## 0. 현재 상태 요약
 
 - 섹션 11의 마일스톤 1~7 전부 구현 완료.
 - CLI 명령 8개(`extract-frames`, `estimate-pose`, `parse-rig`, `create-mapping`, `build-motion`, `retarget`, `optimize`, `export-blender`) 전부 스텁이 아니라 실제로 동작함.
-- 유닛/통합 테스트 130개 전부 통과 (`pytest`).
+- **v2 문서 범위를 벗어나는 추가 기능** (사용자 명시적 요청으로 구현, `Architecture_v2.md` 섹션 1.3/14.1이 v2에서 명시적으로 제외한 Depth Anything V2를 포함하므로 문서와 의도적으로 다름 — `result/result_mil8.txt` 참고):
+  - **깊이(Depth Anything V2) 기반 3D 리타게팅**: 랜드마크에 상대 깊이값을 샘플링해 2D 평면 근사 대신 실제 3D 회전/이동을 계산 (깊이 없으면 자동으로 2D 방식으로 폴백)
+  - **2-bone IK**: 어깨-팔꿈치-손목, 골반-무릎-발목 같은 체인을 코사인 법칙 기반으로 풀어서 end-effector가 실제 추적점을 더 정확히 따라가게 함
+  - **Rest-pose 축 보정**: 리그의 rest pose 방향을 반영해서 본의 로컬 좌표계 기준으로 회전/이동을 재해석 (이전엔 리그 정보를 받기만 하고 실제로 안 썼음)
+- 유닛/통합 테스트 189개 전부 통과 (`pytest`).
 - **Windows뿐 아니라 macOS에서도 실행 가능하도록 Blender 실행파일 자동탐지 로직을 OS별로 분기 처리함** (Windows/macOS/Linux 각각의 표준 설치 경로를 확인). macOS 실제 기기로는 검증하지 못했지만, 경로 탐색 로직 자체는 가짜 파일시스템으로 단위 테스트됨 (아래 "Mac 지원" 항목 참고).
-- 합성 데이터로 **전체 파이프라인(영상 → 프레임 → 포즈 → 모션그래프 → 리타겟 → 키프레임 최적화 → Blender 출력)을 처음부터 끝까지 실제로 실행해서 결과 `.blend`/`.fbx` 파일에 키프레임이 정확히 들어가는 것까지 확인함**.
-- 단, 아래 두 가지 외부 의존성은 이 개발 환경 자체의 제약으로 실제 모델/라이브러리로는 검증하지 못했음 (코드 자체는 준비되어 있고, 로직은 가짜(mock) 객체로 단위 테스트됨):
+- 합성 데이터로 **전체 파이프라인(영상 → 프레임 → 포즈 → 모션그래프 → 리타겟 → 키프레임 최적화 → Blender 출력)을 처음부터 끝까지 실제로 실행해서 결과 `.blend`/`.fbx` 파일에 키프레임이 정확히 들어가는 것까지 확인함**. IK 체인과 rest-pose 보정도 별도의 실제 Blender 픽스처로 재검증함.
+- 단, 아래 외부 의존성들은 이 개발 환경 자체의 제약으로 실제 모델/라이브러리로는 완전히 검증하지 못했음 (코드 자체는 준비되어 있고, 로직은 가짜(mock) 객체 또는 실제 모델 아키텍처(미학습 가중치)로 검증됨):
   - **MMPose**: 실제 포즈 추정 모델 체크포인트로 `estimate-pose`를 돌려본 적은 없음.
   - **Assimp(pyassimp)**: 네이티브 assimp 공유 라이브러리가 이 환경에 설치되지 않아 `parse-rig`/`create-mapping`/`retarget`이 실제 FBX/리그 파일을 파싱하는 것은 검증하지 못함.
-- **Blender 연동은 실제 로컬 Blender 4.5 LTS / 5.1 두 버전 모두로 완전히 검증됨.**
+  - **Depth Anything V2**: 이 환경에 마침 torch+CUDA가 설치되어 있어서 실제 모델 클래스로 forward pass까지는 검증했지만(미학습 가중치, 체크포인트 다운로드는 안 함), 실제 학습된 체크포인트로는 검증하지 못함. 이 과정에서 업스트림 라이브러리 자체의 실제 버그(장치 불일치)를 발견해서 우리 어댑터 쪽에서 방어 코드를 추가함.
+- **Blender 연동은 실제 로컬 Blender 4.5 LTS / 5.1 두 버전 모두로 완전히 검증됨** (기본 리타게팅 + rest-pose 보정 + IK 체인 각각 별도 픽스처로).
 
 ## 1. 설치
 
@@ -49,6 +54,14 @@ pip install pyassimp
 ```
 
 `pip install`만으로는 부족합니다. **네이티브 assimp 공유 라이브러리(assimp.dll/libassimp.so 등)를 시스템에 직접 설치**해야 `pyassimp`가 정상 동작합니다 (이 문서를 작성한 개발 환경에는 이 네이티브 라이브러리가 없어서 실제 FBX 파일로는 테스트하지 못했습니다). 라이브러리가 없으면 `import pyassimp` 자체가 실패하며, CLI는 이를 잡아서 친절한 에러 메시지로 알려줍니다 (트레이스백이 아니라).
+
+**깊이 기반 3D 리타게팅(estimate-pose --depth-checkpoint)을 쓰려면:**
+
+```bash
+pip install -e ".[depth]"   # torch, opencv-python, matplotlib
+```
+
+추가로 [Depth Anything V2](https://github.com/DepthAnything/Depth-Anything-V2) 체크포인트가 필요합니다 (`vits` 사이즈만 Apache-2.0, 나머지는 CC-BY-NC-4.0). `--depth-device`는 기본값 `auto`를 그대로 두세요 — Depth Anything V2 자체의 `infer_image`가 입력 텐서를 cuda/mps/cpu 중 시스템에서 사용 가능한 것으로 무조건 배치하고 이를 바꿀 방법이 없기 때문에, 명시적으로 다른 장치를 지정하면 모델 forward pass 도중 장치 불일치 에러가 나기 쉽습니다(`result/result_mil8.txt`에서 실제로 재현/확인함). `auto`를 벗어난 값을 넣으면 크래시 대신 명확한 에러 메시지가 먼저 나옵니다.
 
 **Blender 연동(export-blender):**
 
@@ -136,15 +149,21 @@ python -m app.cli estimate-pose \
   --pose-config third_party/mmpose/configs/.../some_config.py \
   --pose-checkpoint /path/to/checkpoint.pth \
   --device cpu \
-  --visibility-threshold 0.3
+  --visibility-threshold 0.3 \
+  --depth-checkpoint /path/to/depth_anything_v2_vits.pth \
+  --depth-encoder vits \
+  --depth-device auto
 ```
 
 - `--frames`: `extract-frames`로 만든 프레임 디렉터리 (필수)
 - `--pose-config` / `--pose-checkpoint`: MMPose 모델 설정/체크포인트 (필수)
 - `--device`: `cpu` 또는 `cuda` (기본값 `cpu`)
 - `--visibility-threshold`: 이 신뢰도 미만인 랜드마크는 "안 보임" 처리 (기본값 0.3)
+- `--depth-checkpoint`: **선택사항**. 지정하면 Depth Anything V2로 프레임마다 깊이를 추정하고, 각 랜드마크 픽셀 위치에서 깊이값을 샘플링해 `pose.json`에 함께 저장합니다. 이후 `retarget`이 이 깊이 정보를 자동으로 감지해서 2D 평면 근사 대신 실제 3D 회전을 계산합니다.
+- `--depth-encoder`: `vits`(기본, Apache-2.0) / `vitb` / `vitl` / `vitg` (셋 다 CC-BY-NC-4.0)
+- `--depth-device`: 기본값 `auto` 유지 권장 (위 1.3절 참고)
 
-MMPose가 설치되어 있지 않으면 트레이스백 대신 설치 안내 메시지가 출력됩니다.
+MMPose/Depth Anything V2가 설치되어 있지 않으면 트레이스백 대신 설치 안내 메시지가 출력됩니다.
 
 ### 3.3 `parse-rig` — 리그 파일에서 본 계층 구조 추출
 
@@ -194,6 +213,15 @@ left_hip, left_knee, left_ankle,
 right_hip, right_knee, right_ankle
 ```
 
+본 매핑을 다 마치면(또는 `done`으로 바로 넘어가면), **IK 체인**을 정의하는 두 번째 입력 루프가 시작됩니다 (`Architecture_v2.md`에는 없는 기능 — 아래 3.6절 참고):
+
+```
+ik-chain> (<root_bone> <mid_bone> <end_bone> <root_source> <mid_source> <end_source> [root_axis] [mid_axis] | done) upper_arm.L forearm.L hand.L left_shoulder left_elbow left_wrist
+ik-chain> (... | done) done
+```
+
+한 줄에 `root_bone mid_bone end_bone root_source mid_source end_source`(필수) + `root_axis mid_axis`(선택)를 공백으로 구분해서 입력하면 됩니다. 빈 줄이나 `done`으로 종료합니다.
+
 ### 3.5 `build-motion` — 포즈 시퀀스를 Motion Graph로 변환
 
 ```bash
@@ -212,10 +240,12 @@ python -m app.cli retarget \
   --out cache/animation.json
 ```
 
-- `direction` 매핑 본: 첫 프레임 대비 각도 변화를 쿼터니언 회전으로 변환 (2D 이미지 평면 기준 — 깊이 추정 없음).
-- `landmark`/`custom_point` 매핑 본: 첫 프레임 대비 위치 변화를 이동값으로 변환.
+- `direction` 매핑 본: 첫 프레임 대비 각도 변화를 쿼터니언 회전으로 변환. `estimate-pose --depth-checkpoint`로 깊이가 샘플링되어 있으면 자동으로 실제 3D 회전(두 3D 벡터 사이의 최단 회전)을 계산하고, 깊이가 없는 프레임/랜드마크는 자동으로 2D 이미지 평면 근사로 폴백합니다.
+- `landmark`/`custom_point` 매핑 본: 첫 프레임 대비 위치 변화를 이동값으로 변환 (마찬가지로 깊이 있으면 3D 오프셋, 없으면 2D).
+- **IK 체인** (`create-mapping`에서 정의): 어깨-팔꿈치-손목처럼 2개 본으로 된 체인은 코사인 법칙 기반 2-bone IK로 풀어서, 손목(end effector)이 실제 추적된 위치를 더 정확히 따라가도록 root/mid 본의 회전을 계산합니다. 본 길이는 리그의 rest pose가 아니라 **첫 프레임에서 관찰된 랜드마크 간 거리로 자체 보정**합니다 (카메라 캘리브레이션이 없어서 리그 단위와 픽셀 단위를 직접 연결할 방법이 없기 때문).
+- **Rest-pose 축 보정**: 리그 파일에 본의 rest pose 행렬 정보가 있으면, 위에서 계산한 회전/이동을 월드/이미지 좌표계가 아니라 그 본의 로컬 좌표계 기준으로 재해석합니다. 리그 정보가 없으면 이 단계는 그냥 생략됩니다(이전 동작과 동일).
 - 매핑 프로필에 있지만 리그에 없는 본, 또는 알 수 없는 매핑 모드는 에러 없이 조용히 건너뜁니다 (일부만 매핑해도 정상 동작).
-- **이 결과물은 완벽한 3D 모션캡처가 아니라, 수동 보정을 전제로 한 "쓸만한 초안"입니다.**
+- **이 결과물은 완벽한 3D 모션캡처가 아니라, 수동 보정을 전제로 한 "쓸만한 초안"입니다.** (깊이/IK/rest-pose 보정으로 품질이 올라가지만 카메라 캘리브레이션이나 물리 기반 재구성은 여전히 없습니다.)
 
 ### 3.7 `optimize` — 촘촘한 키프레임을 편집 가능한 수준으로 압축
 
@@ -255,20 +285,21 @@ python -m app.cli export-blender \
 pytest
 ```
 
-130개 테스트가 전부 통과해야 정상입니다. 이 중 `tests/test_blender_executor.py`, `tests/test_apply_motion_script.py`는 가짜(fake) `bpy` 모듈로 Blender 없이도 동작 검증을 하고, `tests/test_rig_parser.py`, `tests/test_mmpose_adapter.py`는 가짜 노드/결과 객체로 assimp/mmpose 없이도 핵심 로직을 검증합니다.
+189개 테스트가 전부 통과해야 정상입니다. 이 중 `tests/test_blender_executor.py`, `tests/test_apply_motion_script.py`는 가짜(fake) `bpy` 모듈로 Blender 없이도 동작 검증을 하고, `tests/test_rig_parser.py`, `tests/test_mmpose_adapter.py`, `tests/test_depth.py`는 가짜 노드/결과 객체로 assimp/mmpose/depth_anything_v2 없이도 핵심 로직을 검증합니다. `tests/test_ik_solver.py`의 IK 삼각형 계산과 `tests/test_axis_utils.py`의 rest-pose 보정은 직접 손으로 계산한 기하학적 예제로 검증되어 있습니다.
 
 **실제 Blender까지 포함한 검증**을 하고 싶다면 Blender가 설치되어 있어야 하며, `export-blender`를 실행한 뒤 생성된 `.blend` 파일을 Blender에서 직접 열어 그래프 에디터에 키프레임이 보이는지 확인하면 됩니다.
 
 ## 5. 알려진 제약사항
 
 - 다중 캐릭터 미지원, 물리 시뮬레이션 없음, 완전 자동 3D 모션캡처 아님 — 이건 의도된 설계입니다 (`Architecture_v2.md` 섹션 1.3 "Excluded From v2" 참고).
-- Depth Anything V2, SAM2, DWPose 등은 이번 버전(v2) 범위에서 의도적으로 제외되었습니다.
+- SAM2, DWPose는 여전히 이번 버전(v2) 범위에서 제외되어 있습니다. **Depth Anything V2만 예외적으로 사용자 명시적 요청에 따라 통합했습니다** (`Architecture_v2.md` 문서 자체는 이를 제외하라고 되어 있지만, 리타게팅 품질 개선을 위해 의도적으로 문서 범위를 벗어난 것 — `result/result_mil8.txt` 참고).
 - 리그의 임의 스켈레톤(사람이 아닌 크리처, 소품 등)을 지원하지만, 자동으로 어떤 본이 "진짜 관절"인지 판단하지는 않습니다 — 사용자가 `create-mapping`으로 직접 지정해야 합니다.
-- 회전 리타게팅은 2D 이미지 평면 각도 변화만 사용하며(깊이 정보 없음), 완벽한 3D 재구성이 아닙니다.
+- 깊이 정보가 없으면 회전 리타게팅은 여전히 2D 이미지 평면 각도 변화만 사용합니다. 깊이가 있어도 카메라 캘리브레이션이나 물리 기반 재구성은 없으므로 완벽한 3D 재구성은 아닙니다.
+- IK는 2-bone(코사인 법칙) 체인만 지원하며, 3개 이상의 중간 본이 있는 체인은 지원하지 않습니다.
 
 ## 6. 참고 문서
 
 - `Architecture_v2.md` — 전체 설계 문서 (원본 스펙)
 - `README.md` — 마일스톤별 구현 상태와 기술적 디테일 (영어, 개발자용)
-- `result/result_mil1.txt` ~ `result_mil7.txt` — 마일스톤별 실제 구현/검증 내역 (로컬 전용, git 추적 안 함)
+- `result/result_mil1.txt` ~ `result_mil8.txt` — 마일스톤별 실제 구현/검증 내역 (로컬 전용, git 추적 안 함)
 - `result/result_occurred_errors.txt` — 실제로 발견되고 고쳐진 버그 목록 (로컬 전용, git 추적 안 함)

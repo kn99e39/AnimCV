@@ -3,16 +3,28 @@
 Assisted video-to-armature motion capture and retargeting tool. See
 [Architecture_v2.md](Architecture_v2.md) for the full design.
 
-Status: **Milestone 7 — Blender export — all 7 milestones from
-Architecture_v2.md section 11 are now implemented.** Core data
-model/JSON serialization, the video/pose pipeline, an Assimp-based
-`RigParser`, a CLI-driven interactive bone mapper, a 2D-direction-driven
-FK retarget solver, an RDP-style keyframe importance/collapse
-optimizer, and a real headless-Blender executor are all in place. See
+Status: **All 7 milestones from Architecture_v2.md section 11 are
+implemented, plus a post-v2 quality pass (rest-pose axis correction,
+depth-assisted 3D retargeting, 2-bone IK — see "Beyond v2" below).**
+Core data model/JSON serialization, the video/pose pipeline, an
+Assimp-based `RigParser`, a CLI-driven interactive bone mapper, a
+retarget solver, an RDP-style keyframe importance/collapse optimizer,
+and a real headless-Blender executor are all in place. See
 `result/result_mil*.txt` for a detailed log of what was actually
-implemented/verified at each milestone (including two real bugs only
-found by testing against an actual Blender install — see
-`result/result_mil7.txt`).
+implemented/verified at each milestone (including several real bugs
+only found by testing against an actual Blender/torch install — see
+`result/result_mil7.txt` and `result/result_mil8.txt`).
+
+## Beyond v2
+
+Architecture_v2.md section 1.3/14.1 explicitly excludes Depth Anything
+V2 from v2's scope. It's used anyway, added on explicit request after
+all 7 milestones were done, to improve retargeting quality — see
+`result/result_mil8.txt` for the full writeup and why this is flagged
+as a deliberate deviation, not an oversight. Also added, neither in
+v2's schema: 2-bone IK chains (`rig.bone_mapping.IKChainEntry`,
+`retarget/ik_solver.py`) and rest-pose axis correction
+(`retarget/axis_utils.apply_rest_pose_correction*`).
 
 ## Deviation from Architecture_v2.md section 9
 
@@ -45,6 +57,15 @@ gets you the Python binding). Without the native library, `pyassimp`
 raises at import time, which the CLI reports as a normal error rather
 than crashing.
 
+`estimate-pose --depth-checkpoint` needs `torch` + Depth Anything V2's
+own dependencies (see `third_party/Depth-Anything-V2/requirements.txt`)
+and a downloaded checkpoint — `vits` is the only Apache-2.0 size, the
+rest are CC-BY-NC-4.0. Leave `--depth-device` at its default `auto`:
+Depth Anything V2's own `infer_image` always places its input tensor on
+whichever of cuda/mps/cpu is available with no way to override that, so
+an explicit device that doesn't match will raise a clear error rather
+than crash deep in the model's forward pass (see `result/result_mil8.txt`).
+
 ## Running tests
 
 ```bash
@@ -57,7 +78,8 @@ pytest
 python -m app.cli extract-frames --video input.mp4 --out cache/frames
 python -m app.cli estimate-pose --frames cache/frames --out cache/pose.json \
   --pose-config third_party/mmpose/configs/.../some_config.py \
-  --pose-checkpoint /path/to/checkpoint.pth
+  --pose-checkpoint /path/to/checkpoint.pth \
+  --depth-checkpoint /path/to/depth_anything_v2_vits.pth  # optional, for 3D-aware retargeting
 python -m app.cli parse-rig --rig character.fbx --out cache/rig_profile.json
 python -m app.cli create-mapping --rig character.fbx --frame cache/frames/00000.png --out profiles/mapping.json
 python -m app.cli build-motion --pose cache/pose.json --out cache/motion_graph.json
@@ -99,14 +121,24 @@ neighbors stays under the `--collapse` preset's threshold
 (`light`/`medium`/`aggressive`, or `custom` with `--threshold`). `none`
 disables collapse entirely.
 
-`retarget` is a 2D-direction-driven FK solver (section 7.2/7.4, no
-depth): `direction`-mode mappings become a bone rotation from the
-image-plane angle between two tracked points (relative to their angle
-in the first visible frame); `landmark`/`point`-mode mappings become a
+`retarget` is FK-based (section 7.2/7.4): `direction`-mode mappings
+become a bone rotation between two tracked points (relative to the
+first visible frame); `landmark`/`point`-mode mappings become a
 translation offset from that single point's reference-frame position.
-Bones the mapping profile names but the rig doesn't have, or an
-unrecognized `mapping_mode`, are silently skipped rather than raising —
-partial mapping is expected, not an error (section 6.5).
+When depth was sampled (`estimate-pose --depth-checkpoint`, see
+`result/result_mil8.txt`), both automatically switch from the
+2D-image-plane approximation to a real 3D rotation/offset wherever 3D
+data is available for the relevant points, falling back to 2D
+otherwise. Every rotation/translation is also re-expressed in each
+target bone's own local space using `RigProfile`'s `rest_local_matrix`
+when present (`retarget/axis_utils.apply_rest_pose_correction*`).
+`mapping_profile.ik_chains` (not in Architecture_v2.md's schema — see
+`rig.bone_mapping.IKChainEntry`) additionally run a 2-bone analytic IK
+solve (`retarget/ik_solver.py`) for root->mid->end chains like
+shoulder-elbow-wrist. Bones/chains the mapping profile names but the
+rig doesn't have, or an unrecognized `mapping_mode`, are silently
+skipped rather than raising — partial mapping is expected, not an
+error (section 6.5).
 
 `create-mapping` prompts once per rig bone (in name order) on stdin:
 
@@ -120,6 +152,13 @@ Type `skip` (or just press enter) to leave a bone unmapped, or `done`
 to stop early and keep whatever was answered so far. See
 `src/ui/mapping_ui.py` for the full command grammar; a bone *chain*
 (section 6.3) is just several consecutive `direction` answers.
+
+After the per-bone loop, a second prompt collects optional IK chains
+(not in Architecture_v2.md's schema), one per line:
+
+```text
+ik-chain> (<root_bone> <mid_bone> <end_bone> <root_source> <mid_source> <end_source> [root_axis] [mid_axis] | done) upper_arm.L forearm.L hand.L left_shoulder left_elbow left_wrist
+```
 
 ## Blender integration
 
@@ -155,5 +194,6 @@ Blender to run against — see `result/result_mil7.txt` for both:
 implementation references (not installed as dependencies):
 
 - `third_party/mmpose` — pose estimation (S-Tier dependency, section 3.2)
-- `third_party/Depth-Anything-V2` — kept for future extension reference
-  only; explicitly excluded from v2 scope (section 1.3, 14.1)
+- `third_party/Depth-Anything-V2` — used by `pose/depth_estimator.py`
+  for optional 3D-aware retargeting (see "Beyond v2" above); v2 itself
+  excludes it (section 1.3, 14.1), used here on explicit instruction

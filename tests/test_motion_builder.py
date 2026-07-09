@@ -41,3 +41,30 @@ def test_build_defaults_importance_and_lock_to_pre_optimization_values():
     graph = MotionGraphBuilder().build(poses)
 
     assert all(frame.importance == 0.0 and frame.locked is False for frame in graph.frames)
+
+
+def test_build_populates_position_3d_when_depth_was_sampled():
+    landmark = PoseLandmark(
+        name="left_wrist", x=10.0, y=20.0, confidence=0.9, visible=True, z=3.5
+    )
+    poses = PoseSequence(
+        frames=[PoseFrame(frame_index=0, timestamp=0.0, landmarks={"left_wrist": landmark})],
+        source_fps=24.0,
+    )
+
+    graph = MotionGraphBuilder().build(poses)
+
+    point = graph.frames[0].points["left_wrist"]
+    assert point.position_3d == (10.0, 20.0, 3.5)
+
+
+def test_build_leaves_position_3d_none_without_depth():
+    poses = _sample_pose_sequence()  # landmarks have no z set
+
+    graph = MotionGraphBuilder().build(poses)
+
+    assert all(
+        point.position_3d is None
+        for frame in graph.frames
+        for point in frame.points.values()
+    )

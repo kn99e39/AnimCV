@@ -37,6 +37,20 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--pose-checkpoint", required=True, help="MMPose model checkpoint path")
     p.add_argument("--device", default="cpu")
     p.add_argument("--visibility-threshold", type=float, default=0.3)
+    p.add_argument(
+        "--depth-checkpoint",
+        default=None,
+        help="Optional Depth Anything V2 checkpoint; when given, samples "
+        "relative depth at every landmark so retarget can use real 3D "
+        "rotations instead of the 2D-plane approximation",
+    )
+    p.add_argument("--depth-encoder", default="vits", choices=["vits", "vitb", "vitl", "vitg"])
+    p.add_argument(
+        "--depth-device",
+        default="auto",
+        help="'auto' (recommended), or an explicit device matching what "
+        "depth_anything_v2 will actually use (see pose/depth_estimator.py)",
+    )
 
     p = sub.add_parser("parse-rig", help="Parse a rig file into a RigProfile JSON")
     p.add_argument("--rig", required=True, help="Path to .fbx or any Assimp-readable rig file")
@@ -100,6 +114,7 @@ def _estimate_pose(args: argparse.Namespace) -> None:
     from common.serialization import write_json
     from mediaio.video_loader import VideoLoader
     from pose.mmpose_adapter import MMPoseConfig, PoseEstimator
+    from pose.pose_types import PoseSequence
 
     sequence = VideoLoader().load_image_sequence(args.frames)
     config = MMPoseConfig(
@@ -109,6 +124,28 @@ def _estimate_pose(args: argparse.Namespace) -> None:
         visibility_threshold=args.visibility_threshold,
     )
     poses = PoseEstimator(config).process_sequence(sequence)
+
+    if args.depth_checkpoint:
+        from pose.depth_estimator import DepthEstimator, DepthEstimatorConfig
+        from pose.depth_sampling import sample_depth_at_landmarks
+
+        depth_estimator = DepthEstimator(
+            DepthEstimatorConfig(
+                checkpoint_path=args.depth_checkpoint,
+                encoder=args.depth_encoder,
+                device=args.depth_device,
+            )
+        )
+        depth_sampled_frames = []
+        for frame, pose_frame in zip(sequence.frames, poses.frames):
+            depth_map = depth_estimator.infer_frame(frame.image)
+            depth_sampled_frames.append(sample_depth_at_landmarks(pose_frame, depth_map))
+        poses = PoseSequence(
+            frames=depth_sampled_frames,
+            source_fps=poses.source_fps,
+            landmark_schema=poses.landmark_schema,
+        )
+        print(f"[motion-tool] sampled depth for {len(depth_sampled_frames)} frames")
 
     write_json(args.out, poses.to_dict())
     print(f"[motion-tool] estimated pose for {len(poses.frames)} frames -> {args.out}")

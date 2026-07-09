@@ -28,6 +28,63 @@ def test_cli_extract_frames_writes_images_and_metadata(tmp_path):
     assert (out_dir / "metadata.json").exists()
 
 
+def test_cli_estimate_pose_samples_depth_when_checkpoint_given(tmp_path, monkeypatch):
+    import numpy as np
+
+    from pose.depth_estimator import DepthEstimator
+    from pose.mmpose_adapter import PoseEstimator
+    from pose.pose_types import PoseFrame, PoseLandmark, PoseSequence
+
+    # Two frame images so estimate-pose has something to iterate over.
+    frame_dir = tmp_path / "frames"
+    frame_dir.mkdir()
+    for i in range(2):
+        cv2.imwrite(str(frame_dir / f"{i:05d}.png"), np.zeros((10, 10, 3), dtype=np.uint8))
+
+    fake_poses = PoseSequence(
+        frames=[
+            PoseFrame(
+                frame_index=i,
+                timestamp=i / 24.0,
+                landmarks={
+                    "left_wrist": PoseLandmark(
+                        name="left_wrist", x=5.0, y=5.0, confidence=0.9, visible=True
+                    )
+                },
+            )
+            for i in range(2)
+        ],
+        source_fps=24.0,
+    )
+    monkeypatch.setattr(PoseEstimator, "process_sequence", lambda self, frames: fake_poses)
+    monkeypatch.setattr(
+        DepthEstimator, "infer_frame", lambda self, image: np.full((10, 10), 7.5, dtype=np.float32)
+    )
+
+    out_path = tmp_path / "pose.json"
+    exit_code = main(
+        [
+            "estimate-pose",
+            "--frames",
+            str(frame_dir),
+            "--out",
+            str(out_path),
+            "--pose-config",
+            "unused.py",
+            "--pose-checkpoint",
+            "unused.pth",
+            "--depth-checkpoint",
+            "unused_depth.pth",
+        ]
+    )
+
+    assert exit_code == 0
+    from common.serialization import read_json
+
+    saved = PoseSequence.from_dict(read_json(out_path))
+    assert saved.frames[0].landmarks["left_wrist"].z == pytest.approx(7.5)
+
+
 def test_cli_build_motion_from_pose_json(tmp_path):
     from common.serialization import write_json
     from pose.pose_types import PoseFrame, PoseLandmark, PoseSequence

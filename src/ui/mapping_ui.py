@@ -18,6 +18,13 @@ mapping:
 Chain Mapping (section 6.3) is not a separate command: a chain is just
 several consecutive ``direction`` answers, e.g.
 ``spine_01 -> pelvis/chest`` then ``spine_02 -> chest/neck``.
+
+After the per-bone loop, an optional second loop collects 2-bone IK
+chains (not in the original Architecture_v2.md schema — see
+retarget/ik_solver.py), one per line:
+
+    <root_bone> <mid_bone> <end_bone> <root_source> <mid_source> <end_source> [root_axis] [mid_axis]
+    done | <empty line>      -- stop defining IK chains
 """
 
 from __future__ import annotations
@@ -25,7 +32,7 @@ from __future__ import annotations
 import sys
 from typing import IO
 
-from rig.bone_mapping import BoneMappingEntry, BoneMappingProfile
+from rig.bone_mapping import BoneMappingEntry, BoneMappingProfile, IKChainEntry
 
 
 class MappingCommandError(ValueError):
@@ -94,6 +101,35 @@ def parse_mapping_line(bone_name: str, line: str) -> BoneMappingEntry | None:
     )
 
 
+def parse_ik_chain_line(line: str, chain_index: int) -> IKChainEntry | None:
+    """Parse one line of the IK-chain prompt loop into an IKChainEntry,
+    or None for an explicit stop (empty line / "done")."""
+    stripped = line.strip()
+    if not stripped or stripped.lower() == "done":
+        return None
+
+    parts = stripped.split()
+    if len(parts) not in (6, 7, 8):
+        raise MappingCommandError(
+            "ik chain needs 6 names and up to 2 optional axis hints: "
+            "<root_bone> <mid_bone> <end_bone> <root_source> <mid_source> <end_source> "
+            "[root_axis_hint] [mid_axis_hint]"
+        )
+
+    root_bone, mid_bone, end_bone, root_source, mid_source, end_source = parts[:6]
+    return IKChainEntry(
+        name=f"ik_chain_{chain_index}",
+        root_bone=root_bone,
+        mid_bone=mid_bone,
+        end_bone=end_bone,
+        root_source=root_source,
+        mid_source=mid_source,
+        end_source=end_source,
+        root_axis_hint=parts[6] if len(parts) >= 7 else None,
+        mid_axis_hint=parts[7] if len(parts) >= 8 else None,
+    )
+
+
 def run_interactive_mapping(
     bone_names: list[str],
     rig_id: str,
@@ -131,6 +167,34 @@ def run_interactive_mapping(
         if entry is not None:
             entries.append(entry)
 
+    ik_chains: list[IKChainEntry] = []
+    chain_index = 1
+    output_stream.write(
+        "\nOptional IK chains (e.g. shoulder-elbow-wrist, hip-knee-ankle). "
+        "One per line, empty line or 'done' to finish.\n"
+    )
+    while True:
+        output_stream.write(
+            "ik-chain> (<root_bone> <mid_bone> <end_bone> <root_source> <mid_source> "
+            "<end_source> [root_axis] [mid_axis] | done) "
+        )
+        output_stream.flush()
+        line = input_stream.readline()
+        if line == "":  # EOF
+            break
+        try:
+            chain = parse_ik_chain_line(line, chain_index)
+        except MappingCommandError as exc:
+            output_stream.write(f"  ! {exc}\n")
+            continue
+        if chain is None:
+            break
+        ik_chains.append(chain)
+        chain_index += 1
+
     return BoneMappingProfile(
-        rig_id=rig_id, entries=entries, created_from_frame=created_from_frame
+        rig_id=rig_id,
+        entries=entries,
+        ik_chains=ik_chains,
+        created_from_frame=created_from_frame,
     )

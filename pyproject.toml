@@ -15,6 +15,7 @@ dependencies = [
 
 [project.optional-dependencies]
 pose = ["mmpose", "mmcv", "mmengine", "mmdet"]
+depth = ["torch", "opencv-python", "matplotlib"]
 dev = ["pytest"]
 
 [project.scripts]

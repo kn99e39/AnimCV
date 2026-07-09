@@ -13,6 +13,11 @@ class PoseLandmark:
     y: float
     confidence: float
     visible: bool
+    # Relative depth sampled from an optional Depth Anything V2 pass
+    # (pose/depth_estimator.py + pose/depth_sampling.py) — not part of
+    # Architecture_v2.md's original 2D-only schema. None when depth
+    # wasn't run or the landmark fell outside the depth map.
+    z: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -21,6 +26,7 @@ class PoseLandmark:
             "y": self.y,
             "confidence": self.confidence,
             "visible": self.visible,
+            "z": self.z,
         }
 
     @classmethod
@@ -31,6 +37,7 @@ class PoseLandmark:
             y=data["y"],
             confidence=data["confidence"],
             visible=data["visible"],
+            z=data.get("z"),
         )
 
 

@@ -107,14 +107,23 @@ def load_animation_clip(path: str | Path) -> AnimationClip:
 class RetargetSolver:
     """Converts MotionGraph movement into target-rig animation curves.
 
-    FK-oriented, 2D-direction-driven (section 7.2, 7.4): bones mapped
-    with mode "direction" get a rotation derived from the image-plane
-    angle between two tracked points; bones mapped with mode
-    "landmark"/"point" (a single anchor) get a translation offset
-    instead, since one point alone carries no direction to rotate from.
-    Bones mapped in the profile but absent from the rig, or using an
-    unrecognized mapping_mode, are skipped rather than raising — partial
-    mapping is required behavior (section 6.5), not an error case.
+    FK-oriented, 2D-direction-driven (section 7.2, 7.4), upgraded to 3D
+    automatically wherever depth-derived position_3d is available (see
+    fk_solver.py): bones mapped with mode "direction" get a rotation
+    derived from the angle between two tracked points; bones mapped
+    with mode "landmark"/"point" (a single anchor) get a translation
+    offset instead, since one point alone carries no direction to
+    rotate from. mapping_profile.ik_chains additionally run a 2-bone
+    analytic IK solve (retarget/ik_solver.py) for root->mid->end chains
+    (e.g. shoulder-elbow-wrist), producing rotations for the root and
+    mid bones so the end effector tracks its target more directly than
+    two independently-solved FK bones would. Every rotation/translation
+    is re-expressed in each target bone's own local space using its
+    rest pose (axis_utils.apply_rest_pose_correction*) when the
+    RigProfile provides one. Bones/chains mapped in the profile but
+    absent from the rig, or using an unrecognized mapping_mode, are
+    skipped rather than raising — partial mapping is required behavior
+    (section 6.5), not an error case.
     """
 
     def solve(
@@ -124,21 +133,49 @@ class RetargetSolver:
         mapping_profile: BoneMappingProfile,
     ) -> AnimationClip:
         from retarget.fk_solver import solve_anchor_bone, solve_direction_bone
+        from retarget.ik_solver import solve_ik_chain
 
         tracks: dict[str, AnimationTrack] = {}
         for entry in mapping_profile.entries:
-            if entry.target_bone not in rig_profile.bones:
+            bone_info = rig_profile.bones.get(entry.target_bone)
+            if bone_info is None:
                 continue
+            rest_local_matrix = bone_info.rest_local_matrix
 
             if entry.mapping_mode == "direction":
-                samples = solve_direction_bone(motion_graph, entry.target_bone, entry)
+                samples = solve_direction_bone(
+                    motion_graph, entry.target_bone, entry, rest_local_matrix
+                )
             elif entry.mapping_mode in ("landmark", "point"):
-                samples = solve_anchor_bone(motion_graph, entry.target_bone, entry)
+                samples = solve_anchor_bone(
+                    motion_graph, entry.target_bone, entry, rest_local_matrix
+                )
             else:
                 continue
 
             tracks[entry.target_bone] = AnimationTrack(
                 bone_name=entry.target_bone, samples=samples
+            )
+
+        for chain in mapping_profile.ik_chains:
+            if not chain.enabled:
+                continue
+            root_info = rig_profile.bones.get(chain.root_bone)
+            mid_info = rig_profile.bones.get(chain.mid_bone)
+            if root_info is None or mid_info is None:
+                continue
+
+            chain_samples = solve_ik_chain(
+                motion_graph,
+                chain,
+                root_rest_local_matrix=root_info.rest_local_matrix,
+                mid_rest_local_matrix=mid_info.rest_local_matrix,
+            )
+            tracks[chain.root_bone] = AnimationTrack(
+                bone_name=chain.root_bone, samples=chain_samples[chain.root_bone]
+            )
+            tracks[chain.mid_bone] = AnimationTrack(
+                bone_name=chain.mid_bone, samples=chain_samples[chain.mid_bone]
             )
 
         frame_indices = [motion_frame.frame_index for motion_frame in motion_graph.frames]

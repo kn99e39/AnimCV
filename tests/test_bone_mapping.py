@@ -1,4 +1,4 @@
-from rig.bone_mapping import BoneMappingEntry, BoneMappingProfile
+from rig.bone_mapping import BoneMappingEntry, BoneMappingProfile, IKChainEntry
 from rig.rig_profile import BoneInfo, RigProfile
 
 _IDENTITY = (
@@ -90,3 +90,54 @@ def test_bone_mapping_profile_json_roundtrip(tmp_path):
     restored = load_bone_mapping_profile(path)
 
     assert restored == profile
+
+
+def _sample_ik_chain() -> IKChainEntry:
+    return IKChainEntry(
+        name="left_arm",
+        root_bone="upper_arm.L",
+        mid_bone="forearm.L",
+        end_bone="hand.L",
+        root_source="left_shoulder",
+        mid_source="left_elbow",
+        end_source="left_wrist",
+        root_axis_hint="+Y",
+        mid_axis_hint=None,
+        enabled=True,
+    )
+
+
+def test_ik_chain_entry_roundtrip():
+    chain = _sample_ik_chain()
+
+    restored = IKChainEntry.from_dict(chain.to_dict())
+
+    assert restored == chain
+
+
+def test_bone_mapping_profile_with_ik_chains_roundtrip():
+    profile = BoneMappingProfile(
+        rig_id="character_01",
+        entries=[],
+        ik_chains=[_sample_ik_chain()],
+        created_from_frame=0,
+    )
+
+    restored = BoneMappingProfile.from_dict(profile.to_dict())
+
+    assert restored == profile
+    assert restored.ik_chains[0].root_bone == "upper_arm.L"
+
+
+def test_bone_mapping_profile_from_dict_defaults_ik_chains_for_old_json():
+    # Simulates a mapping.json written before ik_chains existed.
+    data = {
+        "rig_id": "character_01",
+        "entries": [],
+        "created_from_frame": 0,
+        "user_notes": None,
+    }
+
+    profile = BoneMappingProfile.from_dict(data)
+
+    assert profile.ik_chains == []

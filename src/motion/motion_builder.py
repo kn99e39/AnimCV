@@ -1,10 +1,11 @@
 """Build the initial dense MotionGraph directly from a PoseSequence.
 
 This is the pre-retargeting, pre-bone-mapping motion representation: it
-stores observed 2D landmark tracks keyed by semantic name. Bone-specific
-transforms are produced later by the retarget solver (Milestone 5), and
-importance/lock values here stay at their defaults until the Keyframe
-Optimizer (Milestone 6) fills them in.
+stores observed 2D (and, when depth was sampled — see
+pose/depth_sampling.py — 3D) landmark tracks keyed by semantic name.
+Bone-specific transforms are produced later by the retarget solver
+(Milestone 5), and importance/lock values here stay at their defaults
+until the Keyframe Optimizer (Milestone 6) fills them in.
 """
 
 from __future__ import annotations
@@ -29,7 +30,11 @@ class MotionGraphBuilder:
                     semantic_name=name,
                     frame_index=pose_frame.frame_index,
                     position_2d=(landmark.x, landmark.y),
-                    position_3d=None,
+                    position_3d=(
+                        (landmark.x, landmark.y, landmark.z)
+                        if landmark.z is not None
+                        else None
+                    ),
                     confidence=landmark.confidence,
                     visible=landmark.visible,
                 )

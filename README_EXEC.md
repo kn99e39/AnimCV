@@ -299,6 +299,21 @@ python -m app.gui
 
 `src/ui/gui_app.py`, Tkinter 기반(표준 라이브러리만 사용, CLI 쪽에 새 의존성 추가 없음 — 다만 파이썬 인터프리터 자체에 Tcl/Tk가 있어야 함, macOS는 `mac/setup_mac.sh`가 `python-tk` 설치까지 자동으로 처리). 위 3.1~3.8절 8개 CLI 명령을 탭으로 그대로 감싸고 있고, 내부적으로는 CLI와 완전히 동일한 라이브러리 함수를 직접 호출합니다(`VideoLoader`, `PoseEstimator`, `RigParser`, `MotionGraphBuilder`, `RetargetSolver`, `collapse_animation_clip`). `export-blender`만은 `app.cli.run_export_blender`를 그대로 재사용합니다 (Blender 실행파일 자동탐지 + 종료코드 처리 로직이 이미 `tests/test_cli.py`로 검증되어 있어서 중복 구현하지 않음).
 
+#### 탭별 사용법
+
+창을 열면 위쪽에 8개 탭이 있고, 아래쪽엔 항상 상태 표시줄 + 로그 창이 있습니다. 각 탭의 결과 경로는 다음 탭의 입력 필드에 자동으로 채워지므로(예: Frames 탭에서 추출한 디렉터리가 Pose 탭의 "Frames directory"에 자동 입력), 보통은 순서대로 진행하면서 필요한 값만 채우면 됩니다. 모든 경로 입력칸 옆의 `Browse...` 버튼은 파일/디렉터리 선택 대화상자를 엽니다.
+
+1. **1. Frames**: `Video file`에서 영상 파일 선택 → (선택) `Target FPS` 입력 → `Output frames dir` 지정 → **Extract Frames** 클릭. 완료되면 프레임 개수가 표시됩니다.
+2. **2. Pose**: `Frames directory`(자동 채워짐), `MMPose config`(.py)와 `MMPose checkpoint`(.pth) 선택 → `Device`는 CUDA 없으면 `cpu` → (선택) 깊이 기반 3D 리타게팅을 쓰려면 `Depth checkpoint` 지정 → `Output pose.json` 지정 → **Run Pose Estimation** 클릭. 시간이 걸리는 작업이라 창이 멈추지 않고 아래 상태 표시줄에 "Running pose estimation..."이 뜹니다.
+3. **3. Rig**: `Rig file`(.fbx 등) 선택 → `Output rig_profile.json` 지정 → **Parse Rig** 클릭. 아래쪽 리스트에 파싱된 본 목록이 나타납니다.
+4. **4. Mapping** (클릭 기반 매핑, 자세한 내용은 아래 참고): `Rig file`/`Reference frame image`/`Pose JSON`을 확인(자동 채워짐)한 뒤 **Load Frame + Landmarks** 클릭 — 캔버스에 프레임 이미지와 랜드마크 점이 표시됩니다. 왼쪽 본 목록에서 본을 하나 선택하고, 매핑 모드(`Landmark`/`Direction`/`Custom point`)를 고른 뒤 캔버스를 클릭해서 매핑합니다. 필요하면 IK 체인도 추가한 뒤 `Save mapping to:` 경로를 지정하고 **Save Mapping** 클릭.
+5. **5. Motion**: `Pose JSON`(자동 채워짐), `Output motion_graph.json` 지정 → **Build Motion Graph** 클릭.
+6. **6. Retarget**: `Motion graph JSON`/`Rig file`/`Mapping JSON`(모두 자동 채워짐), `Output animation.json` 지정 → **Retarget** 클릭.
+7. **7. Optimize**: `Animation JSON`(자동 채워짐), `Collapse preset`(`none`/`light`/`medium`/`aggressive`/`custom`) 선택(`custom`이면 `Custom threshold`도 입력) → `Output` 지정 → **Optimize** 클릭. 아래 텍스트 창에 본별 압축 전/후 키 개수가 표시됩니다.
+8. **8. Export**: `Optimized animation JSON`/`Rig file`(자동 채워짐), `Output .blend` 지정, (선택) `.fbx`도 함께 원하면 `Output .fbx`, Blender를 자동으로 못 찾으면 `Blender executable`에 직접 지정 → **Export to Blender** 클릭.
+
+#### Mapping 탭 자세히
+
 **Mapping 탭이 CLI 대비 실질적으로 달라지는 부분**: `create-mapping`의 텍스트 프롬프트(`landmark <name>`, `direction <a> <b>` 타이핑) 대신, 기준 프레임 이미지 위에 검출된 랜드마크를 클릭 가능한 점으로 표시하고 실제로 클릭해서 매핑합니다 — `Architecture_v2.md` 섹션 6.2가 원래 설계했고 `ui/mapping_ui.py`의 docstring이 "future work"로 미뤄뒀던 바로 그 워크플로입니다. `custom_point`만은 여전히 텍스트 입력입니다 — 이 모드는 파이프라인 자체에 아직 실제 추적 데이터가 없어서(3.4절 참고) 캔버스에 클릭할 대상 자체가 없기 때문에, 프론트엔드를 뭘 쓰든 마찬가지입니다.
 
 포즈 추정/Blender 내보내기처럼 시간이 걸리는 단계는 백그라운드 스레드에서 실행해 창이 멈추지 않습니다. 스레드에서 메인 스레드로 결과를 넘길 때 `root.after()`를 워커 스레드에서 직접 호출하는 방식은 macOS의 Tk 백엔드에서 안전하지 않아 실제로 앱이 멈추는 걸 확인했고, 대신 순수 `queue.Queue`로 결과만 전달하고 메인 스레드가 주기적으로 큐를 확인하는 방식으로 구현되어 있습니다.

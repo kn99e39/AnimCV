@@ -1,0 +1,4 @@
+Microsoft (R) C/C++ Optimizing Compiler Version 19.51.36248 for x64
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+사용법: cl [ option... ] filename... [ /link linkoption... ]

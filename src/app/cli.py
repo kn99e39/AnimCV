@@ -16,7 +16,18 @@ import subprocess
 import sys
 from pathlib import Path
 
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+def _detect_project_root() -> Path:
+    # When frozen by PyInstaller, __file__ points inside the bundle
+    # (onedir extraction folder / onefile temp dir), not the real
+    # source tree, so "scripts/apply_motion.py" must be located next
+    # to the executable instead (see build_windows.py, which copies
+    # scripts/ there as PyInstaller data).
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent.parent.parent
+
+
+_PROJECT_ROOT = _detect_project_root()
 
 
 def build_parser() -> argparse.ArgumentParser:

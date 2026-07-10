@@ -188,6 +188,32 @@ Blender to run against — see `result/result_mil7.txt` for both:
    code, and the CLI additionally checks that the expected output file
    was actually created.
 
+## Building a standalone executable
+
+`build_windows.ps1` builds a PyInstaller onedir bundle into
+`build_output/windows/motion-tool/motion-tool.exe`. It only bundles
+the base `dependencies` (numpy, opencv-python, pyyaml) — the heavy
+optional extras (mmpose, depth, pyassimp's native lib) are not
+bundled, same tradeoff as the Setup section above. `export-blender`
+still needs a real Blender install on the machine running the exe;
+`scripts/` and `src/` are copied next to the exe as plain files (not
+just frozen into it) because `scripts/apply_motion.py` runs under
+Blender's own bundled Python as a subprocess, not inside this exe's
+Python, and inserts `src/` into `sys.path` itself. See
+`result/result_windows_build.txt` for what was verified. A macOS
+build is deferred until the project is moved to a Mac.
+
+For a build that also bundles mmpose/depth-anything-v2 (so
+`estimate-pose` works without a separate `pip install` on the target
+machine), use `build_full_windows.bat` (Windows, CUDA torch) or
+`build_full_mac.sh` (macOS, CPU torch — no CUDA on Mac). These pull in
+several GB of dependencies (torch + mmcv/mmengine/mmdet) and were not
+exercised end-to-end against a real mmpose checkpoint before shipping
+— mmcv/mmdet's registry-based dynamic imports are a known PyInstaller
+pain point, see the NOTE each script prints after building. Neither
+script installs pyassimp's native `assimp` library (for `parse-rig`) —
+that's a manual step (see Setup above / `brew install assimp` on Mac).
+
 ## Third-party references
 
 `third_party/` holds reference checkouts of upstream repos used as

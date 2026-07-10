@@ -160,6 +160,42 @@ After the per-bone loop, a second prompt collects optional IK chains
 ik-chain> (<root_bone> <mid_bone> <end_bone> <root_source> <mid_source> <end_source> [root_axis] [mid_axis] | done) upper_arm.L forearm.L hand.L left_shoulder left_elbow left_wrist
 ```
 
+## GUI
+
+```bash
+python -m app.gui
+```
+
+A Tkinter app (`src/ui/gui_app.py`, stdlib only — no new dependency for
+the CLI, though the interpreter itself needs Tcl/Tk support; see
+`mac/setup_mac.sh`'s tkinter step) wrapping the same 8 pipeline stages
+as tabs, calling the exact same underlying library functions the CLI
+does (`VideoLoader`, `PoseEstimator`, `RigParser`,
+`MotionGraphBuilder`, `RetargetSolver`, `collapse_animation_clip`, and
+`app.cli.run_export_blender` for the Blender subprocess step — that one
+function is shared with the CLI rather than duplicated, since its
+Blender-executable autodetection and exit-code handling are
+non-trivial and already covered by `tests/test_cli.py`).
+
+The mapping tab is the one substantive upgrade over the CLI's text
+prompts: it delivers the click-based workflow Architecture_v2.md
+section 6.2 originally specified and `ui/mapping_ui.py`'s docstring
+deferred as "future work" — the reference frame is shown on a canvas
+with every detected landmark drawn as a clickable dot (from a loaded
+`pose.json`), so `landmark`/`direction` mappings are built by clicking
+1 or 2 dots instead of typing landmark names. `custom_point` mapping is
+still a plain text field, not a click target — that mode has no
+tracking data behind it in the pipeline itself yet (see the CLI section
+above), so there's nothing on the canvas to click for it regardless of
+front end.
+
+Long-running steps (pose estimation, Blender export) run on a
+background thread so the window doesn't freeze; results are marshalled
+back to the main thread through a plain `queue.Queue`, not
+`root.after()` called from the worker thread — the latter is not
+reliably safe on macOS's Tk backend and was observed to hang the app
+during actual testing.
+
 ## Blender integration
 
 Only `src/blender/*.py` and `scripts/apply_motion.py` import `bpy`, and

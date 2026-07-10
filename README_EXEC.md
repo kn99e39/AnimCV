@@ -10,12 +10,13 @@
   - **깊이(Depth Anything V2) 기반 3D 리타게팅**: 랜드마크에 상대 깊이값을 샘플링해 2D 평면 근사 대신 실제 3D 회전/이동을 계산 (깊이 없으면 자동으로 2D 방식으로 폴백)
   - **2-bone IK**: 어깨-팔꿈치-손목, 골반-무릎-발목 같은 체인을 코사인 법칙 기반으로 풀어서 end-effector가 실제 추적점을 더 정확히 따라가게 함
   - **Rest-pose 축 보정**: 리그의 rest pose 방향을 반영해서 본의 로컬 좌표계 기준으로 회전/이동을 재해석 (이전엔 리그 정보를 받기만 하고 실제로 안 썼음)
-- 유닛/통합 테스트 189개 전부 통과 (`pytest`).
+- 유닛/통합 테스트 197개 전부 통과 (`pytest`).
 - **Windows뿐 아니라 macOS에서도 실행 가능하도록 Blender 실행파일 자동탐지 로직을 OS별로 분기 처리함** (Windows/macOS/Linux 각각의 표준 설치 경로를 확인).
 - 합성 데이터로 **전체 파이프라인(영상 → 프레임 → 포즈 → 모션그래프 → 리타겟 → 키프레임 최적화 → Blender 출력)을 처음부터 끝까지 실제로 실행해서 결과 `.blend`/`.fbx` 파일에 키프레임이 정확히 들어가는 것까지 확인함**. IK 체인과 rest-pose 보정도 별도의 실제 Blender 픽스처로 재검증함.
 - **macOS(Apple Silicon)에서 이 전체 파이프라인을 실제 의존성으로 처음부터 끝까지 검증함** (`mac/setup_mac.sh`, 아래 "Mac 지원" 항목 참고): 합성 영상 → 실제 다운로드한 RTMPose-tiny 체크포인트로 `estimate-pose` → `build-motion` → 실제 Blender로 생성한 FBX 리그를 실제 assimp로 `parse-rig` → `create-mapping` → `retarget` → `optimize` → 실제 Blender 5.1로 `export-blender` → 결과 `.blend`를 다시 열어 fcurve/keyframe/interpolation이 정확히 일치하는 것까지 확인. 이 과정에서 실제 버그 3개를 발견/수정함 (아래 "Mac 지원" 항목 참고).
 - **Blender 연동은 실제 로컬 Blender 4.5 LTS / 5.1 / 5.1.2 세 버전 모두로 완전히 검증됨** (기본 리타게팅 + rest-pose 보정 + IK 체인 각각 별도 픽스처로).
 - **Depth Anything V2**는 이번 macOS 검증 범위에는 포함되지 않음 — 이전과 마찬가지로 실제 모델 클래스 forward pass까지만 확인했고(미학습 가중치), 실제 학습된 체크포인트로는 검증하지 못함.
+- **터미널 CLI뿐 아니라 GUI(`python -m app.gui`, Tkinter)도 있음** — 8개 CLI 명령을 탭으로 감싸고, Mapping 탭은 `Architecture_v2.md` 섹션 6.2가 원래 설계한 대로 이미지 위 랜드마크를 직접 클릭해서 본을 매핑합니다 (아래 3.9절 참고). GUI를 통해 프로그래밍적으로 클릭을 재현해 합성 데이터로 전체 파이프라인을 끝까지 돌렸고, 결과가 CLI와 정확히 일치하는 것까지 확인함.
 
 ## 1. 설치
 
@@ -290,6 +291,20 @@ python -m app.cli export-blender \
 - 회전 매핑 본은 `rotation_quaternion`, 이동 매핑 본은 `location` 채널에 키프레임이 들어가며, 모든 키프레임의 보간(interpolation)은 `BEZIER`로 설정되어 Blender 그래프 에디터/도프시트에서 바로 편집 가능합니다.
 - Blender를 못 찾으면 `--blender-executable`로 직접 경로를 지정하거나 `BLENDER_EXECUTABLE` 환경변수를 설정하세요.
 
+### 3.9 GUI — 터미널 명령어 대신 클릭 기반으로 전체 파이프라인 실행
+
+```bash
+python -m app.gui
+```
+
+`src/ui/gui_app.py`, Tkinter 기반(표준 라이브러리만 사용, CLI 쪽에 새 의존성 추가 없음 — 다만 파이썬 인터프리터 자체에 Tcl/Tk가 있어야 함, macOS는 `mac/setup_mac.sh`가 `python-tk` 설치까지 자동으로 처리). 위 3.1~3.8절 8개 CLI 명령을 탭으로 그대로 감싸고 있고, 내부적으로는 CLI와 완전히 동일한 라이브러리 함수를 직접 호출합니다(`VideoLoader`, `PoseEstimator`, `RigParser`, `MotionGraphBuilder`, `RetargetSolver`, `collapse_animation_clip`). `export-blender`만은 `app.cli.run_export_blender`를 그대로 재사용합니다 (Blender 실행파일 자동탐지 + 종료코드 처리 로직이 이미 `tests/test_cli.py`로 검증되어 있어서 중복 구현하지 않음).
+
+**Mapping 탭이 CLI 대비 실질적으로 달라지는 부분**: `create-mapping`의 텍스트 프롬프트(`landmark <name>`, `direction <a> <b>` 타이핑) 대신, 기준 프레임 이미지 위에 검출된 랜드마크를 클릭 가능한 점으로 표시하고 실제로 클릭해서 매핑합니다 — `Architecture_v2.md` 섹션 6.2가 원래 설계했고 `ui/mapping_ui.py`의 docstring이 "future work"로 미뤄뒀던 바로 그 워크플로입니다. `custom_point`만은 여전히 텍스트 입력입니다 — 이 모드는 파이프라인 자체에 아직 실제 추적 데이터가 없어서(3.4절 참고) 캔버스에 클릭할 대상 자체가 없기 때문에, 프론트엔드를 뭘 쓰든 마찬가지입니다.
+
+포즈 추정/Blender 내보내기처럼 시간이 걸리는 단계는 백그라운드 스레드에서 실행해 창이 멈추지 않습니다. 스레드에서 메인 스레드로 결과를 넘길 때 `root.after()`를 워커 스레드에서 직접 호출하는 방식은 macOS의 Tk 백엔드에서 안전하지 않아 실제로 앱이 멈추는 걸 확인했고, 대신 순수 `queue.Queue`로 결과만 전달하고 메인 스레드가 주기적으로 큐를 확인하는 방식으로 구현되어 있습니다.
+
+**실제 macOS에서 검증**: 합성 영상 → `extract-frames` → 실제 RTMPose-tiny 체크포인트로 `estimate-pose` → 실제 assimp로 `parse-rig` → Mapping 탭에서 실제 좌표를 클릭해 `forearm.L`/`upper_arm.L`(direction)·`hips`(landmark) 매핑 → `build-motion` → `retarget` → `optimize` → 실제 Blender로 `export-blender`까지 GUI를 통해 프로그래밍적으로 클릭을 재현해 끝까지 실행했고, 결과 `.blend`의 fcurve/키프레임 개수가 동일한 입력으로 CLI를 돌렸을 때와 정확히 일치하는 것까지 확인했습니다. 이 과정에서 실제 버그 1개를 발견/수정함: 매핑을 하나 저장할 때마다 본 목록(Treeview)을 지우고 다시 그리는데, 이게 현재 선택을 지워버려서(그리고 지연된 `<<TreeviewSelect>>` 이벤트가 다음 이벤트 루프 turn에 선택을 `None`으로 되돌려서) 매핑 자체는 정확히 저장되지만 매핑 직후 UI에서 본 선택이 풀려버리는 문제였습니다 — 지우기 전 선택을 저장했다가 다시 그린 뒤 복원하는 방식으로 고쳤습니다.
+
 ## 4. 빠른 동작 확인 (합성 데이터로 전체 파이프라인 돌려보기)
 
 실제 영상/리그 없이 프레임워크가 제대로 동작하는지만 빠르게 확인하고 싶다면, 테스트 스위트를 돌려보는 게 가장 빠릅니다:
@@ -298,7 +313,7 @@ python -m app.cli export-blender \
 pytest
 ```
 
-189개 테스트가 전부 통과해야 정상입니다. 이 중 `tests/test_blender_executor.py`, `tests/test_apply_motion_script.py`는 가짜(fake) `bpy` 모듈로 Blender 없이도 동작 검증을 하고, `tests/test_rig_parser.py`, `tests/test_mmpose_adapter.py`, `tests/test_depth.py`는 가짜 노드/결과 객체로 assimp/mmpose/depth_anything_v2 없이도 핵심 로직을 검증합니다. `tests/test_ik_solver.py`의 IK 삼각형 계산과 `tests/test_axis_utils.py`의 rest-pose 보정은 직접 손으로 계산한 기하학적 예제로 검증되어 있습니다.
+197개 테스트가 전부 통과해야 정상입니다. 이 중 `tests/test_blender_executor.py`, `tests/test_apply_motion_script.py`는 가짜(fake) `bpy` 모듈로 Blender 없이도 동작 검증을 하고, `tests/test_rig_parser.py`, `tests/test_mmpose_adapter.py`, `tests/test_depth.py`는 가짜 노드/결과 객체로 assimp/mmpose/depth_anything_v2 없이도 핵심 로직을 검증합니다. `tests/test_ik_solver.py`의 IK 삼각형 계산과 `tests/test_axis_utils.py`의 rest-pose 보정은 직접 손으로 계산한 기하학적 예제로 검증되어 있습니다.
 
 **실제 Blender까지 포함한 검증**을 하고 싶다면 Blender가 설치되어 있어야 하며, `export-blender`를 실행한 뒤 생성된 `.blend` 파일을 Blender에서 직접 열어 그래프 에디터에 키프레임이 보이는지 확인하면 됩니다.
 

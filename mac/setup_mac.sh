@@ -93,38 +93,52 @@ if ! "$PYTHON" -c 'import sys; sys.exit(0 if sys.version_info[:2] == (3, 11) els
 fi
 
 if [ ! -d "$VENV" ]; then
-    echo "[1/9] Creating venv at $VENV..."
+    echo "[1/10] Creating venv at $VENV..."
     "$PYTHON" -m venv "$VENV"
 else
-    echo "[1/9] Reusing existing venv at $VENV..."
+    echo "[1/10] Reusing existing venv at $VENV..."
 fi
 PIP="$VENV/bin/pip"
 PY="$VENV/bin/python"
 
-echo "[2/9] Upgrading pip..."
+echo "[2/10] Upgrading pip..."
 "$PY" -m pip install --upgrade pip
 
-echo "[3/9] Pinning numpy<2 / opencv-python<4.10 (mmpose's xtcocotools native ABI needs numpy<2)..."
+echo "[3/10] Pinning numpy<2 / opencv-python<4.10 (mmpose's xtcocotools native ABI needs numpy<2)..."
 "$PIP" install "numpy<2" "opencv-python<4.10"
 
-echo "[4/9] Installing torch (CPU)..."
+echo "[4/10] Installing torch (CPU)..."
 "$PIP" install torch
 
-echo "[5/9] Installing mmengine alone (mmdet comes later, after mmcv is built -- see header comment)..."
+echo "[5/10] Installing mmengine alone (mmdet comes later, after mmcv is built -- see header comment)..."
 "$PIP" install mmengine
 
-echo "[6/9] Building mmcv from source with torch already importable (no prebuilt macOS wheel exists upstream)..."
+echo "[6/10] Building mmcv from source with torch already importable (no prebuilt macOS wheel exists upstream)..."
 "$PIP" install "setuptools<81" wheel
 "$PIP" install --no-build-isolation --no-cache-dir --force-reinstall --no-deps "mmcv>=2.0.0rc4,<2.2.0"
 
-echo "[7/9] Installing mmdet (mmcv already satisfies its requirement, won't be rebuilt)..."
+echo "[7/10] Installing mmdet (mmcv already satisfies its requirement, won't be rebuilt)..."
 "$PIP" install mmdet
 
-echo "[8/9] Installing mmpose (--no-build-isolation works around its chumpy dependency's legacy setup.py)..."
+echo "[8/10] Installing mmpose (--no-build-isolation works around its chumpy dependency's legacy setup.py)..."
 "$PIP" install --no-build-isolation mmpose
 
-echo "[9/9] Installing project + dev/pose/depth extras (everything above already satisfies 'pose')..."
+echo "[9/10] Installing project + dev/pose/depth extras (everything above already satisfies 'pose')..."
 "$PIP" install -e ".[dev,pose,depth]"
+
+echo "[10/10] Checking tkinter (needed for the GUI, motion-tool-gui / ui/gui_app.py)..."
+if "$PY" -c "import tkinter" >/dev/null 2>&1; then
+    echo "tkinter already available."
+elif command -v brew >/dev/null 2>&1; then
+    # Homebrew's python@X.Y formula doesn't bundle Tcl/Tk by default --
+    # python-tk@X.Y is a separate formula providing the same venv's
+    # _tkinter extension. The CLI is unaffected either way.
+    py_minor="$("$PY" -c 'import sys; print(f"{sys.version_info[0]}.{sys.version_info[1]}")')"
+    echo "Installing python-tk@$py_minor via Homebrew for GUI support..."
+    brew install "python-tk@$py_minor" || echo "Could not auto-install python-tk@$py_minor; install it manually if you want the GUI." >&2
+else
+    echo "tkinter not available and Homebrew not found -- the GUI won't work; the CLI is unaffected." >&2
+fi
 
 echo
 echo "Checking native assimp library (needed for parse-rig/create-mapping/retarget)..."
@@ -152,6 +166,8 @@ fi
 echo
 echo "Setup complete. Activate with:"
 echo "  source $VENV/bin/activate"
-echo "Then run, e.g.:"
+echo "Then run the CLI, e.g.:"
 echo "  python -m app.cli extract-frames --video input.mp4 --out cache/frames"
+echo "...or the GUI:"
+echo "  python -m app.gui"
 echo "See README_EXEC.md for the full command reference."

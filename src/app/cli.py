@@ -331,8 +331,17 @@ def _find_blender_executable(override: str | None = None) -> str:
     )
 
 
-def _export_blender(args: argparse.Namespace) -> None:
-    blender_exe = _find_blender_executable(args.blender_executable)
+def run_export_blender(
+    animation: str,
+    rig: str,
+    out: str,
+    fbx_out: str | None = None,
+    blender_executable: str | None = None,
+) -> None:
+    """Core export-blender logic, factored out of _export_blender so
+    ui/gui_app.py can call it directly instead of duplicating the
+    Blender-executable search + subprocess/exit-code handling below."""
+    blender_exe = _find_blender_executable(blender_executable)
     script_path = _PROJECT_ROOT / "scripts" / "apply_motion.py"
 
     command = [
@@ -342,14 +351,14 @@ def _export_blender(args: argparse.Namespace) -> None:
         str(script_path),
         "--",
         "--rig",
-        args.rig,
+        rig,
         "--animation",
-        args.animation,
+        animation,
         "--out",
-        args.out,
+        out,
     ]
-    if args.fbx_out:
-        command += ["--fbx-out", args.fbx_out]
+    if fbx_out:
+        command += ["--fbx-out", fbx_out]
 
     result = subprocess.run(command, capture_output=True, text=True)
     if result.stdout:
@@ -357,17 +366,25 @@ def _export_blender(args: argparse.Namespace) -> None:
     if result.returncode != 0:
         print(result.stderr, file=sys.stderr)
         raise RuntimeError(f"blender exited with code {result.returncode}")
-    if not Path(args.out).exists():
+    if not Path(out).exists():
         # Confirmed by testing against a real Blender build: an
         # unhandled exception inside a --python script does NOT make
         # blender.exe's own exit code non-zero, so returncode==0 alone
         # doesn't prove apply_motion.py actually succeeded. Belt and
         # suspenders on top of that script's own try/except.
         print(result.stderr, file=sys.stderr)
-        raise RuntimeError(
-            f"blender exited with code 0 but {args.out} was not created; see stderr above"
-        )
-    print(f"[motion-tool] exported Blender scene -> {args.out}")
+        raise RuntimeError(f"blender exited with code 0 but {out} was not created; see stderr above")
+    print(f"[motion-tool] exported Blender scene -> {out}")
+
+
+def _export_blender(args: argparse.Namespace) -> None:
+    run_export_blender(
+        animation=args.animation,
+        rig=args.rig,
+        out=args.out,
+        fbx_out=args.fbx_out,
+        blender_executable=args.blender_executable,
+    )
 
 
 def main(argv: list[str] | None = None) -> int:

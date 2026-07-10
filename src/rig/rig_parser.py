@@ -19,6 +19,8 @@ Profile, and only mapped bones are animated (section 6.5).
 
 from __future__ import annotations
 
+import os
+import sys
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -26,6 +28,26 @@ from common.types import Matrix4
 from rig.rig_profile import BoneInfo, RigProfile
 
 _ROOT_NAME_HINTS = ("root", "hips", "pelvis", "armature")
+
+
+def _ensure_assimp_library_path() -> None:
+    """pyassimp's own library search (pyassimp/helper.py) only checks
+    ``/usr/local/lib`` on POSIX, which is Intel Homebrew's prefix. Apple
+    Silicon Homebrew installs to ``/opt/homebrew`` instead, so a
+    ``brew install assimp`` is otherwise invisible to pyassimp on M-series
+    Macs even though the library is present. pyassimp reads
+    ``LD_LIBRARY_PATH`` from the environment at search time (not the
+    dynamic linker itself), so setting it here before import is enough."""
+    if sys.platform != "darwin":
+        return
+    homebrew_lib = "/opt/homebrew/lib"
+    if not os.path.isdir(homebrew_lib):
+        return
+    existing = os.environ.get("LD_LIBRARY_PATH", "")
+    if homebrew_lib not in existing.split(":"):
+        os.environ["LD_LIBRARY_PATH"] = (
+            f"{homebrew_lib}:{existing}" if existing else homebrew_lib
+        )
 
 
 class SceneNode(Protocol):
@@ -40,6 +62,7 @@ class SceneNode(Protocol):
 
 class RigParser:
     def load(self, path: str) -> RigProfile:
+        _ensure_assimp_library_path()
         try:
             import pyassimp
         except Exception as exc:  # pyassimp raises its own AssimpError at

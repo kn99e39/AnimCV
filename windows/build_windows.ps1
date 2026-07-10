@@ -1,5 +1,6 @@
 # Builds a standalone Windows executable of the motion-tool CLI into
-# build_output/windows using PyInstaller. Run from the project root.
+# build_output/windows using PyInstaller. Run once, from anywhere:
+#   windows\build_windows.ps1
 #
 # Only the base `dependencies` from pyproject.toml (numpy, opencv-python,
 # pyyaml) are bundled -- estimate-pose's mmpose/depth-anything-v2 extras
@@ -16,6 +17,12 @@
 # alongside the exe, not just frozen into the bundle's bytecode.
 
 $ErrorActionPreference = "Stop"
+
+# Paths below (.venv_build, scripts/, src/, build_output/) are relative to
+# the project root, not this script's location under windows/ -- this file
+# lives there specifically so it's never mistaken for the Mac scripts
+# under mac/, so always hop back to the repo root first.
+Set-Location (Join-Path $PSScriptRoot "..")
 
 $venv = ".venv_build"
 if (-not (Test-Path $venv)) {

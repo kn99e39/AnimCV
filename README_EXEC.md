@@ -11,13 +11,11 @@
   - **2-bone IK**: 어깨-팔꿈치-손목, 골반-무릎-발목 같은 체인을 코사인 법칙 기반으로 풀어서 end-effector가 실제 추적점을 더 정확히 따라가게 함
   - **Rest-pose 축 보정**: 리그의 rest pose 방향을 반영해서 본의 로컬 좌표계 기준으로 회전/이동을 재해석 (이전엔 리그 정보를 받기만 하고 실제로 안 썼음)
 - 유닛/통합 테스트 189개 전부 통과 (`pytest`).
-- **Windows뿐 아니라 macOS에서도 실행 가능하도록 Blender 실행파일 자동탐지 로직을 OS별로 분기 처리함** (Windows/macOS/Linux 각각의 표준 설치 경로를 확인). macOS 실제 기기로는 검증하지 못했지만, 경로 탐색 로직 자체는 가짜 파일시스템으로 단위 테스트됨 (아래 "Mac 지원" 항목 참고).
+- **Windows뿐 아니라 macOS에서도 실행 가능하도록 Blender 실행파일 자동탐지 로직을 OS별로 분기 처리함** (Windows/macOS/Linux 각각의 표준 설치 경로를 확인).
 - 합성 데이터로 **전체 파이프라인(영상 → 프레임 → 포즈 → 모션그래프 → 리타겟 → 키프레임 최적화 → Blender 출력)을 처음부터 끝까지 실제로 실행해서 결과 `.blend`/`.fbx` 파일에 키프레임이 정확히 들어가는 것까지 확인함**. IK 체인과 rest-pose 보정도 별도의 실제 Blender 픽스처로 재검증함.
-- 단, 아래 외부 의존성들은 이 개발 환경 자체의 제약으로 실제 모델/라이브러리로는 완전히 검증하지 못했음 (코드 자체는 준비되어 있고, 로직은 가짜(mock) 객체 또는 실제 모델 아키텍처(미학습 가중치)로 검증됨):
-  - **MMPose**: 실제 포즈 추정 모델 체크포인트로 `estimate-pose`를 돌려본 적은 없음.
-  - **Assimp(pyassimp)**: 네이티브 assimp 공유 라이브러리가 이 환경에 설치되지 않아 `parse-rig`/`create-mapping`/`retarget`이 실제 FBX/리그 파일을 파싱하는 것은 검증하지 못함.
-  - **Depth Anything V2**: 이 환경에 마침 torch+CUDA가 설치되어 있어서 실제 모델 클래스로 forward pass까지는 검증했지만(미학습 가중치, 체크포인트 다운로드는 안 함), 실제 학습된 체크포인트로는 검증하지 못함. 이 과정에서 업스트림 라이브러리 자체의 실제 버그(장치 불일치)를 발견해서 우리 어댑터 쪽에서 방어 코드를 추가함.
-- **Blender 연동은 실제 로컬 Blender 4.5 LTS / 5.1 두 버전 모두로 완전히 검증됨** (기본 리타게팅 + rest-pose 보정 + IK 체인 각각 별도 픽스처로).
+- **macOS(Apple Silicon)에서 이 전체 파이프라인을 실제 의존성으로 처음부터 끝까지 검증함** (`mac/setup_mac.sh`, 아래 "Mac 지원" 항목 참고): 합성 영상 → 실제 다운로드한 RTMPose-tiny 체크포인트로 `estimate-pose` → `build-motion` → 실제 Blender로 생성한 FBX 리그를 실제 assimp로 `parse-rig` → `create-mapping` → `retarget` → `optimize` → 실제 Blender 5.1로 `export-blender` → 결과 `.blend`를 다시 열어 fcurve/keyframe/interpolation이 정확히 일치하는 것까지 확인. 이 과정에서 실제 버그 3개를 발견/수정함 (아래 "Mac 지원" 항목 참고).
+- **Blender 연동은 실제 로컬 Blender 4.5 LTS / 5.1 / 5.1.2 세 버전 모두로 완전히 검증됨** (기본 리타게팅 + rest-pose 보정 + IK 체인 각각 별도 픽스처로).
+- **Depth Anything V2**는 이번 macOS 검증 범위에는 포함되지 않음 — 이전과 마찬가지로 실제 모델 클래스 forward pass까지만 확인했고(미학습 가중치), 실제 학습된 체크포인트로는 검증하지 못함.
 
 ## 1. 설치
 
@@ -47,13 +45,15 @@ pip install -e ".[pose]"   # mmpose, mmcv, mmengine, mmdet (매우 무거움 —
 
 추가로 MMPose 모델 설정 파일(config)과 체크포인트(checkpoint)가 필요합니다. `third_party/mmpose/configs`에서 원하는 모델 config를 찾고, 해당 체크포인트를 MMPose 모델 zoo에서 받아와야 합니다.
 
+**macOS에서는 `pip install -e ".[pose]"` 한 줄로 끝나지 않습니다.** OpenMMLab은 mmcv의 macOS용 prebuilt wheel을 아예 배포하지 않아 항상 소스 빌드가 필요하고, 그 소스 빌드가 최신 setuptools/pip 툴체인과 충돌합니다(아래 "Mac 지원" 항목의 `mac/setup_mac.sh` 참고). Linux/Windows에서 prebuilt wheel을 쓸 수 있는 환경이라면 이 한 줄로 충분합니다.
+
 **리그 파싱(parse-rig / create-mapping / retarget)을 실제로 쓰려면:**
 
 ```bash
 pip install pyassimp
 ```
 
-`pip install`만으로는 부족합니다. **네이티브 assimp 공유 라이브러리(assimp.dll/libassimp.so 등)를 시스템에 직접 설치**해야 `pyassimp`가 정상 동작합니다 (이 문서를 작성한 개발 환경에는 이 네이티브 라이브러리가 없어서 실제 FBX 파일로는 테스트하지 못했습니다). 라이브러리가 없으면 `import pyassimp` 자체가 실패하며, CLI는 이를 잡아서 친절한 에러 메시지로 알려줍니다 (트레이스백이 아니라).
+`pip install`만으로는 부족합니다. **네이티브 assimp 공유 라이브러리(assimp.dll/libassimp.so 등)를 시스템에 직접 설치**해야 `pyassimp`가 정상 동작합니다. 라이브러리가 없으면 `import pyassimp` 자체가 실패하며, CLI는 이를 잡아서 친절한 에러 메시지로 알려줍니다 (트레이스백이 아니라).
 
 **깊이 기반 3D 리타게팅(estimate-pose --depth-checkpoint)을 쓰려면:**
 
@@ -76,21 +76,34 @@ pip install -e ".[depth]"   # torch, opencv-python, matplotlib
 
 ### 1.4 Mac 지원
 
-이 프레임워크의 핵심 로직(순수 Python + `pathlib`)과 외부 의존성(OpenCV, MMPose, pyassimp, Blender)은 전부 macOS에서도 동작합니다. Blender 실행파일 자동탐지도 OS별로 분기되어 있어 별도 설정 없이 Mac 표준 설치 위치를 찾습니다:
+이 프레임워크의 핵심 로직(순수 Python + `pathlib`)과 외부 의존성(OpenCV, MMPose, pyassimp, Blender)은 전부 macOS에서 실제로 검증되었습니다 (Apple Silicon, Python 3.11, Blender 5.1.2). Blender 실행파일 자동탐지도 OS별로 분기되어 있어 별도 설정 없이 Mac 표준 설치 위치를 찾습니다:
 
 - `/Applications/Blender*.app/Contents/MacOS/Blender`
 - `~/Applications/Blender*.app/Contents/MacOS/Blender` (사용자별 설치)
 
-Mac에서 필요한 추가 설정:
+**한 번만 실행하면 되는 설치 스크립트**: `bash mac/setup_mac.sh` — venv 생성부터 pose/depth extras, native assimp, Blender 존재 확인까지 한 번에 끝납니다. `mac/build_full_mac.sh`(PyInstaller로 exe 하나에 통째로 번들, 수 GB, 재빌드도 느림)와는 다른 용도이니 혼동하지 마세요. `mac/setup_mac.sh`는 그냥 평소처럼 `python -m app.cli ...`로 실행할 수 있는 venv만 준비합니다.
+
+`estimate-pose`(mmpose 스택)를 macOS에서 설치하는 건 `pip install -e ".[pose]"` 한 줄로 안 끝나서 `mac/setup_mac.sh`가 특정 순서로 여러 단계를 거칩니다 — 이유는 스크립트 안 주석에 적어뒀지만 요약하면:
+
+- OpenMMLab이 mmcv의 macOS prebuilt wheel을 아예 배포하지 않아 항상 소스 빌드가 필요함.
+- `mmdet`을 먼저 설치하면 그게 딸려오는 `mmcv`를 pip의 격리된 빌드 환경에서 빌드하는데, 그 환경엔 이미 설치된 torch가 안 보여서 컴파일된 연산(ops) 없이 조용히 "lite" 버전으로 떨어짐 — 나중에 `mmcv`를 다시 설치해도 이미 만족되는 버전이 있으면 pip가 아무것도 안 하므로 이 문제가 눈에 안 띄게 남습니다. `mmengine`을 먼저 깔고 `mmcv`를 명시적으로 빌드한 다음에 `mmdet`을 설치해야 합니다.
+- mmcv/`chumpy`(mmpose 의존성)의 `setup.py`가 최신 setuptools/pip 툴체인에서 깨지는 레거시 패턴(`import pkg_resources`, `import pip`)을 쓰고 있어서 `setuptools<81` 고정 + `--no-build-isolation`이 필요함.
+- `mmdet`은 `mmcv<2.2.0`을 요구하고, mmpose의 `xtcocotools`는 numpy 2.0 이전 C ABI로 컴파일되어 있어서 `numpy`/`opencv-python`도 같이 낮은 버전으로 고정해야 함.
+
+Mac에서 필요한 네이티브 라이브러리 설치(`mac/setup_mac.sh`가 자동으로 처리):
 
 ```bash
 brew install assimp     # parse-rig / create-mapping / retarget에 필요한 네이티브 라이브러리
 pip install pyassimp
 ```
 
-MMPose(`estimate-pose`)는 Mac에서도 `pip install -e ".[pose]"`로 설치되지만, NVIDIA CUDA가 없으므로 `--device cpu`로 실행해야 합니다 (Apple Silicon의 MPS 백엔드 지원 여부는 MMPose 버전에 따라 다르므로 사전 확인 필요).
+**실제로 Mac에서 검증하며 발견하고 고친 버그 3개** (합성 영상 + 실제 다운로드한 RTMPose-tiny 체크포인트 + 실제 assimp로 만든 FBX + 실제 Blender로 전체 파이프라인을 끝까지 돌려봄으로써 발견됨 — 코드 리뷰만으로는 안 보였을 문제들):
 
-**주의**: 이 macOS 관련 코드(`_default_blender_search_paths`의 Darwin 분기)는 가짜 파일시스템 레이아웃으로 단위 테스트되어 있지만(`tests/test_cli.py`), 실제 Mac 기기에서 실행해본 적은 없습니다. 실제 Mac에서 문제가 발견되면 알려주세요.
+1. **`pyassimp`가 Apple Silicon Homebrew의 assimp를 못 찾음**: pyassimp 자체 라이브러리 검색 로직(`pyassimp/helper.py`)이 `/usr/local/lib`(Intel Homebrew 기본 경로)만 확인하고 `/opt/homebrew/lib`(Apple Silicon Homebrew 기본 경로)은 확인하지 않습니다. `brew install assimp`로 라이브러리가 정상 설치되어 있어도 `import pyassimp`가 "assimp library not found"로 실패합니다. `src/rig/rig_parser.py`의 `_ensure_assimp_library_path()`가 macOS에서 `import pyassimp` 전에 `LD_LIBRARY_PATH`에 `/opt/homebrew/lib`를 추가해서 해결합니다.
+2. **PyTorch 2.6+의 `weights_only=True` 기본값 변경과 mmengine의 충돌**: mmengine(0.10.7, mmdet의 `mmcv<2.2.0` 제약과 호환되는 최신 버전)의 체크포인트 로더가 `torch.load()`를 `weights_only` 지정 없이 호출하는데, OpenMMLab 체크포인트는 순수 텐서 이상을 담고 있어 PyTorch 2.6+의 새 기본값에서 로드가 깨집니다. `src/pose/mmpose_adapter.py`의 `_mmengine_checkpoint_compat()`가 모델 초기화 호출 동안만 `torch.load`의 기본값을 되돌리는 방식으로 해결합니다 (프로세스 전역이 아니라 그 호출 범위로 한정).
+3. **`pyproject.toml`의 `pose` extra가 실제로 호환되는 조합을 명시하지 않았음**: `mmcv` 버전 제약이 없어 `mmdet`이 요구하는 `mmcv<2.2.0`과 어긋날 수 있었고, `numpy`/`opencv-python` 버전도 mmpose의 `xtcocotools` 네이티브 확장 ABI와 안 맞을 수 있었습니다. 지금은 `mmcv>=2.0.0rc4,<2.2.0`, `numpy<2`, `opencv-python<4.10`으로 명시되어 있습니다.
+
+`estimate-pose --device cpu`로 실행하세요 (NVIDIA CUDA 없음; Apple Silicon의 MPS 백엔드 지원 여부는 MMPose 버전에 따라 다르므로 사전 확인 필요).
 
 ## 2. 전체 파이프라인 흐름
 

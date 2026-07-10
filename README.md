@@ -190,7 +190,16 @@ Blender to run against — see `result/result_mil7.txt` for both:
 
 ## Building a standalone executable
 
-`build_windows.ps1` builds a PyInstaller onedir bundle into
+OS-specific scripts live under `windows/` and `mac/` (not mixed at the
+repo root) so it's never ambiguous which one to run on which machine.
+Both sets assume the project root as their working directory even
+though they live one level down — each hops back to it itself
+(`cd /d "%~dp0.."` / `cd "$(dirname "${BASH_SOURCE[0]}")/.."`), so
+`windows\build_windows.ps1` / `bash mac/build_full_mac.sh` work the
+same whether invoked from the repo root or by double-clicking inside
+the subfolder.
+
+`windows/build_windows.ps1` builds a PyInstaller onedir bundle into
 `build_output/windows/motion-tool/motion-tool.exe`. It only bundles
 the base `dependencies` (numpy, opencv-python, pyyaml) — the heavy
 optional extras (mmpose, depth, pyassimp's native lib) are not
@@ -200,19 +209,28 @@ still needs a real Blender install on the machine running the exe;
 just frozen into it) because `scripts/apply_motion.py` runs under
 Blender's own bundled Python as a subprocess, not inside this exe's
 Python, and inserts `src/` into `sys.path` itself. See
-`result/result_windows_build.txt` for what was verified. A macOS
-build is deferred until the project is moved to a Mac.
+`result/result_windows_build.txt` for what was verified.
 
 For a build that also bundles mmpose/depth-anything-v2 (so
 `estimate-pose` works without a separate `pip install` on the target
-machine), use `build_full_windows.bat` (Windows, CUDA torch) or
-`build_full_mac.sh` (macOS, CPU torch — no CUDA on Mac). These pull in
-several GB of dependencies (torch + mmcv/mmengine/mmdet) and were not
-exercised end-to-end against a real mmpose checkpoint before shipping
-— mmcv/mmdet's registry-based dynamic imports are a known PyInstaller
-pain point, see the NOTE each script prints after building. Neither
-script installs pyassimp's native `assimp` library (for `parse-rig`) —
-that's a manual step (see Setup above / `brew install assimp` on Mac).
+machine), use `windows/build_full_windows.bat` (Windows, CUDA torch) or
+`mac/build_full_mac.sh` (macOS, CPU torch — no CUDA on Mac). These pull in
+several GB of dependencies (torch + mmcv/mmengine/mmdet) and the
+PyInstaller-frozen bundle itself was not exercised end-to-end against a
+real mmpose checkpoint before shipping either script — mmcv/mmdet's
+registry-based dynamic imports are a known PyInstaller pain point, see
+the NOTE each script prints after building. (Running from a plain venv,
+not a frozen exe, *was* verified against a real checkpoint on macOS —
+see `mac/setup_mac.sh` and README_EXEC.md's Mac support section.)
+Neither script installs pyassimp's native `assimp` library (for
+`parse-rig`) — that's a manual step (see Setup above /
+`brew install assimp` on Mac).
+
+For just running the CLI from source on Mac (no bundled exe, much
+faster to iterate on than a PyInstaller rebuild), use
+`bash mac/setup_mac.sh` instead — a one-time setup that installs
+everything needed (including the mmpose/mmcv/mmdet stack's several
+macOS-specific build workarounds) into a normal `.venv`.
 
 ## Third-party references
 

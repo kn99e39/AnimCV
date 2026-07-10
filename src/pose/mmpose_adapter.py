@@ -13,12 +13,37 @@ downstream code always sees the schema in ``pose/schemas.py``.
 
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass
 
 import numpy as np
 
 from mediaio.frame_sequence import Frame, FrameSequence
 from pose.pose_types import PoseFrame, PoseLandmark, PoseSequence
+
+
+@contextlib.contextmanager
+def _mmengine_checkpoint_compat():
+    """PyTorch >=2.6 flipped ``torch.load``'s default to
+    ``weights_only=True``, but mmengine's checkpoint loader (as of 0.10.7,
+    the newest release compatible with mmdet's ``mmcv<2.2.0`` pin) calls
+    ``torch.load`` with no override and its checkpoints carry more than
+    plain tensors, so loading breaks under the new default. Restoring the
+    old default only around model init (not process-wide) fixes this
+    without trusting arbitrary pickles anywhere else."""
+    import torch
+
+    original_load = torch.load
+
+    def patched_load(*args, **kwargs):
+        kwargs.setdefault("weights_only", False)
+        return original_load(*args, **kwargs)
+
+    torch.load = patched_load
+    try:
+        yield
+    finally:
+        torch.load = original_load
 
 _COCO_KEYPOINT_NAMES = [
     "nose",
@@ -80,11 +105,12 @@ class PoseEstimator:
                     "MMPose is not installed. Install the optional 'pose' extra: "
                     "pip install -e '.[pose]'"
                 ) from exc
-            self._model = init_model(
-                self._config.config_path,
-                self._config.checkpoint_path,
-                device=self._config.device,
-            )
+            with _mmengine_checkpoint_compat():
+                self._model = init_model(
+                    self._config.config_path,
+                    self._config.checkpoint_path,
+                    device=self._config.device,
+                )
         return self._model
 
     def process_frame(self, frame: Frame) -> PoseFrame:

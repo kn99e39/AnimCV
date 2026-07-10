@@ -1,7 +1,7 @@
 @echo off
 REM Full-feature Windows build: bundles mmpose + depth-anything-v2 (torch
 REM with CUDA) into the exe, on top of the base build_windows.ps1 does.
-REM Run from the project root (double-click or `build_full_windows.bat`).
+REM Run once, from anywhere (double-click, or `windows\build_full_windows.bat`).
 REM
 REM torch CUDA wheel tag: override by setting TORCH_CUDA_TAG before running,
 REM e.g. `set TORCH_CUDA_TAG=cu128 && build_full_windows.bat`. Defaults to
@@ -18,6 +18,13 @@ REM PATH yourself, or skip parse-rig in the resulting exe (it will report a
 REM normal error, not crash, if the native lib is missing -- see README.md).
 
 setlocal enabledelayedexpansion
+
+REM Paths below (.venv_build_full, scripts\, src\, build_output\) are
+REM relative to the project root, not this script's location under
+REM windows\ -- this file lives there specifically so it's never mistaken
+REM for the Mac scripts under mac\, so always hop back to the repo root.
+cd /d "%~dp0.."
+
 if not defined TORCH_CUDA_TAG set TORCH_CUDA_TAG=cu130
 
 set VENV=.venv_build_full

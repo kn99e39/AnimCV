@@ -7,6 +7,7 @@ REM result/result_windows_full_build.txt for the full story of what
 REM broke and why each fix below is needed. Do not simplify this script
 REM without re-testing; every step here exists because a simpler version
 REM failed for a specific, verified reason.
+REM Run once, from anywhere (double-click, or `windows\build_full_windows.bat`).
 REM
 REM Prerequisites this script does NOT install for you:
 REM   - Python 3.11 (via `py -3.11`). mmcv's setup.py uses an
@@ -29,6 +30,13 @@ REM version -- e.g. cu121 only ships cp39-cp312 wheels. Check
 REM https://download.pytorch.org/whl/<tag>/torch/ if this fails.
 
 setlocal enabledelayedexpansion
+
+REM Paths below (.venv_build_full, scripts\, src\, build_output\) are
+REM relative to the project root, not this script's location under
+REM windows\ -- this file lives there specifically so it's never mistaken
+REM for the Mac scripts under mac\, so always hop back to the repo root.
+cd /d "%~dp0.."
+
 if not defined TORCH_CUDA_TAG set TORCH_CUDA_TAG=cu130
 
 REM --- Locate a Visual Studio install with the C++ compiler (vcvarsall.bat) ---

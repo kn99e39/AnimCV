@@ -2,7 +2,13 @@
 # Full-feature macOS build: bundles mmpose + depth-anything-v2 (CPU-only
 # torch, since there's no CUDA on Mac -- Apple Silicon gets MPS
 # acceleration automatically from the same CPU wheel, no special index
-# needed). Run from the project root: `bash build_full_mac.sh`.
+# needed). Run once, from anywhere: `bash mac/build_full_mac.sh`.
+#
+# For just running the CLI from source (not bundling an exe -- much
+# faster to iterate on), use mac/setup_mac.sh instead; that script's
+# header comment also documents the several mmcv/mmpose macOS build
+# workarounds this one needs too (pip install below hits the same
+# issues, just without them spelled out inline here).
 #
 # pyassimp (parse-rig) needs the native assimp library separately:
 #   brew install assimp
@@ -10,6 +16,10 @@
 # error rather than crashing (see README.md).
 
 set -euo pipefail
+
+# Paths below (.venv_build_full, scripts/, src/, build_output/) are
+# relative to the project root, not this script's location under mac/.
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 VENV=".venv_build_full"
 if [ ! -d "$VENV" ]; then
@@ -53,5 +63,6 @@ echo "NOTE: mmcv/mmdet use dynamic registry-based imports PyInstaller's"
 echo "static analysis can miss. If estimate-pose fails at runtime with a"
 echo "ModuleNotFoundError/KeyError from mmcv/mmdet's registry, that module"
 echo "needs an explicit --hidden-import added to the PyInstaller call above"
-echo "and a rebuild -- this was not exercised end-to-end against a real"
-echo "mmpose checkpoint (no Mac available in this session)."
+echo "and a rebuild -- this PyInstaller-frozen bundle specifically was not"
+echo "exercised against a real mmpose checkpoint (running from a plain venv"
+echo "via mac/setup_mac.sh was -- see README_EXEC.md's Mac support section)."

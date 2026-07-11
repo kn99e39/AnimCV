@@ -14,7 +14,18 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-pose = ["mmpose", "mmcv", "mmengine", "mmdet"]
+pose = [
+    "mmpose",
+    "mmcv>=2.0.0rc4,<2.2.0",
+    "mmengine",
+    "mmdet",
+    # mmpose's xtcocotools/pycocotools wheels are compiled against numpy's
+    # pre-2.0 C ABI (dtype struct layout changed in numpy 2.0), and
+    # opencv-python>=4.10 requires numpy>=2 -- so both must stay below
+    # those lines together for this stack to import at all.
+    "numpy<2",
+    "opencv-python<4.10",
+]
 depth = ["torch", "opencv-python", "matplotlib"]
 dev = ["pytest"]
 

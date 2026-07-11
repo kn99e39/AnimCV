@@ -190,7 +190,16 @@ Blender to run against — see `result/result_mil7.txt` for both:
 
 ## Building a standalone executable
 
-`build_windows.ps1` builds a PyInstaller onedir bundle into
+OS-specific scripts live under `windows/` and `mac/` (not mixed at the
+repo root) so it's never ambiguous which one to run on which machine.
+Both sets assume the project root as their working directory even
+though they live one level down — each hops back to it itself
+(`cd /d "%~dp0.."` / `cd "$(dirname "${BASH_SOURCE[0]}")/.."`), so
+`windows\build_windows.ps1` / `bash mac/build_full_mac.sh` work the
+same whether invoked from the repo root or by double-clicking inside
+the subfolder.
+
+`windows/build_windows.ps1` builds a PyInstaller onedir bundle into
 `build_output/windows/motion-tool/motion-tool.exe`. It only bundles
 the base `dependencies` (numpy, opencv-python, pyyaml) — the heavy
 optional extras (mmpose, depth, pyassimp's native lib) are not
@@ -200,22 +209,23 @@ still needs a real Blender install on the machine running the exe;
 just frozen into it) because `scripts/apply_motion.py` runs under
 Blender's own bundled Python as a subprocess, not inside this exe's
 Python, and inserts `src/` into `sys.path` itself. See
-`result/result_windows_build.txt` for what was verified. A macOS
-build is deferred until the project is moved to a Mac.
+`result/result_windows_build.txt` for what was verified.
 
-For a build that also bundles mmpose/mmcv/mmdet/depth-anything-v2 (so
-`estimate-pose` works without a separate `pip install` on the target
-machine), use `build_full_windows.bat` (Windows, CUDA torch) or
-`build_full_mac.sh` (macOS, CPU torch — no CUDA on Mac, untested, see
-below). The Windows one is verified working end-to-end: real RTMPose-s
-inference ran inside the built exe against a downloaded checkpoint,
+machine), use `windows/build_full_windows.bat` (Windows, CUDA torch) or
+`mac/build_full_mac.sh` (macOS, CPU torch — no CUDA on Mac). The Windows
+one is verified working end-to-end as a frozen exe: real RTMPose-s
+inference ran inside the *built exe* against a downloaded checkpoint,
 followed by build-motion/optimize/export-blender against a real local
-Blender install — see `result/result_windows_full_build.txt`.
+Blender install — see `result/result_windows_full_build.txt`. On macOS,
+it's running from a plain venv (not yet the frozen exe) that was
+verified against a real checkpoint — see `mac/setup_mac.sh` and
+README_EXEC.md's Mac support section; the macOS PyInstaller bundle
+itself hasn't been exercised end-to-end yet.
 
-Getting there needed real fixes, not just a longer dependency list —
-mmcv/mmdet/mmengine haven't been updated since ~2023 and collide with
-a modern Windows/Python/torch/CUDA toolchain in several independent
-ways (documented in full in the result file):
+Getting the Windows build working needed real fixes, not just a longer
+dependency list — mmcv/mmdet/mmengine haven't been updated since ~2023
+and collide with a modern Windows/Python/torch/CUDA toolchain in
+several independent ways (documented in full in the result file):
 
 - mmcv's setup.py breaks under Python 3.13+ (a version-parsing pattern
   relying on old `exec()`/`locals()` semantics) — needs Python 3.11.
@@ -227,21 +237,27 @@ ways (documented in full in the result file):
   torch's headers require, and an env-var override doesn't take effect
   because MSVC applies "last flag wins" against mmcv's own explicit
   compile arg — the mmcv sdist itself needs a one-line patch, which
-  `build_full_windows.bat` downloads and applies automatically.
+  `windows/build_full_windows.bat` downloads and applies automatically.
 - `torch.load`'s default changed in torch 2.6+ in a way that breaks
   loading pre-2.6 mmpose checkpoints via mmengine — fixed for real in
   `src/pose/mmpose_adapter.py` (not just the build script), since this
   bug affects running from source too.
+- mmcv/mmdet's registry-based dynamic imports are a known PyInstaller
+  pain point in general; only the RTMPose-s path was exercised, so a
+  different `--pose-config` may still need an extra `--hidden-import`.
 
-Because of all this, `build_full_windows.bat` also documents (in its
-header) two things it does NOT install for you: Python 3.11 and a
-Visual Studio C++ workload + CUDA Toolkit — install those first. The
-macOS variant hasn't been run (no Mac in this environment) and almost
-certainly needs its own iteration once one is available, since these
-are exactly the kind of failures that don't show up until you actually
-try. Neither script installs pyassimp's native `assimp` library (for
-`parse-rig`/`retarget`) — that's still a manual step (see Setup above
-/ `brew install assimp` on Mac).
+Because of all this, `windows/build_full_windows.bat` also documents
+(in its header) two things it does NOT install for you: Python 3.11 and
+a Visual Studio C++ workload + CUDA Toolkit — install those first.
+Neither OS's script installs pyassimp's native `assimp` library (for
+`parse-rig`/`retarget`) — that's still a manual step (see Setup above /
+`brew install assimp` on Mac).
+
+For just running the CLI from source on Mac (no bundled exe, much
+faster to iterate on than a PyInstaller rebuild), use
+`bash mac/setup_mac.sh` instead — a one-time setup that installs
+everything needed (including the mmpose/mmcv/mmdet stack's several
+macOS-specific build workarounds) into a normal `.venv`.
 
 ## Third-party references
 

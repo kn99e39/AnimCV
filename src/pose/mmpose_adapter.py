@@ -80,11 +80,29 @@ class PoseEstimator:
                     "MMPose is not installed. Install the optional 'pose' extra: "
                     "pip install -e '.[pose]'"
                 ) from exc
-            self._model = init_model(
-                self._config.config_path,
-                self._config.checkpoint_path,
-                device=self._config.device,
-            )
+            # torch >=2.6 defaults torch.load to weights_only=True, which
+            # breaks mmengine's checkpoint loader on pre-2.6-era mmpose
+            # checkpoints (they pickle numpy objects mmengine never
+            # allowlisted). Checkpoints only come from --pose-checkpoint,
+            # a path the caller explicitly chose, so restoring the old
+            # default here is the same trust boundary as before torch 2.6.
+            import torch
+
+            _original_torch_load = torch.load
+
+            def _torch_load_weights_only_false(*args, **kwargs):
+                kwargs.setdefault("weights_only", False)
+                return _original_torch_load(*args, **kwargs)
+
+            torch.load = _torch_load_weights_only_false
+            try:
+                self._model = init_model(
+                    self._config.config_path,
+                    self._config.checkpoint_path,
+                    device=self._config.device,
+                )
+            finally:
+                torch.load = _original_torch_load
         return self._model
 
     def process_frame(self, frame: Frame) -> PoseFrame:

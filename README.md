@@ -247,19 +247,46 @@ Blender's own bundled Python as a subprocess, not inside this exe's
 Python, and inserts `src/` into `sys.path` itself. See
 `result/result_windows_build.txt` for what was verified.
 
-For a build that also bundles mmpose/depth-anything-v2 (so
-`estimate-pose` works without a separate `pip install` on the target
 machine), use `windows/build_full_windows.bat` (Windows, CUDA torch) or
-`mac/build_full_mac.sh` (macOS, CPU torch — no CUDA on Mac). These pull in
-several GB of dependencies (torch + mmcv/mmengine/mmdet) and the
-PyInstaller-frozen bundle itself was not exercised end-to-end against a
-real mmpose checkpoint before shipping either script — mmcv/mmdet's
-registry-based dynamic imports are a known PyInstaller pain point, see
-the NOTE each script prints after building. (Running from a plain venv,
-not a frozen exe, *was* verified against a real checkpoint on macOS —
-see `mac/setup_mac.sh` and README_EXEC.md's Mac support section.)
-Neither script installs pyassimp's native `assimp` library (for
-`parse-rig`) — that's a manual step (see Setup above /
+`mac/build_full_mac.sh` (macOS, CPU torch — no CUDA on Mac). The Windows
+one is verified working end-to-end as a frozen exe: real RTMPose-s
+inference ran inside the *built exe* against a downloaded checkpoint,
+followed by build-motion/optimize/export-blender against a real local
+Blender install — see `result/result_windows_full_build.txt`. On macOS,
+it's running from a plain venv (not yet the frozen exe) that was
+verified against a real checkpoint — see `mac/setup_mac.sh` and
+README_EXEC.md's Mac support section; the macOS PyInstaller bundle
+itself hasn't been exercised end-to-end yet.
+
+Getting the Windows build working needed real fixes, not just a longer
+dependency list — mmcv/mmdet/mmengine haven't been updated since ~2023
+and collide with a modern Windows/Python/torch/CUDA toolchain in
+several independent ways (documented in full in the result file):
+
+- mmcv's setup.py breaks under Python 3.13+ (a version-parsing pattern
+  relying on old `exec()`/`locals()` semantics) — needs Python 3.11.
+- mmcv 2.x has no prebuilt Windows wheel for any current torch/Python
+  combo (OpenMMLab's own wheel index stops at 2020-era mmcv 1.1.5) —
+  must compile from source, which needs a Visual Studio C++ workload
+  and the CUDA Toolkit (not just the GPU driver).
+- mmcv's setup.py hardcodes an older C++ standard flag than current
+  torch's headers require, and an env-var override doesn't take effect
+  because MSVC applies "last flag wins" against mmcv's own explicit
+  compile arg — the mmcv sdist itself needs a one-line patch, which
+  `windows/build_full_windows.bat` downloads and applies automatically.
+- `torch.load`'s default changed in torch 2.6+ in a way that breaks
+  loading pre-2.6 mmpose checkpoints via mmengine — fixed for real in
+  `src/pose/mmpose_adapter.py` (not just the build script), since this
+  bug affects running from source too.
+- mmcv/mmdet's registry-based dynamic imports are a known PyInstaller
+  pain point in general; only the RTMPose-s path was exercised, so a
+  different `--pose-config` may still need an extra `--hidden-import`.
+
+Because of all this, `windows/build_full_windows.bat` also documents
+(in its header) two things it does NOT install for you: Python 3.11 and
+a Visual Studio C++ workload + CUDA Toolkit — install those first.
+Neither OS's script installs pyassimp's native `assimp` library (for
+`parse-rig`/`retarget`) — that's still a manual step (see Setup above /
 `brew install assimp` on Mac).
 
 For just running the CLI from source on Mac (no bundled exe, much

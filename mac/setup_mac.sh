@@ -146,6 +146,16 @@ echo "[7/10] Installing mmdet (mmcv already satisfies its requirement, won't be 
 "$PIP" install mmdet
 
 echo "[8/10] Installing mmpose (--no-build-isolation works around its chumpy dependency's legacy setup.py)..."
+# mmpose's xtcocotools dependency only ships a prebuilt wheel for cp311;
+# on any other interpreter (e.g. this machine has no Python 3.11 at all
+# and fell back to a newer one -- see the WARNING above if so) it must
+# build xtcocotools' _mask.pyx from source, which needs cython. With
+# --no-build-isolation pip won't auto-fetch that as a build dependency,
+# so it has to be already present here or the build fails with a
+# confusing "clang: no such file or directory: xtcocotools/_mask.c"
+# (cython never ran to generate that file). Confirmed by actually
+# reproducing this failure on a fresh Python 3.12 venv.
+"$PIP" install "cython>=0.27.3"
 "$PIP" install --no-build-isolation mmpose
 
 echo "[9/10] Installing project + dev/pose/depth extras (everything above already satisfies 'pose')..."

@@ -18,7 +18,22 @@ _IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
 class VideoLoader:
     default_image_sequence_fps: float = 24.0
 
-    def load_video(self, path: str, target_fps: float | None = None) -> FrameSequence:
+    def load_video(
+        self,
+        path: str,
+        target_fps: float | None = None,
+        start_frame: int | None = None,
+        end_frame: int | None = None,
+    ) -> FrameSequence:
+        """start_frame/end_frame (Architecture_v2.md section 1.1's "Start
+        frame / end frame" optional input) are inclusive source-video
+        frame indices, i.e. positions in the original video before any
+        target_fps resampling -- not indices into the resampled output.
+        Both are optional and independent (only a start, only an end, or
+        neither)."""
+        if start_frame is not None and end_frame is not None and start_frame > end_frame:
+            raise ValueError(f"start_frame ({start_frame}) must not be after end_frame ({end_frame})")
+
         capture = cv2.VideoCapture(str(path))
         if not capture.isOpened():
             raise FileNotFoundError(f"Could not open video: {path}")
@@ -31,6 +46,16 @@ class VideoLoader:
             width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH))
             height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
+            range_start = start_frame or 0
+            if range_start > 0:
+                # CAP_PROP_POS_FRAMES seeking is only approximate on some
+                # codecs (it typically snaps to the nearest keyframe
+                # internally before decoding forward) -- exact for the
+                # synthetic mp4v test fixtures here, close enough in
+                # general for a "reference clip" trim, not frame-accurate
+                # for every container/codec.
+                capture.set(cv2.CAP_PROP_POS_FRAMES, range_start)
+
             output_fps = min(target_fps, source_fps) if target_fps else source_fps
             stride = source_fps / output_fps
 
@@ -39,6 +64,8 @@ class VideoLoader:
             next_sample_at = 0.0
             output_index = 0
             while True:
+                if end_frame is not None and range_start + source_index > end_frame:
+                    break
                 ok, image = capture.read()
                 if not ok:
                     break

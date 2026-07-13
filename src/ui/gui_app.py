@@ -205,14 +205,27 @@ class MotionToolApp:
         ttk.Label(tab, text="Target FPS (optional):").grid(row=1, column=0, sticky="w", padx=4)
         self.fps_var = tk.StringVar()
         ttk.Entry(tab, textvariable=self.fps_var, width=10).grid(row=1, column=1, sticky="w", padx=4)
-        self.frames_out = self._path_row(tab, 2, "Output frames dir:", "dir")
+
+        range_row = ttk.Frame(tab)
+        range_row.grid(row=2, column=0, columnspan=3, sticky="w", padx=4, pady=2)
+        ttk.Label(range_row, text="Reference range (optional, source-video frame indices):").pack(
+            side="left"
+        )
+        ttk.Label(range_row, text="start").pack(side="left", padx=(8, 2))
+        self.start_frame_var = tk.StringVar()
+        ttk.Entry(range_row, textvariable=self.start_frame_var, width=8).pack(side="left")
+        ttk.Label(range_row, text="end").pack(side="left", padx=(8, 2))
+        self.end_frame_var = tk.StringVar()
+        ttk.Entry(range_row, textvariable=self.end_frame_var, width=8).pack(side="left")
+
+        self.frames_out = self._path_row(tab, 3, "Output frames dir:", "dir")
 
         ttk.Button(tab, text="Extract Frames", command=self._on_extract_frames).grid(
-            row=3, column=1, sticky="w", pady=8
+            row=4, column=1, sticky="w", pady=8
         )
         self.frames_result_var = tk.StringVar()
         ttk.Label(tab, textvariable=self.frames_result_var).grid(
-            row=4, column=0, columnspan=3, sticky="w", padx=4
+            row=5, column=0, columnspan=3, sticky="w", padx=4
         )
 
     def _on_extract_frames(self) -> None:
@@ -223,6 +236,10 @@ class MotionToolApp:
             return
         fps_text = self.fps_var.get().strip()
         fps = float(fps_text) if fps_text else None
+        start_text = self.start_frame_var.get().strip()
+        end_text = self.end_frame_var.get().strip()
+        start_frame = int(start_text) if start_text else None
+        end_frame = int(end_text) if end_text else None
 
         def work():
             import cv2
@@ -231,7 +248,9 @@ class MotionToolApp:
             from mediaio.frame_sequence import FrameSequenceMetadata
             from mediaio.video_loader import VideoLoader
 
-            sequence = VideoLoader().load_video(video, target_fps=fps)
+            sequence = VideoLoader().load_video(
+                video, target_fps=fps, start_frame=start_frame, end_frame=end_frame
+            )
             out_dir = Path(out)
             out_dir.mkdir(parents=True, exist_ok=True)
             for frame in sequence.frames:

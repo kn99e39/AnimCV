@@ -40,6 +40,19 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--video", required=True)
     p.add_argument("--out", required=True, help="Output directory for extracted frame images")
     p.add_argument("--fps", type=float, default=None, help="Optional target fps override")
+    p.add_argument(
+        "--start-frame",
+        type=int,
+        default=None,
+        help="Optional inclusive source-video frame index to start from (Architecture_v2.md "
+        "section 1.1's 'Start frame')",
+    )
+    p.add_argument(
+        "--end-frame",
+        type=int,
+        default=None,
+        help="Optional inclusive source-video frame index to stop at ('End frame')",
+    )
 
     p = sub.add_parser("estimate-pose", help="Run pose estimation over a frame sequence")
     p.add_argument("--frames", required=True, help="Directory of extracted frame images")
@@ -107,7 +120,9 @@ def _extract_frames(args: argparse.Namespace) -> None:
 
     from mediaio.video_loader import VideoLoader
 
-    sequence = VideoLoader().load_video(args.video, target_fps=args.fps)
+    sequence = VideoLoader().load_video(
+        args.video, target_fps=args.fps, start_frame=args.start_frame, end_frame=args.end_frame
+    )
 
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)

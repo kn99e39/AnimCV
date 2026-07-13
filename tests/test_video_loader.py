@@ -38,6 +38,55 @@ def test_load_video_downsamples_to_target_fps(tmp_path):
     assert len(sequence.frames) == 24
 
 
+def test_load_video_start_frame_skips_leading_frames(tmp_path):
+    video_path = tmp_path / "clip.mp4"
+    _write_synthetic_video(video_path, fps=12.0, num_frames=24)
+
+    sequence = VideoLoader().load_video(str(video_path), start_frame=12)
+
+    assert len(sequence.frames) == 12
+
+
+def test_load_video_end_frame_truncates_trailing_frames(tmp_path):
+    video_path = tmp_path / "clip.mp4"
+    _write_synthetic_video(video_path, fps=12.0, num_frames=24)
+
+    sequence = VideoLoader().load_video(str(video_path), end_frame=11)
+
+    assert len(sequence.frames) == 12
+
+
+def test_load_video_start_and_end_frame_together(tmp_path):
+    video_path = tmp_path / "clip.mp4"
+    _write_synthetic_video(video_path, fps=12.0, num_frames=24)
+
+    sequence = VideoLoader().load_video(str(video_path), start_frame=5, end_frame=14)
+
+    assert len(sequence.frames) == 10
+
+
+def test_load_video_start_frame_after_end_frame_raises(tmp_path):
+    import pytest
+
+    video_path = tmp_path / "clip.mp4"
+    _write_synthetic_video(video_path, fps=12.0, num_frames=24)
+
+    with pytest.raises(ValueError):
+        VideoLoader().load_video(str(video_path), start_frame=10, end_frame=5)
+
+
+def test_load_video_start_frame_combined_with_target_fps(tmp_path):
+    video_path = tmp_path / "clip.mp4"
+    _write_synthetic_video(video_path, fps=24.0, num_frames=24)
+
+    sequence = VideoLoader().load_video(str(video_path), start_frame=12, target_fps=12.0)
+
+    # 12 remaining source frames (indices 12..23) at 24fps, downsampled to
+    # 12fps (stride 2) -> every other one of those 12 frames.
+    assert sequence.fps == 12.0
+    assert len(sequence.frames) == 6
+
+
 def test_load_video_missing_file_raises(tmp_path):
     import pytest
 

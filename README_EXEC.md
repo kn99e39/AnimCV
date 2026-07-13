@@ -10,7 +10,7 @@
   - **깊이(Depth Anything V2) 기반 3D 리타게팅**: 랜드마크에 상대 깊이값을 샘플링해 2D 평면 근사 대신 실제 3D 회전/이동을 계산 (깊이 없으면 자동으로 2D 방식으로 폴백)
   - **2-bone IK**: 어깨-팔꿈치-손목, 골반-무릎-발목 같은 체인을 코사인 법칙 기반으로 풀어서 end-effector가 실제 추적점을 더 정확히 따라가게 함
   - **Rest-pose 축 보정**: 리그의 rest pose 방향을 반영해서 본의 로컬 좌표계 기준으로 회전/이동을 재해석 (이전엔 리그 정보를 받기만 하고 실제로 안 썼음)
-- 유닛/통합 테스트 197개 전부 통과 (`pytest`).
+- 유닛/통합 테스트 202개 전부 통과 (`pytest`).
 - **Windows뿐 아니라 macOS에서도 실행 가능하도록 Blender 실행파일 자동탐지 로직을 OS별로 분기 처리함** (Windows/macOS/Linux 각각의 표준 설치 경로를 확인).
 - 합성 데이터로 **전체 파이프라인(영상 → 프레임 → 포즈 → 모션그래프 → 리타겟 → 키프레임 최적화 → Blender 출력)을 처음부터 끝까지 실제로 실행해서 결과 `.blend`/`.fbx` 파일에 키프레임이 정확히 들어가는 것까지 확인함**. IK 체인과 rest-pose 보정도 별도의 실제 Blender 픽스처로 재검증함.
 - **macOS(Apple Silicon)에서 이 전체 파이프라인을 실제 의존성으로 처음부터 끝까지 검증함** (`mac/setup_mac.sh`, 아래 "Mac 지원" 항목 참고): 합성 영상 → 실제 다운로드한 RTMPose-tiny 체크포인트로 `estimate-pose` → `build-motion` → 실제 Blender로 생성한 FBX 리그를 실제 assimp로 `parse-rig` → `create-mapping` → `retarget` → `optimize` → 실제 Blender 5.1로 `export-blender` → 결과 `.blend`를 다시 열어 fcurve/keyframe/interpolation이 정확히 일치하는 것까지 확인. 이 과정에서 실제 버그 3개를 발견/수정함 (아래 "Mac 지원" 항목 참고).
@@ -147,12 +147,14 @@ result.blend (+ 선택적으로 result.fbx)
 ### 3.1 `extract-frames` — 영상을 프레임 이미지로 분해
 
 ```bash
-python -m app.cli extract-frames --video input.mp4 --out cache/frames --fps 24
+python -m app.cli extract-frames --video input.mp4 --out cache/frames --fps 24 \
+  --start-frame 120 --end-frame 360
 ```
 
 - `--video`: 입력 영상 경로 (필수)
 - `--out`: 프레임 PNG들과 `metadata.json`을 저장할 디렉터리 (필수)
 - `--fps`: 원본보다 낮은 fps로 다운샘플링하고 싶을 때 (선택, 기본값은 원본 fps 유지)
+- `--start-frame` / `--end-frame`: 영상 전체가 아니라 특정 구간만 레퍼런스로 쓰고 싶을 때 (`Architecture_v2.md` 섹션 1.1의 "Start frame / End frame" 선택 입력 — 둘 다 원본 영상 기준 프레임 인덱스이고 양 끝 포함, 각각 독립적으로 선택 가능, 기본값은 영상 처음/끝). `--fps`와 같이 쓰면 잘라낸 구간 안에서 다운샘플링이 적용됩니다. `--start-frame`이 `--end-frame`보다 뒤면 에러가 납니다.
 
 ### 3.2 `estimate-pose` — 프레임에서 2D 포즈 랜드마크 추출
 
@@ -303,7 +305,7 @@ python -m app.gui
 
 창을 열면 위쪽에 8개 탭이 있고, 아래쪽엔 항상 상태 표시줄 + 로그 창이 있습니다. 각 탭의 결과 경로는 다음 탭의 입력 필드에 자동으로 채워지므로(예: Frames 탭에서 추출한 디렉터리가 Pose 탭의 "Frames directory"에 자동 입력), 보통은 순서대로 진행하면서 필요한 값만 채우면 됩니다. 모든 경로 입력칸 옆의 `Browse...` 버튼은 파일/디렉터리 선택 대화상자를 엽니다.
 
-1. **1. Frames**: `Video file`에서 영상 파일 선택 → (선택) `Target FPS` 입력 → `Output frames dir` 지정 → **Extract Frames** 클릭. 완료되면 프레임 개수가 표시됩니다.
+1. **1. Frames**: `Video file`에서 영상 파일 선택 → (선택) `Target FPS` 입력 → (선택) 영상 전체가 아니라 특정 구간만 쓰려면 `Reference range`의 `start`/`end`에 원본 영상 기준 프레임 인덱스 입력 → `Output frames dir` 지정 → **Extract Frames** 클릭. 완료되면 프레임 개수가 표시됩니다.
 2. **2. Pose**: `Frames directory`(자동 채워짐), `MMPose config`(.py)와 `MMPose checkpoint`(.pth) 선택 → `Device`는 CUDA 없으면 `cpu` → (선택) 깊이 기반 3D 리타게팅을 쓰려면 `Depth checkpoint` 지정 → `Output pose.json` 지정 → **Run Pose Estimation** 클릭. 시간이 걸리는 작업이라 창이 멈추지 않고 아래 상태 표시줄에 "Running pose estimation..."이 뜹니다.
 3. **3. Rig**: `Rig file`(.fbx 등) 선택 → `Output rig_profile.json` 지정 → **Parse Rig** 클릭. 아래쪽 리스트에 파싱된 본 목록이 나타납니다.
 4. **4. Mapping** (클릭 기반 매핑, 자세한 내용은 아래 참고): `Rig file`/`Reference frame image`/`Pose JSON`을 확인(자동 채워짐)한 뒤 **Load Frame + Landmarks** 클릭 — 캔버스에 프레임 이미지와 랜드마크 점이 표시됩니다. 왼쪽 본 목록에서 본을 하나 선택하고, 매핑 모드(`Landmark`/`Direction`/`Custom point`)를 고른 뒤 캔버스를 클릭해서 매핑합니다. 필요하면 IK 체인도 추가한 뒤 `Save mapping to:` 경로를 지정하고 **Save Mapping** 클릭.
@@ -328,7 +330,7 @@ python -m app.gui
 pytest
 ```
 
-197개 테스트가 전부 통과해야 정상입니다. 이 중 `tests/test_blender_executor.py`, `tests/test_apply_motion_script.py`는 가짜(fake) `bpy` 모듈로 Blender 없이도 동작 검증을 하고, `tests/test_rig_parser.py`, `tests/test_mmpose_adapter.py`, `tests/test_depth.py`는 가짜 노드/결과 객체로 assimp/mmpose/depth_anything_v2 없이도 핵심 로직을 검증합니다. `tests/test_ik_solver.py`의 IK 삼각형 계산과 `tests/test_axis_utils.py`의 rest-pose 보정은 직접 손으로 계산한 기하학적 예제로 검증되어 있습니다.
+202개 테스트가 전부 통과해야 정상입니다. 이 중 `tests/test_blender_executor.py`, `tests/test_apply_motion_script.py`는 가짜(fake) `bpy` 모듈로 Blender 없이도 동작 검증을 하고, `tests/test_rig_parser.py`, `tests/test_mmpose_adapter.py`, `tests/test_depth.py`는 가짜 노드/결과 객체로 assimp/mmpose/depth_anything_v2 없이도 핵심 로직을 검증합니다. `tests/test_ik_solver.py`의 IK 삼각형 계산과 `tests/test_axis_utils.py`의 rest-pose 보정은 직접 손으로 계산한 기하학적 예제로 검증되어 있습니다.
 
 **실제 Blender까지 포함한 검증**을 하고 싶다면 Blender가 설치되어 있어야 하며, `export-blender`를 실행한 뒤 생성된 `.blend` 파일을 Blender에서 직접 열어 그래프 에디터에 키프레임이 보이는지 확인하면 됩니다.
 

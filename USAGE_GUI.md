@@ -10,7 +10,10 @@ tab's output feeds the next one:
 ## 1. Frames
 Pick an input video (`--video`) and an output folder, optionally a
 target FPS, then **Extract Frames**. Produces a folder of numbered
-PNGs used by every later step.
+PNGs used by every later step. If you only want a specific clip inside
+a longer video as your reference, set the optional `start`/`end` frame
+range (indices in the original video, both inclusive) instead of
+processing the whole thing.
 
 ## 2. Pose
 Point at the frames folder from step 1, plus an MMPose model config

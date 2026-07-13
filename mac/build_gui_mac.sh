@@ -21,7 +21,29 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 find_python() {
-    for candidate in python3.11 python3.12 python3.13 python3; do
+    # Prefer an actual 3.11 over anything else, and look beyond just
+    # PATH for it -- on a machine with several Pythons installed (system
+    # Python, more than one Homebrew python@X.Y keg, pyenv, the
+    # python.org installer, Anaconda...), the interpreter `python3`/
+    # `python` resolves to on PATH is often NOT 3.11 even when 3.11 is
+    # very much installed, just unlinked/shadowed/not the active pyenv
+    # version. Absolute-path candidates below cover the common install
+    # layouts without requiring 3.11 to be first on PATH. Kept in sync
+    # with mac/setup_mac.sh's copy of this function.
+    for candidate in \
+        python3.11 \
+        /opt/homebrew/opt/python@3.11/bin/python3.11 \
+        /usr/local/opt/python@3.11/bin/python3.11 \
+        /Library/Frameworks/Python.framework/Versions/3.11/bin/python3.11 \
+        "$HOME"/.pyenv/versions/3.11*/bin/python3
+    do
+        if command -v "$candidate" >/dev/null 2>&1; then
+            echo "$candidate"
+            return 0
+        fi
+    done
+
+    for candidate in python3.13 python3.12 python3; do
         if command -v "$candidate" >/dev/null 2>&1; then
             local version major minor
             version="$("$candidate" -c 'import sys; print(f"{sys.version_info[0]}.{sys.version_info[1]}")')"
@@ -38,7 +60,8 @@ find_python() {
 
 PYTHON="$(find_python || true)"
 if [ -z "$PYTHON" ]; then
-    echo "No Python >=3.11 found on PATH (checked python3.11/3.12/3.13/python3)." >&2
+    echo "No Python >=3.11 found on PATH or common install locations" >&2
+    echo "(Homebrew python@3.11, pyenv, python.org installer)." >&2
     echo "Install one, e.g. 'brew install python@3.11', and re-run." >&2
     exit 1
 fi

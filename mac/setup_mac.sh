@@ -60,7 +60,31 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 VENV=".venv"
 
 find_python() {
-    for candidate in python3.11 python3.12 python3.13 python3; do
+    # Prefer an actual 3.11 over anything else, and look beyond just
+    # PATH for it -- on a machine with several Pythons installed (system
+    # Python, more than one Homebrew python@X.Y keg, pyenv, the
+    # python.org installer, Anaconda...), the interpreter `python3`/
+    # `python` resolves to on PATH is often NOT 3.11 even when 3.11 is
+    # very much installed, just unlinked/shadowed/not the active pyenv
+    # version. Absolute-path candidates below cover the common install
+    # layouts without requiring 3.11 to be first on PATH.
+    for candidate in \
+        python3.11 \
+        /opt/homebrew/opt/python@3.11/bin/python3.11 \
+        /usr/local/opt/python@3.11/bin/python3.11 \
+        /Library/Frameworks/Python.framework/Versions/3.11/bin/python3.11 \
+        "$HOME"/.pyenv/versions/3.11*/bin/python3
+    do
+        if command -v "$candidate" >/dev/null 2>&1; then
+            echo "$candidate"
+            return 0
+        fi
+    done
+
+    # No 3.11 anywhere obvious -- fall back to whatever >=3.11 PATH
+    # resolves to, preferring the newest since it's more likely to still
+    # get security updates.
+    for candidate in python3.13 python3.12 python3; do
         if command -v "$candidate" >/dev/null 2>&1; then
             local version
             version="$("$candidate" -c 'import sys; print(f"{sys.version_info[0]}.{sys.version_info[1]}")')"
@@ -80,7 +104,8 @@ find_python() {
 # end, including running real inference against a downloaded checkpoint.
 PYTHON="$(find_python || true)"
 if [ -z "$PYTHON" ]; then
-    echo "No Python >=3.11 found on PATH (checked python3.11/3.12/3.13/python3)." >&2
+    echo "No Python >=3.11 found on PATH or common install locations" >&2
+    echo "(Homebrew python@3.11, pyenv, python.org installer)." >&2
     echo "Install one, e.g. 'brew install python@3.11', and re-run." >&2
     exit 1
 fi
@@ -89,7 +114,7 @@ if ! "$PYTHON" -c 'import sys; sys.exit(0 if sys.version_info[:2] == (3, 11) els
     echo "WARNING: this is not Python 3.11. The mmpose/mmcv/mmdet install" >&2
     echo "below was only verified against 3.11 -- it may hit new build" >&2
     echo "breaks on a different version. If it fails, 'brew install" >&2
-    echo "python@3.11' and re-run so python3.11 is picked up above." >&2
+    echo "python@3.11' and re-run so it's picked up above." >&2
 fi
 
 if [ ! -d "$VENV" ]; then

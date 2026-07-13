@@ -57,8 +57,17 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("estimate-pose", help="Run pose estimation over a frame sequence")
     p.add_argument("--frames", required=True, help="Directory of extracted frame images")
     p.add_argument("--out", required=True, help="Output pose.json path")
-    p.add_argument("--pose-config", required=True, help="MMPose model config path")
-    p.add_argument("--pose-checkpoint", required=True, help="MMPose model checkpoint path")
+    p.add_argument(
+        "--pose-config",
+        default=None,
+        help="MMPose model config path (default: bundled RTMPose-tiny config)",
+    )
+    p.add_argument(
+        "--pose-checkpoint",
+        default=None,
+        help="MMPose model checkpoint path (default: RTMPose-tiny, downloaded to "
+        "~/.cache/animcv/models on first use if not already cached there)",
+    )
     p.add_argument("--device", default="cpu")
     p.add_argument("--visibility-threshold", type=float, default=0.3)
     p.add_argument(
@@ -142,10 +151,23 @@ def _estimate_pose(args: argparse.Namespace) -> None:
     from pose.mmpose_adapter import MMPoseConfig, PoseEstimator
     from pose.pose_types import PoseSequence
 
+    pose_config_path = args.pose_config
+    pose_checkpoint_path = args.pose_checkpoint
+    if pose_config_path is None:
+        from pose.default_model import get_default_pose_config_path
+
+        pose_config_path = get_default_pose_config_path()
+    if pose_checkpoint_path is None:
+        from pose.default_model import get_default_pose_checkpoint_path
+
+        print("[motion-tool] no --pose-checkpoint given, using the default RTMPose-tiny "
+              "model (downloading to ~/.cache/animcv/models if not already cached)...")
+        pose_checkpoint_path = get_default_pose_checkpoint_path()
+
     sequence = VideoLoader().load_image_sequence(args.frames)
     config = MMPoseConfig(
-        config_path=args.pose_config,
-        checkpoint_path=args.pose_checkpoint,
+        config_path=pose_config_path,
+        checkpoint_path=pose_checkpoint_path,
         device=args.device,
         visibility_threshold=args.visibility_threshold,
     )

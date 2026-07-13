@@ -96,6 +96,8 @@ class MotionToolApp:
         self._async_queue: queue.Queue[Callable[[], None]] = queue.Queue()
         self.root.after(50, self._poll_async_queue)
 
+        ttk.Style().configure("Success.TLabel", foreground="#1a7f37", font=("TkDefaultFont", 10, "bold"))
+
         self.notebook = ttk.Notebook(root)
         self.notebook.pack(fill="both", expand=True)
 
@@ -224,7 +226,7 @@ class MotionToolApp:
             row=4, column=1, sticky="w", pady=8
         )
         self.frames_result_var = tk.StringVar()
-        ttk.Label(tab, textvariable=self.frames_result_var).grid(
+        ttk.Label(tab, textvariable=self.frames_result_var, style="Success.TLabel").grid(
             row=5, column=0, columnspan=3, sticky="w", padx=4
         )
 
@@ -261,7 +263,7 @@ class MotionToolApp:
             return len(sequence.frames)
 
         def on_success(count: int):
-            self.frames_result_var.set(f"Extracted {count} frames -> {out}")
+            self.frames_result_var.set(f"✓ Extracted {count} frames -> {out}")
             self._log(f"[frames] extracted {count} frames to {out}")
             self.pose_frames_dir.set(out)
             pngs = sorted(Path(out).glob("*.png"))
@@ -284,23 +286,32 @@ class MotionToolApp:
         self.pose_checkpoint_path = self._path_row(
             tab, 2, "MMPose checkpoint:", "open_file", [("Checkpoint", "*.pth"), ("All", "*.*")]
         )
+        default_row = ttk.Frame(tab)
+        default_row.grid(row=3, column=0, columnspan=3, sticky="w", padx=4, pady=(0, 4))
+        ttk.Button(
+            default_row, text="Use Default Model (RTMPose-tiny)", command=self._on_use_default_pose_model
+        ).pack(side="left")
+        self.pose_default_model_status_var = tk.StringVar()
+        ttk.Label(default_row, textvariable=self.pose_default_model_status_var).pack(
+            side="left", padx=(8, 0)
+        )
 
-        ttk.Label(tab, text="Device:").grid(row=3, column=0, sticky="w", padx=4)
+        ttk.Label(tab, text="Device:").grid(row=4, column=0, sticky="w", padx=4)
         self.pose_device = tk.StringVar(value="cpu")
         ttk.Combobox(
             tab, textvariable=self.pose_device, values=["cpu", "cuda", "mps"], width=10, state="readonly"
-        ).grid(row=3, column=1, sticky="w", padx=4)
+        ).grid(row=4, column=1, sticky="w", padx=4)
 
-        ttk.Label(tab, text="Visibility threshold:").grid(row=4, column=0, sticky="w", padx=4)
+        ttk.Label(tab, text="Visibility threshold:").grid(row=5, column=0, sticky="w", padx=4)
         self.pose_visibility = tk.StringVar(value="0.3")
         ttk.Entry(tab, textvariable=self.pose_visibility, width=10).grid(
-            row=4, column=1, sticky="w", padx=4
+            row=5, column=1, sticky="w", padx=4
         )
 
         self.pose_depth_checkpoint = self._path_row(
-            tab, 5, "Depth checkpoint (optional):", "open_file", [("Checkpoint", "*.pth"), ("All", "*.*")]
+            tab, 6, "Depth checkpoint (optional):", "open_file", [("Checkpoint", "*.pth"), ("All", "*.*")]
         )
-        ttk.Label(tab, text="Depth encoder:").grid(row=6, column=0, sticky="w", padx=4)
+        ttk.Label(tab, text="Depth encoder:").grid(row=7, column=0, sticky="w", padx=4)
         self.pose_depth_encoder = tk.StringVar(value="vits")
         ttk.Combobox(
             tab,
@@ -308,23 +319,42 @@ class MotionToolApp:
             values=["vits", "vitb", "vitl", "vitg"],
             width=10,
             state="readonly",
-        ).grid(row=6, column=1, sticky="w", padx=4)
-        ttk.Label(tab, text="Depth device:").grid(row=7, column=0, sticky="w", padx=4)
+        ).grid(row=7, column=1, sticky="w", padx=4)
+        ttk.Label(tab, text="Depth device:").grid(row=8, column=0, sticky="w", padx=4)
         self.pose_depth_device = tk.StringVar(value="auto")
         ttk.Entry(tab, textvariable=self.pose_depth_device, width=10).grid(
-            row=7, column=1, sticky="w", padx=4
+            row=8, column=1, sticky="w", padx=4
         )
 
         self.pose_out = self._path_row(
-            tab, 8, "Output pose.json:", "save_file", [("JSON", "*.json")]
+            tab, 9, "Output pose.json:", "save_file", [("JSON", "*.json")]
         )
 
         ttk.Button(tab, text="Run Pose Estimation", command=self._on_estimate_pose).grid(
-            row=9, column=1, sticky="w", pady=8
+            row=10, column=1, sticky="w", pady=8
         )
         self.pose_result_var = tk.StringVar()
-        ttk.Label(tab, textvariable=self.pose_result_var).grid(
-            row=10, column=0, columnspan=3, sticky="w", padx=4
+        ttk.Label(tab, textvariable=self.pose_result_var, style="Success.TLabel").grid(
+            row=11, column=0, columnspan=3, sticky="w", padx=4
+        )
+
+    def _on_use_default_pose_model(self) -> None:
+        def work():
+            from pose.default_model import get_default_pose_checkpoint_path, get_default_pose_config_path
+
+            config_path = get_default_pose_config_path()
+            checkpoint_path = get_default_pose_checkpoint_path()
+            return config_path, checkpoint_path
+
+        def on_success(result):
+            config_path, checkpoint_path = result
+            self.pose_config_path.set(config_path)
+            self.pose_checkpoint_path.set(checkpoint_path)
+            self.pose_default_model_status_var.set("✓ RTMPose-tiny ready")
+            self._log(f"[pose] using default model: {config_path} / {checkpoint_path}")
+
+        self._run_async(
+            work, on_success, "Fetching default model (downloads ~13MB on first use)..."
         )
 
     def _on_estimate_pose(self) -> None:
@@ -379,7 +409,7 @@ class MotionToolApp:
             return len(poses.frames)
 
         def on_success(count: int):
-            self.pose_result_var.set(f"Estimated pose for {count} frames -> {out}")
+            self.pose_result_var.set(f"✓ Estimated pose for {count} frames -> {out}")
             self._log(f"[pose] estimated pose for {count} frames -> {out}")
             self.motion_pose_path.set(out)
             self.mapping_pose_path.set(out)
@@ -404,7 +434,7 @@ class MotionToolApp:
             row=2, column=1, sticky="w", pady=8
         )
         self.rig_result_var = tk.StringVar()
-        ttk.Label(tab, textvariable=self.rig_result_var).grid(
+        ttk.Label(tab, textvariable=self.rig_result_var, style="Success.TLabel").grid(
             row=3, column=0, columnspan=3, sticky="w", padx=4
         )
 
@@ -431,7 +461,7 @@ class MotionToolApp:
         def on_success(profile):
             self.rig_profile = profile
             self.rig_result_var.set(
-                f"Parsed {len(profile.bones)} bones (root={profile.root_bone!r}) -> {out}"
+                f"✓ Parsed {len(profile.bones)} bones (root={profile.root_bone!r}) -> {out}"
             )
             self._log(f"[rig] parsed {len(profile.bones)} bones from {rig} -> {out}")
             self.rig_bone_list.delete(0, "end")
@@ -791,7 +821,7 @@ class MotionToolApp:
             row=2, column=1, sticky="w", pady=8
         )
         self.motion_result_var = tk.StringVar()
-        ttk.Label(tab, textvariable=self.motion_result_var).grid(
+        ttk.Label(tab, textvariable=self.motion_result_var, style="Success.TLabel").grid(
             row=3, column=0, columnspan=3, sticky="w", padx=4
         )
 
@@ -813,7 +843,7 @@ class MotionToolApp:
             return len(graph.frames)
 
         def on_success(count: int):
-            self.motion_result_var.set(f"Built motion graph with {count} frames -> {out}")
+            self.motion_result_var.set(f"✓ Built motion graph with {count} frames -> {out}")
             self._log(f"[motion] built motion graph with {count} frames -> {out}")
             self.retarget_motion_path.set(out)
 
@@ -840,7 +870,7 @@ class MotionToolApp:
             row=4, column=1, sticky="w", pady=8
         )
         self.retarget_result_var = tk.StringVar()
-        ttk.Label(tab, textvariable=self.retarget_result_var).grid(
+        ttk.Label(tab, textvariable=self.retarget_result_var, style="Success.TLabel").grid(
             row=5, column=0, columnspan=3, sticky="w", padx=4
         )
 
@@ -867,7 +897,7 @@ class MotionToolApp:
             return len(clip.tracks)
 
         def on_success(count: int):
-            self.retarget_result_var.set(f"Retargeted {count} bone tracks -> {out}")
+            self.retarget_result_var.set(f"✓ Retargeted {count} bone tracks -> {out}")
             self._log(f"[retarget] retargeted {count} bone tracks -> {out}")
             self.optimize_animation_path.set(out)
 
@@ -970,7 +1000,7 @@ class MotionToolApp:
             row=5, column=1, sticky="w", pady=8
         )
         self.export_result_var = tk.StringVar()
-        ttk.Label(tab, textvariable=self.export_result_var).grid(
+        ttk.Label(tab, textvariable=self.export_result_var, style="Success.TLabel").grid(
             row=6, column=0, columnspan=3, sticky="w", padx=4
         )
 
@@ -993,7 +1023,7 @@ class MotionToolApp:
             return None
 
         def on_success(_result):
-            self.export_result_var.set(f"Exported -> {out}")
+            self.export_result_var.set(f"✓ Exported -> {out}")
             self._log(f"[export] exported Blender scene -> {out}")
 
         self._run_async(work, on_success, "Exporting to Blender (this can take a moment)...")

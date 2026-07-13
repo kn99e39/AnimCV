@@ -15,9 +15,12 @@
 인덱스, 양 끝 포함)를 지정하세요.
 
 ## 2. Pose (자세 추정)
-1단계에서 만든 프레임 폴더와 MMPose 모델 설정 파일 + 체크포인트
-(`.py` + `.pth` — [MMPose model zoo](https://github.com/open-mmlab/mmpose)에서
-서로 맞는 쌍을 받으세요; 기본값으로는 RTMPose 추천)를 지정합니다. GPU가 있고
+1단계에서 만든 프레임 폴더와 MMPose 모델 설정 파일 + 체크포인트(`.py` + `.pth`)를
+지정합니다. 따로 받아둔 게 없다면 **Use Default Model (RTMPose-tiny)** 버튼
+하나로 자동으로 채울 수 있습니다 — 체크포인트(~13MB)는 최초 1회만 로컬에
+캐시되고 이후엔 재사용됩니다. 다른 모델을 쓰고 싶으면
+[MMPose model zoo](https://github.com/open-mmlab/mmpose)에서 서로 맞는
+config + 체크포인트 쌍을 받아서 직접 지정하세요. GPU가 있고
 CUDA가 맞으면 device를 그에 맞게, 아니면 `cpu`로 둡니다. Depth Anything V2
 체크포인트(`.pth`)를 추가로 지정하면 나중 단계에서 2D 근사 대신 실제 3D
 정보를 활용한 리타게팅이 됩니다 — device는 `auto`로 두세요. **Run Pose

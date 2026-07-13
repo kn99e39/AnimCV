@@ -77,9 +77,10 @@ pytest
 ```bash
 python -m app.cli extract-frames --video input.mp4 --out cache/frames
 python -m app.cli estimate-pose --frames cache/frames --out cache/pose.json \
-  --pose-config third_party/mmpose/configs/.../some_config.py \
-  --pose-checkpoint /path/to/checkpoint.pth \
   --depth-checkpoint /path/to/depth_anything_v2_vits.pth  # optional, for 3D-aware retargeting
+# --pose-config/--pose-checkpoint are optional -- omit them to use the bundled
+# RTMPose-tiny default (pose/default_model.py), downloaded once to
+# ~/.cache/animcv/models; pass your own model's files to override it
 python -m app.cli parse-rig --rig character.fbx --out cache/rig_profile.json
 python -m app.cli create-mapping --rig character.fbx --frame cache/frames/00000.png --out profiles/mapping.json
 python -m app.cli build-motion --pose cache/pose.json --out cache/motion_graph.json

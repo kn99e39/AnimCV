@@ -17,9 +17,13 @@ processing the whole thing.
 
 ## 2. Pose
 Point at the frames folder from step 1, plus an MMPose model config
-and checkpoint file (`.py` + `.pth` — download a matching pair from
-the [MMPose model zoo](https://github.com/open-mmlab/mmpose); RTMPose
-is a good default). Device is `cpu` unless you have a matching CUDA
+and checkpoint file (`.py` + `.pth`). Don't have one? Click **Use
+Default Model (RTMPose-tiny)** to fill both in automatically — the
+checkpoint (~13MB) downloads once to a local cache and is reused after
+that. To use a different model instead, download a matching config +
+checkpoint pair from the
+[MMPose model zoo](https://github.com/open-mmlab/mmpose) and point at
+those files directly. Device is `cpu` unless you have a matching CUDA
 GPU. Optionally set a Depth Anything V2 checkpoint (`.pth`) to get
 real 3D-aware retargeting later instead of a 2D approximation — leave
 its device on `auto`. **Run Pose Estimation** writes `pose.json`.

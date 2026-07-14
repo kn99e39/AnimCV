@@ -4,5 +4,6 @@ __pycache__/
 .venv/
 .venv_build/
 .venv_build_full/
+.venv_build_gui/
 *.egg-info/
 /build_output

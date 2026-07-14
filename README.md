@@ -195,7 +195,7 @@ repo root) so it's never ambiguous which one to run on which machine.
 Both sets assume the project root as their working directory even
 though they live one level down — each hops back to it itself
 (`cd /d "%~dp0.."` / `cd "$(dirname "${BASH_SOURCE[0]}")/.."`), so
-`windows\build_windows.ps1` / `bash mac/build_full_mac.sh` work the
+`windows\build_windows.ps1` / `bash mac/build_full_mac.command` work the
 same whether invoked from the repo root or by double-clicking inside
 the subfolder.
 
@@ -214,21 +214,21 @@ Python, and inserts `src/` into `sys.path` itself. See
 For a build that also bundles mmpose/depth-anything-v2 (so
 `estimate-pose` works without a separate `pip install` on the target
 machine), use `windows/build_full_windows.bat` (Windows, CUDA torch) or
-`mac/build_full_mac.sh` (macOS, CPU torch — no CUDA on Mac). These pull in
+`mac/build_full_mac.command` (macOS, CPU torch — no CUDA on Mac). These pull in
 several GB of dependencies (torch + mmcv/mmengine/mmdet) and the
 PyInstaller-frozen bundle itself was not exercised end-to-end against a
 real mmpose checkpoint before shipping either script — mmcv/mmdet's
 registry-based dynamic imports are a known PyInstaller pain point, see
 the NOTE each script prints after building. (Running from a plain venv,
 not a frozen exe, *was* verified against a real checkpoint on macOS —
-see `mac/setup_mac.sh` and README_EXEC.md's Mac support section.)
+see `mac/setup_mac.command` and README_EXEC.md's Mac support section.)
 Neither script installs pyassimp's native `assimp` library (for
 `parse-rig`) — that's a manual step (see Setup above /
 `brew install assimp` on Mac).
 
 For just running the CLI from source on Mac (no bundled exe, much
 faster to iterate on than a PyInstaller rebuild), use
-`bash mac/setup_mac.sh` instead — a one-time setup that installs
+`bash mac/setup_mac.command` instead — a one-time setup that installs
 everything needed (including the mmpose/mmcv/mmdet stack's several
 macOS-specific build workarounds) into a normal `.venv`.
 

@@ -13,7 +13,7 @@
 - 유닛/통합 테스트 209개 전부 통과 (`pytest`).
 - **Windows뿐 아니라 macOS에서도 실행 가능하도록 Blender 실행파일 자동탐지 로직을 OS별로 분기 처리함** (Windows/macOS/Linux 각각의 표준 설치 경로를 확인).
 - 합성 데이터로 **전체 파이프라인(영상 → 프레임 → 포즈 → 모션그래프 → 리타겟 → 키프레임 최적화 → Blender 출력)을 처음부터 끝까지 실제로 실행해서 결과 `.blend`/`.fbx` 파일에 키프레임이 정확히 들어가는 것까지 확인함**. IK 체인과 rest-pose 보정도 별도의 실제 Blender 픽스처로 재검증함.
-- **macOS(Apple Silicon)에서 이 전체 파이프라인을 실제 의존성으로 처음부터 끝까지 검증함** (`mac/setup_mac.sh`, 아래 "Mac 지원" 항목 참고): 합성 영상 → 실제 다운로드한 RTMPose-tiny 체크포인트로 `estimate-pose` → `build-motion` → 실제 Blender로 생성한 FBX 리그를 실제 assimp로 `parse-rig` → `create-mapping` → `retarget` → `optimize` → 실제 Blender 5.1로 `export-blender` → 결과 `.blend`를 다시 열어 fcurve/keyframe/interpolation이 정확히 일치하는 것까지 확인. 이 과정에서 실제 버그 3개를 발견/수정함 (아래 "Mac 지원" 항목 참고).
+- **macOS(Apple Silicon)에서 이 전체 파이프라인을 실제 의존성으로 처음부터 끝까지 검증함** (`mac/setup_mac.command`, 아래 "Mac 지원" 항목 참고): 합성 영상 → 실제 다운로드한 RTMPose-tiny 체크포인트로 `estimate-pose` → `build-motion` → 실제 Blender로 생성한 FBX 리그를 실제 assimp로 `parse-rig` → `create-mapping` → `retarget` → `optimize` → 실제 Blender 5.1로 `export-blender` → 결과 `.blend`를 다시 열어 fcurve/keyframe/interpolation이 정확히 일치하는 것까지 확인. 이 과정에서 실제 버그 3개를 발견/수정함 (아래 "Mac 지원" 항목 참고).
 - **Blender 연동은 실제 로컬 Blender 4.5 LTS / 5.1 / 5.1.2 세 버전 모두로 완전히 검증됨** (기본 리타게팅 + rest-pose 보정 + IK 체인 각각 별도 픽스처로).
 - **Depth Anything V2**는 이번 macOS 검증 범위에는 포함되지 않음 — 이전과 마찬가지로 실제 모델 클래스 forward pass까지만 확인했고(미학습 가중치), 실제 학습된 체크포인트로는 검증하지 못함.
 - **터미널 CLI뿐 아니라 GUI(`python -m app.gui`, Tkinter)도 있음** — 8개 CLI 명령을 탭으로 감싸고, Mapping 탭은 `Architecture_v2.md` 섹션 6.2가 원래 설계한 대로 이미지 위 랜드마크를 직접 클릭해서 본을 매핑합니다 (아래 3.9절 참고). GUI를 통해 프로그래밍적으로 클릭을 재현해 합성 데이터로 전체 파이프라인을 끝까지 돌렸고, 결과가 CLI와 정확히 일치하는 것까지 확인함.
@@ -46,7 +46,7 @@ pip install -e ".[pose]"   # mmpose, mmcv, mmengine, mmdet (매우 무거움 —
 
 추가로 MMPose 모델 설정 파일(config)과 체크포인트(checkpoint)가 필요합니다. `third_party/mmpose/configs`에서 원하는 모델 config를 찾고, 해당 체크포인트를 MMPose 모델 zoo에서 받아와야 합니다.
 
-**macOS에서는 `pip install -e ".[pose]"` 한 줄로 끝나지 않습니다.** OpenMMLab은 mmcv의 macOS용 prebuilt wheel을 아예 배포하지 않아 항상 소스 빌드가 필요하고, 그 소스 빌드가 최신 setuptools/pip 툴체인과 충돌합니다(아래 "Mac 지원" 항목의 `mac/setup_mac.sh` 참고). Linux/Windows에서 prebuilt wheel을 쓸 수 있는 환경이라면 이 한 줄로 충분합니다.
+**macOS에서는 `pip install -e ".[pose]"` 한 줄로 끝나지 않습니다.** OpenMMLab은 mmcv의 macOS용 prebuilt wheel을 아예 배포하지 않아 항상 소스 빌드가 필요하고, 그 소스 빌드가 최신 setuptools/pip 툴체인과 충돌합니다(아래 "Mac 지원" 항목의 `mac/setup_mac.command` 참고). Linux/Windows에서 prebuilt wheel을 쓸 수 있는 환경이라면 이 한 줄로 충분합니다.
 
 **리그 파싱(parse-rig / create-mapping / retarget)을 실제로 쓰려면:**
 
@@ -82,16 +82,16 @@ pip install -e ".[depth]"   # torch, opencv-python, matplotlib
 - `/Applications/Blender*.app/Contents/MacOS/Blender`
 - `~/Applications/Blender*.app/Contents/MacOS/Blender` (사용자별 설치)
 
-**한 번만 실행하면 되는 설치 스크립트**: `bash mac/setup_mac.sh` — venv 생성부터 pose/depth extras, native assimp, Blender 존재 확인까지 한 번에 끝납니다. `mac/build_full_mac.sh`(PyInstaller로 exe 하나에 통째로 번들, 수 GB, 재빌드도 느림)와는 다른 용도이니 혼동하지 마세요. `mac/setup_mac.sh`는 그냥 평소처럼 `python -m app.cli ...`로 실행할 수 있는 venv만 준비합니다.
+**한 번만 실행하면 되는 설치 스크립트**: `bash mac/setup_mac.command` — venv 생성부터 pose/depth extras, native assimp, Blender 존재 확인까지 한 번에 끝납니다. `mac/build_gui_mac.command`(PyInstaller로 exe 하나에 통째로 번들, 수 GB, 재빌드도 느림)와는 다른 용도이니 혼동하지 마세요. `mac/setup_mac.command`는 그냥 평소처럼 `python -m app.cli ...`로 실행할 수 있는 venv만 준비합니다.
 
-`estimate-pose`(mmpose 스택)를 macOS에서 설치하는 건 `pip install -e ".[pose]"` 한 줄로 안 끝나서 `mac/setup_mac.sh`가 특정 순서로 여러 단계를 거칩니다 — 이유는 스크립트 안 주석에 적어뒀지만 요약하면:
+`estimate-pose`(mmpose 스택)를 macOS에서 설치하는 건 `pip install -e ".[pose]"` 한 줄로 안 끝나서 `mac/setup_mac.command`가 특정 순서로 여러 단계를 거칩니다 — 이유는 스크립트 안 주석에 적어뒀지만 요약하면:
 
 - OpenMMLab이 mmcv의 macOS prebuilt wheel을 아예 배포하지 않아 항상 소스 빌드가 필요함.
 - `mmdet`을 먼저 설치하면 그게 딸려오는 `mmcv`를 pip의 격리된 빌드 환경에서 빌드하는데, 그 환경엔 이미 설치된 torch가 안 보여서 컴파일된 연산(ops) 없이 조용히 "lite" 버전으로 떨어짐 — 나중에 `mmcv`를 다시 설치해도 이미 만족되는 버전이 있으면 pip가 아무것도 안 하므로 이 문제가 눈에 안 띄게 남습니다. `mmengine`을 먼저 깔고 `mmcv`를 명시적으로 빌드한 다음에 `mmdet`을 설치해야 합니다.
 - mmcv/`chumpy`(mmpose 의존성)의 `setup.py`가 최신 setuptools/pip 툴체인에서 깨지는 레거시 패턴(`import pkg_resources`, `import pip`)을 쓰고 있어서 `setuptools<81` 고정 + `--no-build-isolation`이 필요함.
 - `mmdet`은 `mmcv<2.2.0`을 요구하고, mmpose의 `xtcocotools`는 numpy 2.0 이전 C ABI로 컴파일되어 있어서 `numpy`/`opencv-python`도 같이 낮은 버전으로 고정해야 함.
 
-Mac에서 필요한 네이티브 라이브러리 설치(`mac/setup_mac.sh`가 자동으로 처리):
+Mac에서 필요한 네이티브 라이브러리 설치(`mac/setup_mac.command`가 자동으로 처리):
 
 ```bash
 brew install assimp     # parse-rig / create-mapping / retarget에 필요한 네이티브 라이브러리
@@ -297,7 +297,7 @@ python -m app.cli export-blender \
 python -m app.gui
 ```
 
-`src/ui/gui_app.py`, Tkinter 기반(표준 라이브러리만 사용, CLI 쪽에 새 의존성 추가 없음 — 다만 파이썬 인터프리터 자체에 Tcl/Tk가 있어야 함, macOS는 `mac/setup_mac.sh`가 `python-tk` 설치까지 자동으로 처리). 위 3.1~3.8절 8개 CLI 명령을 탭으로 그대로 감싸고 있고, 내부적으로는 CLI와 완전히 동일한 라이브러리 함수를 직접 호출합니다(`VideoLoader`, `PoseEstimator`, `RigParser`, `MotionGraphBuilder`, `RetargetSolver`, `collapse_animation_clip`). `export-blender`만은 `app.cli.run_export_blender`를 그대로 재사용합니다 (Blender 실행파일 자동탐지 + 종료코드 처리 로직이 이미 `tests/test_cli.py`로 검증되어 있어서 중복 구현하지 않음).
+`src/ui/gui_app.py`, Tkinter 기반(표준 라이브러리만 사용, CLI 쪽에 새 의존성 추가 없음 — 다만 파이썬 인터프리터 자체에 Tcl/Tk가 있어야 함, macOS는 `mac/setup_mac.command`가 `python-tk` 설치까지 자동으로 처리). 위 3.1~3.8절 8개 CLI 명령을 탭으로 그대로 감싸고 있고, 내부적으로는 CLI와 완전히 동일한 라이브러리 함수를 직접 호출합니다(`VideoLoader`, `PoseEstimator`, `RigParser`, `MotionGraphBuilder`, `RetargetSolver`, `collapse_animation_clip`). `export-blender`만은 `app.cli.run_export_blender`를 그대로 재사용합니다 (Blender 실행파일 자동탐지 + 종료코드 처리 로직이 이미 `tests/test_cli.py`로 검증되어 있어서 중복 구현하지 않음).
 
 #### 탭별 사용법
 

@@ -2,15 +2,19 @@
 # One-time macOS dev setup: creates .venv and installs everything needed to
 # run the full CLI pipeline (base deps + estimate-pose's mmpose stack + the
 # depth-assisted 3D retargeting extra), plus the native assimp library
-# parse-rig/create-mapping/retarget need. Run once, from anywhere:
+# parse-rig/create-mapping/retarget need. Run once, either by
+# double-clicking this file in Finder (the .command extension is what
+# makes macOS open it in Terminal.app instead of a text editor -- the
+# terminal window it opens stays open after the script finishes so you
+# can read the output) or from a terminal, from anywhere:
 #
-#   bash mac/setup_mac.sh
+#   bash mac/setup_mac.command
 #
 # After it finishes, activate the venv and use the CLI normally -- this
-# script does NOT build a bundled executable (see build_full_mac.sh for
-# that: much heavier, and slower to iterate on since every change means a
-# multi-GB rebuild). export-blender still shells out to a real Blender
-# install; this script only checks for one, it doesn't install it.
+# script does NOT build a bundled executable (see build_gui_mac.command
+# for that: much heavier, and slower to iterate on since every change
+# means a multi-GB rebuild). export-blender still shells out to a real
+# Blender install; this script only checks for one, it doesn't install it.
 #
 # torch here is the CPU wheel (no CUDA on Mac); Apple Silicon gets MPS
 # acceleration from the same wheel automatically.

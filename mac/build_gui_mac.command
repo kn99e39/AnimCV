@@ -5,16 +5,18 @@
 # wheel) + depth-anything-v2's dependencies all bundled, so estimate-pose
 # works with no separate `pip install` on the target machine.
 #
-# Uses its own venv (.venv_build_gui), separate from mac/setup_mac.sh's
+# Uses its own venv (.venv_build_gui), separate from mac/setup_mac.command's
 # `.venv` dev environment, so a build doesn't disturb an existing dev
 # setup. The mmcv/mmdet/mmpose install recipe below is copied from
-# setup_mac.sh, which documents *why* each step is needed (see its header
-# comment) -- this was verified end to end there against a real
+# setup_mac.command, which documents *why* each step is needed (see its
+# header comment) -- this was verified end to end there against a real
 # downloaded RTMPose checkpoint from a plain venv; the PyInstaller-frozen
 # bundle produced by this script has NOT been separately verified (no Mac
 # was available when this script was written -- see README.md).
 #
-# Run once, from anywhere: bash mac/build_gui_mac.sh
+# Run once, either by double-clicking this file in Finder (the .command
+# extension makes macOS open it in Terminal.app instead of a text
+# editor) or from a terminal: bash mac/build_gui_mac.command
 
 set -euo pipefail
 
@@ -29,7 +31,7 @@ find_python() {
     # very much installed, just unlinked/shadowed/not the active pyenv
     # version. Absolute-path candidates below cover the common install
     # layouts without requiring 3.11 to be first on PATH. Kept in sync
-    # with mac/setup_mac.sh's copy of this function.
+    # with mac/setup_mac.command's copy of this function.
     for candidate in \
         python3.11 \
         /opt/homebrew/opt/python@3.11/bin/python3.11 \
@@ -68,7 +70,7 @@ fi
 echo "Using $PYTHON ($("$PYTHON" --version))"
 if ! "$PYTHON" -c 'import sys; sys.exit(0 if sys.version_info[:2] == (3, 11) else 1)'; then
     echo "WARNING: this is not Python 3.11. The mmpose/mmcv/mmdet recipe" >&2
-    echo "below was only verified against 3.11 (see mac/setup_mac.sh)." >&2
+    echo "below was only verified against 3.11 (see mac/setup_mac.command)." >&2
 fi
 
 VENV=".venv_build_gui"
@@ -110,7 +112,7 @@ echo "[8/11] Installing mmpose (--no-build-isolation works around its chumpy dep
 # fails with a confusing "clang: no such file or directory:
 # xtcocotools/_mask.c" (cython never ran to generate that file).
 # Confirmed by actually reproducing this failure on a fresh Python 3.12
-# venv. Kept in sync with mac/setup_mac.sh's copy of this step.
+# venv. Kept in sync with mac/setup_mac.command's copy of this step.
 "$PIP" install "cython>=0.27.3"
 "$PIP" install --no-build-isolation mmpose
 
@@ -192,7 +194,7 @@ echo "Double-clickable from Finder. No terminal window attached -- if it"
 echo "doesn't come up, run the binary inside the bundle directly to see"
 echo "errors: ./build_output/mac_gui/motion-tool-gui.app/Contents/MacOS/motion-tool-gui"
 echo "NOT yet verified end-to-end on a real Mac -- this is the same recipe"
-echo "as mac/setup_mac.sh (which was verified from a plain venv), just"
+echo "as mac/setup_mac.command (which was verified from a plain venv), just"
 echo "additionally run through PyInstaller. Run the built app for real and"
 echo "exercise estimate-pose before trusting it."
 echo "retarget/parse-rig still need the native assimp library separately"

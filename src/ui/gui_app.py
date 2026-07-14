@@ -25,6 +25,7 @@ never requires any optional extra to be installed.
 
 from __future__ import annotations
 
+import base64
 import queue
 import threading
 import tkinter as tk
@@ -65,6 +66,27 @@ def describe_mapping_entry(entry) -> str:
     if entry.mapping_mode == "landmark":
         return f"landmark {entry.source_names[0]}"
     return f"custom_point {entry.source_names[0]}"
+
+
+def fit_scale(width: int, height: int, max_width: int, max_height: int) -> float:
+    """Largest scale factor <= 1.0 that fits (width, height) inside
+    (max_width, max_height) preserving aspect ratio. Returns 1.0 for a
+    degenerate (non-positive) source size -- nothing to scale."""
+    if width <= 0 or height <= 0:
+        return 1.0
+    return min(1.0, max_width / width, max_height / height)
+
+
+def clamp_frame_range(start: int, end: int, moved: str) -> tuple[int, int]:
+    """Keep ``start <= end`` after one endpoint moves. ``moved`` names the
+    one the user just dragged, and it wins: dragging start past end pushes
+    end up to meet it; dragging end below start pulls start down to meet
+    it -- so the handle under the cursor never jumps away from it."""
+    if start <= end:
+        return start, end
+    if moved == "start":
+        return start, start
+    return end, end
 
 
 class MotionToolApp:
@@ -115,6 +137,15 @@ class MotionToolApp:
         ttk.Label(bottom, textvariable=self.status_var).pack(anchor="w", padx=6)
         self.log_text = tk.Text(bottom, height=6, state="disabled")
         self.log_text.pack(fill="x", padx=6, pady=(0, 6))
+
+        root.protocol("WM_DELETE_WINDOW", self._on_close)
+
+    def _on_close(self) -> None:
+        # Release the scrubber's held VideoCapture before tearing down.
+        if getattr(self, "_frames_scrubber", None) is not None:
+            self._frames_scrubber.close()
+            self._frames_scrubber = None
+        self.root.destroy()
 
     # ---- generic helpers -------------------------------------------------
 
@@ -196,38 +227,230 @@ class MotionToolApp:
 
     # ---- 1. extract-frames ------------------------------------------------
 
+    _PREVIEW_W = 480
+    _PREVIEW_H = 300
+
     def _build_frames_tab(self) -> None:
         tab = ttk.Frame(self.notebook)
         self.notebook.add(tab, text="1. Frames")
         tab.columnconfigure(1, weight=1)
 
+        # Scrubber state. The numeric start/end entries stay authoritative
+        # for extraction (as before); the sliders + preview are an
+        # optional visual way to set them, enabled only once a video is
+        # loaded. _range_sync_guard stops the scale<->entry two-way sync
+        # from recursing.
+        self._frames_scrubber = None
+        self._frames_preview_photo = None  # keep PhotoImage alive
+        self._range_sync_guard = False
+        self._preview_after_id = None
+        self._pending_preview_index = 0
+
         self.video_path = self._path_row(
             tab, 0, "Video file:", "open_file", [("Video", "*.mp4 *.mov *.avi *.mkv"), ("All", "*.*")]
         )
-        ttk.Label(tab, text="Target FPS (optional):").grid(row=1, column=0, sticky="w", padx=4)
-        self.fps_var = tk.StringVar()
-        ttk.Entry(tab, textvariable=self.fps_var, width=10).grid(row=1, column=1, sticky="w", padx=4)
 
-        range_row = ttk.Frame(tab)
-        range_row.grid(row=2, column=0, columnspan=3, sticky="w", padx=4, pady=2)
-        ttk.Label(range_row, text="Reference range (optional, source-video frame indices):").pack(
-            side="left"
+        load_row = ttk.Frame(tab)
+        load_row.grid(row=1, column=0, columnspan=3, sticky="w", padx=4, pady=(2, 0))
+        ttk.Button(load_row, text="Load Preview", command=self._on_load_preview).pack(side="left")
+        self.frames_preview_status = tk.StringVar(
+            value="Load a video to scrub it and set the reference range visually (optional)."
         )
-        ttk.Label(range_row, text="start").pack(side="left", padx=(8, 2))
-        self.start_frame_var = tk.StringVar()
-        ttk.Entry(range_row, textvariable=self.start_frame_var, width=8).pack(side="left")
-        ttk.Label(range_row, text="end").pack(side="left", padx=(8, 2))
-        self.end_frame_var = tk.StringVar()
-        ttk.Entry(range_row, textvariable=self.end_frame_var, width=8).pack(side="left")
+        ttk.Label(load_row, textvariable=self.frames_preview_status).pack(side="left", padx=(8, 0))
 
-        self.frames_out = self._path_row(tab, 3, "Output frames dir:", "dir")
+        self.frames_preview_canvas = tk.Canvas(
+            tab,
+            width=self._PREVIEW_W,
+            height=self._PREVIEW_H,
+            background="#222222",
+            highlightthickness=1,
+            highlightbackground="#444444",
+        )
+        self.frames_preview_canvas.grid(row=2, column=0, columnspan=3, padx=4, pady=4)
+        self.frames_preview_info = tk.StringVar(value="")
+        ttk.Label(tab, textvariable=self.frames_preview_info).grid(
+            row=3, column=0, columnspan=3, sticky="w", padx=4
+        )
+
+        # Start: slider (0..last) <-> numeric entry, both drive the preview.
+        ttk.Label(tab, text="Start frame:").grid(row=4, column=0, sticky="w", padx=4)
+        self.start_scale = ttk.Scale(
+            tab, from_=0, to=0, orient="horizontal", command=lambda v: self._on_range_scale("start", v)
+        )
+        self.start_scale.grid(row=4, column=1, sticky="ew", padx=4)
+        self.start_scale.state(["disabled"])
+        self.start_frame_var = tk.StringVar()
+        start_entry = ttk.Entry(tab, textvariable=self.start_frame_var, width=8)
+        start_entry.grid(row=4, column=2, padx=4)
+        start_entry.bind("<Return>", lambda e: self._on_range_entry("start"))
+        start_entry.bind("<FocusOut>", lambda e: self._on_range_entry("start"))
+
+        ttk.Label(tab, text="End frame:").grid(row=5, column=0, sticky="w", padx=4)
+        self.end_scale = ttk.Scale(
+            tab, from_=0, to=0, orient="horizontal", command=lambda v: self._on_range_scale("end", v)
+        )
+        self.end_scale.grid(row=5, column=1, sticky="ew", padx=4)
+        self.end_scale.state(["disabled"])
+        self.end_frame_var = tk.StringVar()
+        end_entry = ttk.Entry(tab, textvariable=self.end_frame_var, width=8)
+        end_entry.grid(row=5, column=2, padx=4)
+        end_entry.bind("<Return>", lambda e: self._on_range_entry("end"))
+        end_entry.bind("<FocusOut>", lambda e: self._on_range_entry("end"))
+
+        ttk.Label(
+            tab, text="(blank = whole video; both are source-video frame indices, end inclusive)"
+        ).grid(row=6, column=1, columnspan=2, sticky="w", padx=4)
+
+        ttk.Label(tab, text="Target FPS (optional):").grid(row=7, column=0, sticky="w", padx=4)
+        self.fps_var = tk.StringVar()
+        ttk.Entry(tab, textvariable=self.fps_var, width=10).grid(row=7, column=1, sticky="w", padx=4)
+
+        self.frames_out = self._path_row(tab, 8, "Output frames dir:", "dir")
 
         ttk.Button(tab, text="Extract Frames", command=self._on_extract_frames).grid(
-            row=4, column=1, sticky="w", pady=8
+            row=9, column=1, sticky="w", pady=8
         )
         self.frames_result_var = tk.StringVar()
         ttk.Label(tab, textvariable=self.frames_result_var, style="Success.TLabel").grid(
-            row=5, column=0, columnspan=3, sticky="w", padx=4
+            row=10, column=0, columnspan=3, sticky="w", padx=4
+        )
+
+    @staticmethod
+    def _safe_int(text: str, default: int, lo: int, hi: int) -> int:
+        try:
+            value = int(float(text))
+        except (TypeError, ValueError):
+            return default
+        return max(lo, min(hi, value))
+
+    def _on_load_preview(self) -> None:
+        video = self.video_path.get().strip()
+        if not video:
+            messagebox.showwarning("Missing input", "Choose a video file first.")
+            return
+
+        from mediaio.video_loader import VideoLoader
+
+        if self._frames_scrubber is not None:
+            self._frames_scrubber.close()
+            self._frames_scrubber = None
+        try:
+            scrubber = VideoLoader().open_scrubber(video)
+        except (FileNotFoundError, ValueError) as exc:
+            messagebox.showerror("Could not open video", str(exc))
+            return
+        self._frames_scrubber = scrubber
+
+        last = max(scrubber.frame_count - 1, 0)
+        self._range_sync_guard = True
+        for scale in (self.start_scale, self.end_scale):
+            scale.configure(from_=0, to=last)
+            scale.state(["!disabled"])
+        start = self._safe_int(self.start_frame_var.get(), 0, 0, last)
+        end = self._safe_int(self.end_frame_var.get(), last, 0, last)
+        if not self.end_frame_var.get().strip():
+            end = last
+        self.start_scale.set(start)
+        self.end_scale.set(end)
+        self.start_frame_var.set(str(start))
+        self.end_frame_var.set(str(end))
+        self._range_sync_guard = False
+
+        self.frames_preview_status.set(
+            f"✓ {scrubber.frame_count} frames @ {scrubber.fps:.2f} fps, "
+            f"{scrubber.width}x{scrubber.height}"
+        )
+        self._render_preview_frame(start)
+
+    def _on_range_scale(self, which: str, value: str) -> None:
+        if self._range_sync_guard or self._frames_scrubber is None:
+            return
+        # ttk.Scale passes the moved handle's new value to its command;
+        # use that for the moved handle rather than reading it back, and
+        # read the other handle from its own scale.
+        moved = int(round(float(value)))
+        if which == "start":
+            start, end = moved, int(round(float(self.end_scale.get())))
+        else:
+            start, end = int(round(float(self.start_scale.get()))), moved
+        start, end = clamp_frame_range(start, end, which)
+        self._range_sync_guard = True
+        self.start_scale.set(start)
+        self.end_scale.set(end)
+        self.start_frame_var.set(str(start))
+        self.end_frame_var.set(str(end))
+        self._range_sync_guard = False
+        self._request_preview(start if which == "start" else end)
+
+    def _on_range_entry(self, which: str) -> None:
+        if self._range_sync_guard or self._frames_scrubber is None:
+            return
+        var = self.start_frame_var if which == "start" else self.end_frame_var
+        if not var.get().strip():
+            return
+        last = max(self._frames_scrubber.frame_count - 1, 0)
+        value = self._safe_int(var.get(), 0, 0, last)
+        self._range_sync_guard = True
+        (self.start_scale if which == "start" else self.end_scale).set(value)
+        start = int(round(float(self.start_scale.get())))
+        end = int(round(float(self.end_scale.get())))
+        start, end = clamp_frame_range(start, end, which)
+        self.start_scale.set(start)
+        self.end_scale.set(end)
+        self.start_frame_var.set(str(start))
+        self.end_frame_var.set(str(end))
+        self._range_sync_guard = False
+        self._request_preview(start if which == "start" else end)
+
+    def _request_preview(self, index: int) -> None:
+        # Scale motion fires this rapidly during a drag; coalesce into one
+        # render per ~30ms so seek+decode+encode doesn't lag the handle.
+        self._pending_preview_index = index
+        if self._preview_after_id is None:
+            self._preview_after_id = self.root.after(30, self._flush_preview)
+
+    def _flush_preview(self) -> None:
+        self._preview_after_id = None
+        self._render_preview_frame(self._pending_preview_index)
+
+    def _render_preview_frame(self, index: int) -> None:
+        scrubber = self._frames_scrubber
+        if scrubber is None:
+            return
+        import cv2
+
+        canvas = self.frames_preview_canvas
+        frame = scrubber.read_frame(index)
+        if frame is None:
+            canvas.delete("all")
+            canvas.create_text(
+                self._PREVIEW_W // 2,
+                self._PREVIEW_H // 2,
+                text=f"(no frame at index {index})",
+                fill="#999999",
+            )
+            self.frames_preview_info.set("")
+            return
+        scale = fit_scale(frame.shape[1], frame.shape[0], self._PREVIEW_W, self._PREVIEW_H)
+        if scale < 1.0:
+            frame = cv2.resize(
+                frame,
+                (max(1, int(frame.shape[1] * scale)), max(1, int(frame.shape[0] * scale))),
+                interpolation=cv2.INTER_AREA,
+            )
+        ok, png = cv2.imencode(".png", frame)
+        if not ok:
+            return
+        # Tk 8.6 PhotoImage reads PNG from base64 `data`, so no Pillow is
+        # needed to show an in-memory OpenCV (BGR) frame -- imencode writes
+        # correct colors from BGR (see cv2.imwrite's own convention).
+        photo = tk.PhotoImage(data=base64.b64encode(png.tobytes()).decode("ascii"))
+        self._frames_preview_photo = photo
+        canvas.delete("all")
+        canvas.create_image(self._PREVIEW_W // 2, self._PREVIEW_H // 2, image=photo)
+        timestamp = index / scrubber.fps if scrubber.fps > 0 else 0.0
+        self.frames_preview_info.set(
+            f"Frame {index} / {max(scrubber.frame_count - 1, 0)}   (t = {timestamp:.2f}s)"
         )
 
     def _on_extract_frames(self) -> None:

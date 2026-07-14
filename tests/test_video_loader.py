@@ -112,3 +112,53 @@ def test_load_image_sequence_empty_directory_raises(tmp_path):
 
     with pytest.raises(FileNotFoundError):
         VideoLoader().load_image_sequence(str(tmp_path))
+
+
+def test_scrubber_reports_video_metadata(tmp_path):
+    video_path = tmp_path / "clip.mp4"
+    _write_synthetic_video(video_path, fps=12.0, num_frames=24, size=(64, 48))
+
+    with VideoLoader().open_scrubber(str(video_path)) as scrubber:
+        assert scrubber.frame_count == 24
+        assert scrubber.fps == 12.0
+        assert scrubber.width == 64
+        assert scrubber.height == 48
+
+
+def test_scrubber_reads_frame_at_index(tmp_path):
+    video_path = tmp_path / "clip.mp4"
+    _write_synthetic_video(video_path, num_frames=24)
+
+    with VideoLoader().open_scrubber(str(video_path)) as scrubber:
+        frame = scrubber.read_frame(10)
+        assert frame is not None
+        assert frame.shape == (48, 64, 3)
+
+
+def test_scrubber_sequential_reads_advance(tmp_path):
+    video_path = tmp_path / "clip.mp4"
+    _write_synthetic_video(video_path, num_frames=24)
+
+    with VideoLoader().open_scrubber(str(video_path)) as scrubber:
+        first = scrubber.read_frame(5)
+        second = scrubber.read_frame(6)
+        assert first is not None and second is not None
+        # Consecutive synthetic frames have different fill values, so the
+        # scrubber genuinely advanced rather than re-returning frame 5.
+        assert not np.array_equal(first, second)
+
+
+def test_scrubber_out_of_range_returns_none(tmp_path):
+    video_path = tmp_path / "clip.mp4"
+    _write_synthetic_video(video_path, num_frames=24)
+
+    with VideoLoader().open_scrubber(str(video_path)) as scrubber:
+        assert scrubber.read_frame(9999) is None
+        assert scrubber.read_frame(-1) is None
+
+
+def test_scrubber_missing_file_raises(tmp_path):
+    import pytest
+
+    with pytest.raises(FileNotFoundError):
+        VideoLoader().open_scrubber(str(tmp_path / "missing.mp4"))

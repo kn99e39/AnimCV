@@ -8,12 +8,17 @@ The app is one window with 8 tabs, run roughly left to right — each
 tab's output feeds the next one:
 
 ## 1. Frames
-Pick an input video (`--video`) and an output folder, optionally a
-target FPS, then **Extract Frames**. Produces a folder of numbered
-PNGs used by every later step. If you only want a specific clip inside
-a longer video as your reference, set the optional `start`/`end` frame
-range (indices in the original video, both inclusive) instead of
-processing the whole thing.
+Pick an input video and an output folder, optionally a target FPS, then
+**Extract Frames**. Produces a folder of numbered PNGs used by every
+later step.
+
+If you only want a specific clip inside a longer video as your
+reference, you can either type start/end frame numbers directly, or —
+more like a video editor — press **Load Preview** and drag the **Start
+frame** / **End frame** sliders: the frame under whichever slider you're
+moving shows live in the preview above, and the sliders stay in sync
+with the numbers (edit either). The range is inclusive and uses
+original-video frame indices; leave it blank/full for the whole video.
 
 ## 2. Pose
 Point at the frames folder from step 1, plus an MMPose model config

@@ -178,8 +178,19 @@ function is shared with the CLI rather than duplicated, since its
 Blender-executable autodetection and exit-code handling are
 non-trivial and already covered by `tests/test_cli.py`).
 
-The mapping tab is the one substantive upgrade over the CLI's text
-prompts: it delivers the click-based workflow Architecture_v2.md
+Two tabs are substantive upgrades over the CLI's text-only equivalents:
+
+The **Frames** tab adds an optional video-editor-style scrubber for
+picking the reference range: **Load Preview** opens a random-access
+reader (`VideoLoader.open_scrubber` → `VideoScrubber`, so cv2 stays
+inside `mediaio`), and dragging the Start/End sliders shows the frame
+under the moving handle live in a preview canvas. In-memory OpenCV
+frames are shown without Pillow — encoded to PNG via `cv2.imencode` and
+handed to Tk 8.6's `PhotoImage(data=<base64>)`. The numeric start/end
+entries still exist and stay two-way-synced with the sliders (either
+drives the other), and remain what extraction actually reads.
+
+The **mapping** tab delivers the click-based workflow Architecture_v2.md
 section 6.2 originally specified and `ui/mapping_ui.py`'s docstring
 deferred as "future work" — the reference frame is shown on a canvas
 with every detected landmark drawn as a clickable dot (from a loaded

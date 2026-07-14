@@ -7,7 +7,13 @@ from __future__ import annotations
 
 from pose.pose_types import PoseLandmark
 from rig.bone_mapping import BoneMappingEntry
-from ui.gui_app import describe_mapping_entry, frame_index_from_path, nearest_landmark
+from ui.gui_app import (
+    clamp_frame_range,
+    describe_mapping_entry,
+    fit_scale,
+    frame_index_from_path,
+    nearest_landmark,
+)
 
 
 def _landmark(name, x, y, visible=True):
@@ -67,3 +73,32 @@ def test_describe_mapping_entry_custom_point():
         target_bone="wing.L", source_type="custom_point", source_names=["wing_tip_1"], mapping_mode="point"
     )
     assert describe_mapping_entry(entry) == "custom_point wing_tip_1"
+
+
+def test_fit_scale_shrinks_to_fit_within_bounds():
+    assert fit_scale(1000, 1000, 500, 500) == 0.5
+    # width is the binding dimension here
+    assert fit_scale(1000, 200, 500, 500) == 0.5
+
+
+def test_fit_scale_never_upscales():
+    assert fit_scale(100, 100, 500, 500) == 1.0
+
+
+def test_fit_scale_degenerate_size_returns_one():
+    assert fit_scale(0, 0, 500, 500) == 1.0
+
+
+def test_clamp_frame_range_leaves_valid_range_untouched():
+    assert clamp_frame_range(3, 8, "start") == (3, 8)
+    assert clamp_frame_range(3, 8, "end") == (3, 8)
+
+
+def test_clamp_frame_range_dragging_start_past_end_pushes_end_up():
+    # moved handle (start) wins -- end rises to meet it
+    assert clamp_frame_range(20, 5, "start") == (20, 20)
+
+
+def test_clamp_frame_range_dragging_end_below_start_pulls_start_down():
+    # moved handle (end) wins -- start drops to meet it
+    assert clamp_frame_range(20, 5, "end") == (5, 5)

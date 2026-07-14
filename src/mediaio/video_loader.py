@@ -112,3 +112,58 @@ class VideoLoader:
         return FrameSequence(
             frames=frames, fps=fps, width=width, height=height, source_path=str(directory_path)
         )
+
+    def open_scrubber(self, path: str) -> "VideoScrubber":
+        """Open a random-access single-frame reader for the GUI's Frames-tab
+        preview scrubber. Kept here (not raw cv2 in the UI) per the
+        module rule above. The caller owns closing it (or use it as a
+        context manager)."""
+        return VideoScrubber(path)
+
+
+class VideoScrubber:
+    """Random-access single-frame reader that keeps one ``VideoCapture``
+    open, for scrubbing a video in the GUI to pick a reference range
+    visually. Not for bulk extraction -- that's ``VideoLoader.load_video``,
+    which streams every frame once. Frames are returned as raw BGR numpy
+    arrays (OpenCV's native order), same as ``Frame.image`` elsewhere.
+    """
+
+    def __init__(self, path: str):
+        self._capture = cv2.VideoCapture(str(path))
+        if not self._capture.isOpened():
+            raise FileNotFoundError(f"Could not open video: {path}")
+        self.fps: float = self._capture.get(cv2.CAP_PROP_FPS) or 0.0
+        self.width = int(self._capture.get(cv2.CAP_PROP_FRAME_WIDTH))
+        self.height = int(self._capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        # CAP_PROP_FRAME_COUNT can be slightly off (or 0) for some
+        # containers/codecs; treat it as the slider's upper bound, not a
+        # guarantee every index reads back (read_frame returns None past
+        # the real end).
+        self.frame_count = int(self._capture.get(cv2.CAP_PROP_FRAME_COUNT))
+        # Frame index the next bare read() would return, so consecutive
+        # scrubbing (index, index+1, ...) skips a redundant, slow seek.
+        self._next_pos = 0
+
+    def read_frame(self, index: int):
+        """The BGR frame at source-video ``index``, or None if that index
+        can't be read (past the end, or a failed decode)."""
+        if index < 0:
+            return None
+        if index != self._next_pos:
+            self._capture.set(cv2.CAP_PROP_POS_FRAMES, index)
+            self._next_pos = index
+        ok, image = self._capture.read()
+        if not ok:
+            return None
+        self._next_pos = index + 1
+        return image
+
+    def close(self) -> None:
+        self._capture.release()
+
+    def __enter__(self) -> "VideoScrubber":
+        return self
+
+    def __exit__(self, *exc_info) -> None:
+        self.close()

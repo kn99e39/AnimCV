@@ -307,9 +307,14 @@ class MotionToolApp:
 
         self.frames_out = self._path_row(tab, 8, "Output frames dir:", "dir")
 
-        ttk.Button(tab, text="Extract Frames", command=self._on_extract_frames).grid(
-            row=9, column=1, sticky="w", pady=8
+        extract_row = ttk.Frame(tab)
+        extract_row.grid(row=9, column=0, columnspan=3, sticky="w", padx=4, pady=8)
+        ttk.Button(extract_row, text="Extract Frames", command=self._on_extract_frames).pack(
+            side="left"
         )
+        self.frames_progress_var = tk.StringVar(value="")
+        ttk.Label(extract_row, textvariable=self.frames_progress_var).pack(side="left", padx=(10, 0))
+
         self.frames_result_var = tk.StringVar()
         ttk.Label(tab, textvariable=self.frames_result_var, style="Success.TLabel").grid(
             row=10, column=0, columnspan=3, sticky="w", padx=4
@@ -459,12 +464,33 @@ class MotionToolApp:
         if not video or not out:
             messagebox.showwarning("Missing input", "Video file and output directory are required.")
             return
+
+        # Warn before writing into a directory that already has files --
+        # extraction overwrites frames of the same index and leaves any
+        # extras behind, so an accidental reuse of an old cache dir is
+        # worth confirming.
+        out_dir = Path(out)
+        if out_dir.exists() and any(out_dir.iterdir()):
+            if not messagebox.askyesno(
+                "Output folder not empty",
+                f"'{out}' already contains files. Extracting here may overwrite existing "
+                "frames and mix old ones in. Continue?",
+            ):
+                return
+
         fps_text = self.fps_var.get().strip()
         fps = float(fps_text) if fps_text else None
         start_text = self.start_frame_var.get().strip()
         end_text = self.end_frame_var.get().strip()
         start_frame = int(start_text) if start_text else None
         end_frame = int(end_text) if end_text else None
+
+        self.frames_progress_var.set("preparing…")
+
+        def report_progress(done: int, total: int) -> None:
+            # Worker thread -> main thread, same queue the async result
+            # uses (drained by _poll_async_queue); never touch Tk here.
+            self._async_queue.put(lambda: self.frames_progress_var.set(f"{done}/{total}"))
 
         def work():
             import cv2
@@ -476,17 +502,23 @@ class MotionToolApp:
             sequence = VideoLoader().load_video(
                 video, target_fps=fps, start_frame=start_frame, end_frame=end_frame
             )
-            out_dir = Path(out)
             out_dir.mkdir(parents=True, exist_ok=True)
-            for frame in sequence.frames:
+            total = len(sequence.frames)
+            # Cap UI updates to ~100 over the whole run so a long
+            # extraction doesn't flood the queue with per-frame updates.
+            step = max(1, total // 100)
+            for done, frame in enumerate(sequence.frames, start=1):
                 cv2.imwrite(str(out_dir / f"{frame.index:05d}.png"), frame.image)
+                if done % step == 0 or done == total:
+                    report_progress(done, total)
             write_json(
                 out_dir / "metadata.json", FrameSequenceMetadata.from_sequence(sequence).to_dict()
             )
-            return len(sequence.frames)
+            return total
 
         def on_success(count: int):
             self.frames_result_var.set(f"✓ Extracted {count} frames -> {out}")
+            self.frames_progress_var.set(f"{count}/{count}")
             self._log(f"[frames] extracted {count} frames to {out}")
             self.pose_frames_dir.set(out)
             pngs = sorted(Path(out).glob("*.png"))

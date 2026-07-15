@@ -26,6 +26,7 @@ never requires any optional extra to be installed.
 from __future__ import annotations
 
 import base64
+import json
 import queue
 import threading
 import tkinter as tk
@@ -34,6 +35,37 @@ from tkinter import filedialog, messagebox, ttk
 from typing import Callable
 
 from pose.pose_types import PoseLandmark
+from ui.i18n import LANGUAGE_LABELS, LANGUAGES, Translator
+
+
+def _settings_path() -> Path:
+    return Path.home() / ".config" / "animcv" / "settings.json"
+
+
+def load_saved_language() -> str:
+    """Persisted UI language, defaulting to English if unset/unreadable."""
+    try:
+        data = json.loads(_settings_path().read_text())
+        lang = data.get("language", "en")
+    except (OSError, ValueError):
+        return "en"
+    return lang if lang in LANGUAGES else "en"
+
+
+def save_language(language: str) -> None:
+    path = _settings_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        data = {}
+        if path.exists():
+            try:
+                data = json.loads(path.read_text())
+            except ValueError:
+                data = {}
+        data["language"] = language
+        path.write_text(json.dumps(data, indent=2))
+    except OSError:
+        pass  # a non-writable home just means the choice won't persist
 
 
 def frame_index_from_path(frame_path: str) -> int:
@@ -92,7 +124,16 @@ def clamp_frame_range(start: int, end: int, moved: str) -> tuple[int, int]:
 class MotionToolApp:
     def __init__(self, root: tk.Tk):
         self.root = root
-        root.title("AnimCV Motion Tool")
+
+        # i18n. self.tr(key, **fmt) resolves the current language; static
+        # widgets register a retranslate callback in self._translatable so
+        # a language switch updates their text in place (no rebuild, so no
+        # loaded state is lost). Dynamic strings (dialogs, result labels)
+        # call self.tr(...) at use time instead.
+        self.tr = Translator(load_saved_language())
+        self._translatable: list[Callable[[], None]] = []
+
+        root.title(self.tr("app.title"))
         root.geometry("1150x780")
 
         # Cross-tab convenience state -- each tab's fields are still
@@ -109,7 +150,7 @@ class MotionToolApp:
         self.mapping_frame_index = 0
         self._frame_photo = None  # keep a PhotoImage reference alive
 
-        self.status_var = tk.StringVar(value="Ready")
+        self.status_var = tk.StringVar(value=self.tr("status.ready"))
 
         # Background work is only ever handed results back to the main
         # thread through this queue -- macOS's Tk is not reliably safe to
@@ -131,6 +172,7 @@ class MotionToolApp:
         self._build_retarget_tab()
         self._build_optimize_tab()
         self._build_export_tab()
+        self._build_settings_tab()
 
         bottom = ttk.Frame(root)
         bottom.pack(fill="x", side="bottom")
@@ -139,6 +181,41 @@ class MotionToolApp:
         self.log_text.pack(fill="x", padx=6, pady=(0, 6))
 
         root.protocol("WM_DELETE_WINDOW", self._on_close)
+
+    # ---- i18n helpers ----------------------------------------------------
+
+    def _register(self, apply_text: Callable[[], None]) -> None:
+        """Register a callback that (re)applies current-language text to a
+        widget, and run it once now."""
+        self._translatable.append(apply_text)
+        apply_text()
+
+    def _tr_label(self, parent, key: str, **kw) -> ttk.Label:
+        label = ttk.Label(parent, **kw)
+        self._register(lambda: label.configure(text=self.tr(key)))
+        return label
+
+    def _tr_button(self, parent, key: str, command, **kw) -> ttk.Button:
+        button = ttk.Button(parent, command=command, **kw)
+        self._register(lambda: button.configure(text=self.tr(key)))
+        return button
+
+    def _register_tab(self, tab: ttk.Frame, key: str) -> None:
+        self._register(lambda: self.notebook.tab(tab, text=self.tr(key)))
+
+    def _retranslate(self) -> None:
+        self.root.title(self.tr("app.title"))
+        for apply_text in self._translatable:
+            apply_text()
+        # The mapping prompt is derived at runtime; refresh it so it
+        # follows the language too (safe no-op if the tab isn't in use).
+        if hasattr(self, "mapping_status_var"):
+            self._reset_pending_click()
+
+    def _set_language(self, language: str) -> None:
+        self.tr.set_language(language)
+        save_language(language)
+        self._retranslate()
 
     def _on_close(self) -> None:
         # Release the scrubber's held VideoCapture before tearing down.
@@ -188,12 +265,12 @@ class MotionToolApp:
         threading.Thread(target=worker, daemon=True).start()
 
     def _on_async_error(self, exc: Exception) -> None:
-        self.status_var.set("Ready")
+        self.status_var.set(self.tr("status.ready"))
         self._log(f"ERROR: {exc}")
-        messagebox.showerror("Error", str(exc))
+        messagebox.showerror(self.tr("dlg.error.title"), str(exc))
 
     def _on_async_success(self, result, on_success) -> None:
-        self.status_var.set("Ready")
+        self.status_var.set(self.tr("status.ready"))
         if on_success is not None:
             on_success(result)
 
@@ -201,13 +278,13 @@ class MotionToolApp:
         self,
         parent: ttk.Frame,
         row: int,
-        label: str,
+        label_key: str,
         browse_kind: str = "open_file",
         filetypes: list[tuple[str, str]] | None = None,
         default: str = "",
     ) -> tk.StringVar:
         var = tk.StringVar(value=default)
-        ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", padx=4, pady=3)
+        self._tr_label(parent, label_key).grid(row=row, column=0, sticky="w", padx=4, pady=3)
         ttk.Entry(parent, textvariable=var, width=55).grid(
             row=row, column=1, sticky="ew", padx=4, pady=3
         )
@@ -222,7 +299,7 @@ class MotionToolApp:
             if path:
                 var.set(path)
 
-        ttk.Button(parent, text="Browse...", command=browse).grid(row=row, column=2, padx=4, pady=3)
+        self._tr_button(parent, "btn.browse", browse).grid(row=row, column=2, padx=4, pady=3)
         return var
 
     # ---- 1. extract-frames ------------------------------------------------
@@ -232,7 +309,8 @@ class MotionToolApp:
 
     def _build_frames_tab(self) -> None:
         tab = ttk.Frame(self.notebook)
-        self.notebook.add(tab, text="1. Frames")
+        self.notebook.add(tab, text=self.tr("tab.frames"))
+        self._register_tab(tab, "tab.frames")
         tab.columnconfigure(1, weight=1)
 
         # Scrubber state. The numeric start/end entries stay authoritative
@@ -247,15 +325,13 @@ class MotionToolApp:
         self._pending_preview_index = 0
 
         self.video_path = self._path_row(
-            tab, 0, "Video file:", "open_file", [("Video", "*.mp4 *.mov *.avi *.mkv"), ("All", "*.*")]
+            tab, 0, "frames.video", "open_file", [("Video", "*.mp4 *.mov *.avi *.mkv"), ("All", "*.*")]
         )
 
         load_row = ttk.Frame(tab)
         load_row.grid(row=1, column=0, columnspan=3, sticky="w", padx=4, pady=(2, 0))
-        ttk.Button(load_row, text="Load Preview", command=self._on_load_preview).pack(side="left")
-        self.frames_preview_status = tk.StringVar(
-            value="Load a video to scrub it and set the reference range visually (optional)."
-        )
+        self._tr_button(load_row, "btn.load_preview", self._on_load_preview).pack(side="left")
+        self.frames_preview_status = tk.StringVar(value=self.tr("frames.preview_hint"))
         ttk.Label(load_row, textvariable=self.frames_preview_status).pack(side="left", padx=(8, 0))
 
         self.frames_preview_canvas = tk.Canvas(
@@ -273,7 +349,7 @@ class MotionToolApp:
         )
 
         # Start: slider (0..last) <-> numeric entry, both drive the preview.
-        ttk.Label(tab, text="Start frame:").grid(row=4, column=0, sticky="w", padx=4)
+        self._tr_label(tab, "frames.start").grid(row=4, column=0, sticky="w", padx=4)
         self.start_scale = ttk.Scale(
             tab, from_=0, to=0, orient="horizontal", command=lambda v: self._on_range_scale("start", v)
         )
@@ -285,7 +361,7 @@ class MotionToolApp:
         start_entry.bind("<Return>", lambda e: self._on_range_entry("start"))
         start_entry.bind("<FocusOut>", lambda e: self._on_range_entry("start"))
 
-        ttk.Label(tab, text="End frame:").grid(row=5, column=0, sticky="w", padx=4)
+        self._tr_label(tab, "frames.end").grid(row=5, column=0, sticky="w", padx=4)
         self.end_scale = ttk.Scale(
             tab, from_=0, to=0, orient="horizontal", command=lambda v: self._on_range_scale("end", v)
         )
@@ -297,21 +373,19 @@ class MotionToolApp:
         end_entry.bind("<Return>", lambda e: self._on_range_entry("end"))
         end_entry.bind("<FocusOut>", lambda e: self._on_range_entry("end"))
 
-        ttk.Label(
-            tab, text="(blank = whole video; both are source-video frame indices, end inclusive)"
-        ).grid(row=6, column=1, columnspan=2, sticky="w", padx=4)
+        self._tr_label(tab, "frames.range_hint").grid(
+            row=6, column=1, columnspan=2, sticky="w", padx=4
+        )
 
-        ttk.Label(tab, text="Target FPS (optional):").grid(row=7, column=0, sticky="w", padx=4)
+        self._tr_label(tab, "frames.target_fps").grid(row=7, column=0, sticky="w", padx=4)
         self.fps_var = tk.StringVar()
         ttk.Entry(tab, textvariable=self.fps_var, width=10).grid(row=7, column=1, sticky="w", padx=4)
 
-        self.frames_out = self._path_row(tab, 8, "Output frames dir:", "dir")
+        self.frames_out = self._path_row(tab, 8, "frames.out", "dir")
 
         extract_row = ttk.Frame(tab)
         extract_row.grid(row=9, column=0, columnspan=3, sticky="w", padx=4, pady=8)
-        ttk.Button(extract_row, text="Extract Frames", command=self._on_extract_frames).pack(
-            side="left"
-        )
+        self._tr_button(extract_row, "btn.extract_frames", self._on_extract_frames).pack(side="left")
         self.frames_progress_var = tk.StringVar(value="")
         ttk.Label(extract_row, textvariable=self.frames_progress_var).pack(side="left", padx=(10, 0))
 
@@ -331,7 +405,7 @@ class MotionToolApp:
     def _on_load_preview(self) -> None:
         video = self.video_path.get().strip()
         if not video:
-            messagebox.showwarning("Missing input", "Choose a video file first.")
+            messagebox.showwarning(self.tr("dlg.missing_input.title"), self.tr("dlg.choose_video"))
             return
 
         from mediaio.video_loader import VideoLoader
@@ -342,7 +416,7 @@ class MotionToolApp:
         try:
             scrubber = VideoLoader().open_scrubber(video)
         except (FileNotFoundError, ValueError) as exc:
-            messagebox.showerror("Could not open video", str(exc))
+            messagebox.showerror(self.tr("dlg.open_video_fail.title"), str(exc))
             return
         self._frames_scrubber = scrubber
 
@@ -362,8 +436,13 @@ class MotionToolApp:
         self._range_sync_guard = False
 
         self.frames_preview_status.set(
-            f"✓ {scrubber.frame_count} frames @ {scrubber.fps:.2f} fps, "
-            f"{scrubber.width}x{scrubber.height}"
+            self.tr(
+                "frames.preview_status",
+                count=scrubber.frame_count,
+                fps=scrubber.fps,
+                w=scrubber.width,
+                h=scrubber.height,
+            )
         )
         self._render_preview_frame(start)
 
@@ -431,7 +510,7 @@ class MotionToolApp:
             canvas.create_text(
                 self._PREVIEW_W // 2,
                 self._PREVIEW_H // 2,
-                text=f"(no frame at index {index})",
+                text=self.tr("frames.preview_none", index=index),
                 fill="#999999",
             )
             self.frames_preview_info.set("")
@@ -455,14 +534,19 @@ class MotionToolApp:
         canvas.create_image(self._PREVIEW_W // 2, self._PREVIEW_H // 2, image=photo)
         timestamp = index / scrubber.fps if scrubber.fps > 0 else 0.0
         self.frames_preview_info.set(
-            f"Frame {index} / {max(scrubber.frame_count - 1, 0)}   (t = {timestamp:.2f}s)"
+            self.tr(
+                "frames.preview_info",
+                index=index,
+                last=max(scrubber.frame_count - 1, 0),
+                t=timestamp,
+            )
         )
 
     def _on_extract_frames(self) -> None:
         video = self.video_path.get().strip()
         out = self.frames_out.get().strip()
         if not video or not out:
-            messagebox.showwarning("Missing input", "Video file and output directory are required.")
+            messagebox.showwarning(self.tr("dlg.missing_input.title"), self.tr("dlg.frames_missing"))
             return
 
         # Warn before writing into a directory that already has files --
@@ -472,9 +556,8 @@ class MotionToolApp:
         out_dir = Path(out)
         if out_dir.exists() and any(out_dir.iterdir()):
             if not messagebox.askyesno(
-                "Output folder not empty",
-                f"'{out}' already contains files. Extracting here may overwrite existing "
-                "frames and mix old ones in. Continue?",
+                self.tr("dlg.output_not_empty.title"),
+                self.tr("dlg.output_not_empty.msg", out=out),
             ):
                 return
 
@@ -485,7 +568,7 @@ class MotionToolApp:
         start_frame = int(start_text) if start_text else None
         end_frame = int(end_text) if end_text else None
 
-        self.frames_progress_var.set("preparing…")
+        self.frames_progress_var.set(self.tr("frames.progress.preparing"))
 
         def report_progress(done: int, total: int) -> None:
             # Worker thread -> main thread, same queue the async result
@@ -517,7 +600,7 @@ class MotionToolApp:
             return total
 
         def on_success(count: int):
-            self.frames_result_var.set(f"✓ Extracted {count} frames -> {out}")
+            self.frames_result_var.set(self.tr("frames.result", count=count, out=out))
             self.frames_progress_var.set(f"{count}/{count}")
             self._log(f"[frames] extracted {count} frames to {out}")
             self.pose_frames_dir.set(out)
@@ -525,48 +608,49 @@ class MotionToolApp:
             if pngs:
                 self.mapping_frame_path.set(str(pngs[0]))
 
-        self._run_async(work, on_success, "Extracting frames...")
+        self._run_async(work, on_success, self.tr("busy.extracting"))
 
     # ---- 2. estimate-pose ---------------------------------------------------
 
     def _build_pose_tab(self) -> None:
         tab = ttk.Frame(self.notebook)
-        self.notebook.add(tab, text="2. Pose")
+        self.notebook.add(tab, text=self.tr("tab.pose"))
+        self._register_tab(tab, "tab.pose")
         tab.columnconfigure(1, weight=1)
 
-        self.pose_frames_dir = self._path_row(tab, 0, "Frames directory:", "dir")
+        self.pose_frames_dir = self._path_row(tab, 0, "pose.frames_dir", "dir")
         self.pose_config_path = self._path_row(
-            tab, 1, "MMPose config:", "open_file", [("Python config", "*.py"), ("All", "*.*")]
+            tab, 1, "pose.config", "open_file", [("Python config", "*.py"), ("All", "*.*")]
         )
         self.pose_checkpoint_path = self._path_row(
-            tab, 2, "MMPose checkpoint:", "open_file", [("Checkpoint", "*.pth"), ("All", "*.*")]
+            tab, 2, "pose.checkpoint", "open_file", [("Checkpoint", "*.pth"), ("All", "*.*")]
         )
         default_row = ttk.Frame(tab)
         default_row.grid(row=3, column=0, columnspan=3, sticky="w", padx=4, pady=(0, 4))
-        ttk.Button(
-            default_row, text="Use Default Model (RTMPose-tiny)", command=self._on_use_default_pose_model
+        self._tr_button(
+            default_row, "btn.use_default_model", self._on_use_default_pose_model
         ).pack(side="left")
         self.pose_default_model_status_var = tk.StringVar()
         ttk.Label(default_row, textvariable=self.pose_default_model_status_var).pack(
             side="left", padx=(8, 0)
         )
 
-        ttk.Label(tab, text="Device:").grid(row=4, column=0, sticky="w", padx=4)
+        self._tr_label(tab, "pose.device").grid(row=4, column=0, sticky="w", padx=4)
         self.pose_device = tk.StringVar(value="cpu")
         ttk.Combobox(
             tab, textvariable=self.pose_device, values=["cpu", "cuda", "mps"], width=10, state="readonly"
         ).grid(row=4, column=1, sticky="w", padx=4)
 
-        ttk.Label(tab, text="Visibility threshold:").grid(row=5, column=0, sticky="w", padx=4)
+        self._tr_label(tab, "pose.visibility").grid(row=5, column=0, sticky="w", padx=4)
         self.pose_visibility = tk.StringVar(value="0.3")
         ttk.Entry(tab, textvariable=self.pose_visibility, width=10).grid(
             row=5, column=1, sticky="w", padx=4
         )
 
         self.pose_depth_checkpoint = self._path_row(
-            tab, 6, "Depth checkpoint (optional):", "open_file", [("Checkpoint", "*.pth"), ("All", "*.*")]
+            tab, 6, "pose.depth_checkpoint", "open_file", [("Checkpoint", "*.pth"), ("All", "*.*")]
         )
-        ttk.Label(tab, text="Depth encoder:").grid(row=7, column=0, sticky="w", padx=4)
+        self._tr_label(tab, "pose.depth_encoder").grid(row=7, column=0, sticky="w", padx=4)
         self.pose_depth_encoder = tk.StringVar(value="vits")
         ttk.Combobox(
             tab,
@@ -575,17 +659,15 @@ class MotionToolApp:
             width=10,
             state="readonly",
         ).grid(row=7, column=1, sticky="w", padx=4)
-        ttk.Label(tab, text="Depth device:").grid(row=8, column=0, sticky="w", padx=4)
+        self._tr_label(tab, "pose.depth_device").grid(row=8, column=0, sticky="w", padx=4)
         self.pose_depth_device = tk.StringVar(value="auto")
         ttk.Entry(tab, textvariable=self.pose_depth_device, width=10).grid(
             row=8, column=1, sticky="w", padx=4
         )
 
-        self.pose_out = self._path_row(
-            tab, 9, "Output pose.json:", "save_file", [("JSON", "*.json")]
-        )
+        self.pose_out = self._path_row(tab, 9, "pose.out", "save_file", [("JSON", "*.json")])
 
-        ttk.Button(tab, text="Run Pose Estimation", command=self._on_estimate_pose).grid(
+        self._tr_button(tab, "btn.run_pose", self._on_estimate_pose).grid(
             row=10, column=1, sticky="w", pady=8
         )
         self.pose_result_var = tk.StringVar()

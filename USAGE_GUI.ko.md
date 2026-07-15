@@ -22,15 +22,43 @@
 
 ## 2. Pose (자세 추정)
 1단계에서 만든 프레임 폴더와 MMPose 모델 설정 파일 + 체크포인트(`.py` + `.pth`)를
-지정합니다. 따로 받아둔 게 없다면 **Use Default Model (RTMPose-tiny)** 버튼
-하나로 자동으로 채울 수 있습니다 — 체크포인트(~13MB)는 최초 1회만 로컬에
-캐시되고 이후엔 재사용됩니다. 다른 모델을 쓰고 싶으면
-[MMPose model zoo](https://github.com/open-mmlab/mmpose)에서 서로 맞는
-config + 체크포인트 쌍을 받아서 직접 지정하세요. GPU가 있고
-CUDA가 맞으면 device를 그에 맞게, 아니면 `cpu`로 둡니다. Depth Anything V2
-체크포인트(`.pth`)를 추가로 지정하면 나중 단계에서 2D 근사 대신 실제 3D
-정보를 활용한 리타게팅이 됩니다 — device는 `auto`로 두세요. **Run Pose
-Estimation**을 누르면 `pose.json`이 만들어집니다.
+지정합니다. 이 앱에는 MMPose 자체가 포함되어 있지만, 검증된 기본 모델을 쓰거나
+호환되는 다른 모델을 직접 선택할 수 있습니다.
+
+### 가장 빠른 방법: 검증된 기본 모델
+
+1. **Use Default Model (RTMPose-tiny)** 버튼을 누릅니다. MMPose에 포함된
+   서로 맞는 config와 checkpoint 이름이 자동으로 채워집니다.
+2. 호환되는 CUDA 환경이 없다면 Device는 `cpu`로 둡니다.
+3. **Run Pose Estimation**을 누릅니다. 첫 실행 때만 약 13MB 체크포인트를
+   OpenMMLab에서 `~/.cache/animcv/models`에 내려받고, 이후에는 그 파일을
+   자동으로 재사용합니다.
+
+### 다른 MMPose 모델을 직접 사용할 때
+
+1. 공식 [MMPose model zoo](https://github.com/open-mmlab/mmpose)에서
+   **top-down 2D body keypoint** 모델 중 **COCO 17-keypoint** 스키마로 학습된
+   모델을 고릅니다. AnimCV는 이 스키마를 자체 신체 랜드마크로 변환하고,
+   프레임마다 신뢰도가 가장 높은 한 사람만 처리합니다.
+2. 하나의 모델 항목에서 함께 명시된 config와 checkpoint를 한 쌍으로 받습니다.
+   서로 다른 행, 모델 크기, 입력 해상도, 데이터셋의 파일을 섞으면 안 됩니다.
+3. 체크포인트 파일(`.pth`)은 예를 들어 `AnimCV-models/`처럼 사용자가 관리하는
+   고정 폴더에 보관합니다. config는 공식 디렉터리 구조와 그것이 불러오는
+   `_base_` 파일까지 함께 유지해야 합니다. config 파일 하나만 복사하면 로드에
+   실패할 수 있습니다. 설치된 MMPose에 이미 포함된 config를 지정해도 됩니다.
+4. Pose 탭에서 해당 config `.py`와 checkpoint `.pth`를 각각 찾아 지정합니다.
+   Device는 `cpu`를 사용하거나, 설치된 PyTorch/CUDA 조합이 지원될 때만 `cuda`를
+   사용합니다.
+5. 전체 영상을 처리하기 전에 짧은 프레임 구간으로 먼저 실행하여 감지된
+   랜드마크가 자연스러운지 확인합니다.
+
+로드에 실패하면 먼저 config가 `_base_` 파일을 여전히 찾는지, checkpoint가
+정확히 같은 model-zoo 항목에서 받은 것인지를 확인하세요. 임의의 pose/hand/face,
+bottom-up 또는 COCO가 아닌 체크포인트는 이 파이프라인과 서로 바꿔 쓸 수 없습니다.
+
+Depth Anything V2 체크포인트(`.pth`)를 추가로 지정하면 나중 단계에서 2D 근사
+대신 실제 3D 정보를 활용한 리타게팅이 됩니다 — device는 `auto`로 두세요.
+**Run Pose Estimation**을 누르면 `pose.json`이 만들어집니다.
 
 ## 3. Rig (리그 파싱)
 캐릭터 리그 파일(`.fbx`, 또는 Assimp가 읽을 수 있는 형식)을 지정하고

@@ -22,16 +22,47 @@ original-video frame indices; leave it blank/full for the whole video.
 
 ## 2. Pose
 Point at the frames folder from step 1, plus an MMPose model config
-and checkpoint file (`.py` + `.pth`). Don't have one? Click **Use
-Default Model (RTMPose-tiny)** to fill both in automatically — the
-checkpoint (~13MB) downloads once to a local cache and is reused after
-that. To use a different model instead, download a matching config +
-checkpoint pair from the
-[MMPose model zoo](https://github.com/open-mmlab/mmpose) and point at
-those files directly. Device is `cpu` unless you have a matching CUDA
-GPU. Optionally set a Depth Anything V2 checkpoint (`.pth`) to get
-real 3D-aware retargeting later instead of a 2D approximation — leave
-its device on `auto`. **Run Pose Estimation** writes `pose.json`.
+and checkpoint file (`.py` + `.pth`). The app bundles MMPose itself,
+but lets you use its tested default or choose another compatible model.
+
+### Fastest option: the tested default
+
+1. Click **Use Default Model (RTMPose-tiny)**. It fills in the matching
+   config shipped with MMPose and the matching checkpoint name.
+2. Leave Device as `cpu` unless you have a compatible CUDA setup.
+3. Click **Run Pose Estimation**. On the first run the ~13 MB checkpoint
+   downloads from OpenMMLab into `~/.cache/animcv/models`; later runs
+   reuse that copy automatically.
+
+### Use another MMPose model
+
+1. Open the official [MMPose model zoo](https://github.com/open-mmlab/mmpose)
+   and choose a **top-down, 2D body keypoint** model trained on the
+   **COCO 17-keypoint** schema. AnimCV converts that schema into its
+   own body landmarks and processes only the highest-confidence person
+   in each frame.
+2. Obtain the config and checkpoint explicitly listed as a pair for
+   one model. Do not mix files from different rows, model sizes, input
+   resolutions, or datasets.
+3. Save the checkpoint (`.pth`) in a stable folder you control, such as
+   `AnimCV-models/`. For the config, preserve its official relative
+   directory structure and any `_base_` files it imports; copying only
+   a single config file can make it fail to load. A config already
+   included with your MMPose installation is also fine.
+4. In the Pose tab, browse to that config `.py` and checkpoint `.pth`.
+   Use `cpu`, or `cuda` only when your installed PyTorch/CUDA setup
+   supports it.
+5. Run a short frame range first and confirm that the detected landmarks
+   look sensible before processing a full video.
+
+If loading fails, first verify that the config still finds its `_base_`
+files and that the checkpoint came from the exact same model-zoo entry.
+An arbitrary pose, hand, face, bottom-up, or non-COCO checkpoint is not
+interchangeable with this pipeline.
+
+Optionally set a Depth Anything V2 checkpoint (`.pth`) to get real
+3D-aware retargeting later instead of a 2D approximation — leave its
+device on `auto`. **Run Pose Estimation** writes `pose.json`.
 
 ## 3. Rig
 Point at your character rig file (`.fbx`, or anything Assimp can

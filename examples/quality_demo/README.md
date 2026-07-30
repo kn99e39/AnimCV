@@ -3,38 +3,49 @@
 This test uses the five-frame MMPose PoseTrack test clip in `source.mp4`.
 It is intentionally a difficult input: a broadcast soccer scene with several
 people, partial occlusion, motion blur, and a player lying on the ground.
+Retargeted onto `examples/BaseRig.fbx` (a real 53-bone UE-mannequin-style
+skeleton) via `mapping.json` (`upperarm_l`/`lowerarm_l`, left arm only) —
+this demo previously used a hand-built 3-bone placeholder armature.
 
 ## Results
 
 With the default visibility threshold of `0.3`, every left-arm landmark used
-by `mapping.json` was below the threshold in every frame:
+by `mapping.json` was below the threshold in every frame. `retarget`'s
+quality gate now correctly rejects this input by default:
 
-| Landmark | Mean confidence | Visible frames |
-| --- | ---: | ---: |
-| left_shoulder | 0.205 | 0 / 5 |
-| left_elbow | 0.136 | 0 / 5 |
-| left_wrist | 0.161 | 0 / 5 |
+```
+retarget input quality check failed (upperarm_l: visibility 0% is below 60%,
+mean confidence 0.14 is below 0.30; lowerarm_l: visibility 0% is below 60%,
+mean confidence 0.13 is below 0.30)
+```
 
-Despite that, the current retargeter wrote two static tracks and the optimizer
-reduced each from five keys to two. This exposes a quality/control-flow issue:
-low-confidence or invisible landmarks are not surfaced as an unusable mapping
-before retargeting.
+(`source_quality_report.json` has the exact per-mapping numbers.) The
+`animation.json` / `animation_optimized.json` artifacts here were produced
+with `--skip-quality-check` specifically to reproduce what the *old*,
+pre-quality-gate behavior looked like: the retargeter wrote two static
+tracks (five identical keyframes each) and the optimizer collapsed each to
+2 keys. That gap between "obviously bad input" and "silently accepted
+output" is exactly why the quality gate exists now — see the
+"Additional crowded-scene check" section below for the current, correct
+behavior on an equally bad input.
 
-At a deliberately low threshold of `0.1`, the same landmarks become visible,
-but the inferred rotations are unstable: the maximum change from the first
-frame is 164.993 degrees for `upper_arm.L` and 67.140 degrees for
-`forearm.L`. The optimizer correctly keeps all five keys because it cannot
-safely simplify that noisy signal.
+At a deliberately low `estimate-pose --visibility-threshold 0.1`, the same
+landmarks are marked visible (this only affects pose estimation's own
+visible/invisible flag, not confidence values or retarget's own gate, so
+`--skip-quality-check` is still used here too), but the inferred rotations
+are unstable: `optimize` keeps all 5 keys for `upperarm_l` (0 removed) and
+4 of 5 for `lowerarm_l` (1 removed, max_error 0.581) because the signal is
+too noisy to safely simplify — see `animation_threshold_010_optimized.json`.
 
-Artifacts without the suffix use the default threshold. Artifacts with the
-`threshold_010` suffix use the low threshold. The raw input, extracted frames,
-pose results, MotionGraphs, and raw/optimized animations are all retained for
-inspection.
+Artifacts without a suffix use the default threshold; artifacts with the
+`threshold_010` suffix use the low one. The raw input, extracted frames,
+pose results, MotionGraphs, and raw/optimized animations are all retained
+for inspection. `animated_rig_low_confidence.blend`/`.fbx` are the
+Blender-exported result of the default-threshold (`--skip-quality-check`)
+animation, for visual inspection of just how meaningless it is.
 
 This is a robustness test, not a claim that RTMPose should produce a usable
-single-person motion capture from crowded sports footage. It demonstrates
-that AnimCV needs an explicit quality gate before producing a seemingly valid
-animation from low-confidence landmarks.
+single-person motion capture from crowded sports footage.
 
 ## Additional crowded-scene check
 
@@ -43,9 +54,7 @@ demo clip. It is also a distant multi-person scene. Its generated
 `official_pose.json` / `official_motion.json` have mean confidences of 0.04,
 0.10, and 0.14 for left shoulder, elbow, and wrist respectively; all are
 invisible at the default threshold. `official_retarget.log` records that the
-quality gate rejected the retarget operation and no `official_animation.json`
-was written. The root-level `QUALITY_AUDIT.md` tracks this and the remaining
-production-readiness gaps.
-
-`source_quality_report.json` is retained for the sports-input rejection and
-shows the exact failed visibility and confidence metrics for each mapped bone.
+quality gate rejected the retarget operation (no `--skip-quality-check` was
+passed here) and no `official_animation.json` was written — this is the
+gate working as intended, unmodified. The root-level `QUALITY_AUDIT.md`
+tracks this and the remaining production-readiness gaps.

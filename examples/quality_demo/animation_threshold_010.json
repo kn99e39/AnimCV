@@ -2,69 +2,69 @@
   "name": "Generated_Motion",
   "fps": 24.0,
   "tracks": {
-    "upper_arm.L": {
-      "bone_name": "upper_arm.L",
+    "upperarm_l": {
+      "bone_name": "upperarm_l",
       "samples": [
         {
           "frame_index": 0,
-          "bone_name": "upper_arm.L",
+          "bone_name": "upperarm_l",
           "location": null,
           "rotation": [
             0.0,
             0.0,
             0.0,
-            1.0
+            0.9999999999999999
           ],
           "scale": null,
           "confidence": 0.16826710104942322
         },
         {
           "frame_index": 1,
-          "bone_name": "upper_arm.L",
+          "bone_name": "upperarm_l",
           "location": null,
           "rotation": [
-            -8.326672684688674e-17,
-            4.333706865589093e-08,
-            -0.9914365641260212,
-            0.1305892006024526
+            0.0008295060450343054,
+            -0.009173559384674717,
+            -0.009526493151393176,
+            0.9999121979734887
           ],
           "scale": null,
           "confidence": 0.1503657102584839
         },
         {
           "frame_index": 2,
-          "bone_name": "upper_arm.L",
+          "bone_name": "upperarm_l",
           "location": null,
           "rotation": [
-            0.0,
-            5.8085120047124406e-11,
-            -0.0013288327317140525,
-            0.9999991171013958
+            0.05975636573310655,
+            -0.6608493969954287,
+            -0.6862742138124287,
+            0.29788412965662014
           ],
           "scale": null,
           "confidence": 0.13406330347061157
         },
         {
           "frame_index": 3,
-          "bone_name": "upper_arm.L",
+          "bone_name": "upperarm_l",
           "location": null,
           "rotation": [
-            -8.326672684688674e-17,
-            1.6384895135113098e-08,
-            -0.3748427074930888,
-            0.9270884233120649
+            0.03245745900574826,
+            -0.3589490751119927,
+            -0.37275890004766876,
+            0.8550747787570318
           ],
           "scale": null,
           "confidence": 0.11324002593755722
         },
         {
           "frame_index": 4,
-          "bone_name": "upper_arm.L",
+          "bone_name": "upperarm_l",
           "location": null,
           "rotation": [
-            -4.85722573273506e-17,
-            3.422436412048313e-08,
-            -0.7829621836135388,
+            0.04901202059279002,
+            -0.5420270101253525,
+            -0.562880380810048,
             0.6220693040418551
           ],
           "scale": null,
@@ -72,69 +72,69 @@
         }
       ]
     },
-    "forearm.L": {
-      "bone_name": "forearm.L",
+    "lowerarm_l": {
+      "bone_name": "lowerarm_l",
       "samples": [
         {
           "frame_index": 0,
-          "bone_name": "forearm.L",
+          "bone_name": "lowerarm_l",
           "location": null,
           "rotation": [
             0.0,
             0.0,
             0.0,
-            1.0
+            1.0000000000000002
           ],
           "scale": null,
           "confidence": 0.16826710104942322
         },
         {
           "frame_index": 1,
-          "bone_name": "forearm.L",
+          "bone_name": "lowerarm_l",
           "location": null,
           "rotation": [
-            0.0,
-            -0.5529523175743265,
-            0.0,
-            0.8332128986574687
+            0.2055339672408432,
+            -0.2553050867247111,
+            0.020822144971024303,
+            0.9445324448008832
           ],
           "scale": null,
           "confidence": 0.1503657102584839
         },
         {
           "frame_index": 2,
-          "bone_name": "forearm.L",
+          "bone_name": "lowerarm_l",
           "location": null,
           "rotation": [
-            0.0,
-            -0.34313097373384505,
-            0.0,
-            0.9392875677152676
+            0.3440538558516557,
+            -0.4273682870298977,
+            0.03485525706798817,
+            0.835325327384166
           ],
           "scale": null,
           "confidence": 0.13406330347061157
         },
         {
           "frame_index": 3,
-          "bone_name": "forearm.L",
+          "bone_name": "lowerarm_l",
           "location": null,
           "rotation": [
-            0.0,
-            -0.5526732318655224,
-            0.0,
-            0.8333980434218204
+            0.34186357261809164,
+            -0.4246476153161,
+            0.03463336481519369,
+            0.8376181890125847
           ],
           "scale": null,
           "confidence": 0.11324002593755722
         },
         {
           "frame_index": 4,
-          "bone_name": "forearm.L",
+          "bone_name": "lowerarm_l",
           "location": null,
           "rotation": [
-            0.0,
-            -0.5342007306827395,
-            0.0,
+            0.334318934352751,
+            -0.41527600364287104,
+            0.03386903591217211,
             0.8453576635590566
           ],
           "scale": null,

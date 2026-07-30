@@ -2,12 +2,12 @@
   "name": "Generated_Motion",
   "fps": 24.0,
   "tracks": {
-    "upper_arm.L": {
-      "bone_name": "upper_arm.L",
+    "upperarm_l": {
+      "bone_name": "upperarm_l",
       "samples": [
         {
           "frame_index": 0,
-          "bone_name": "upper_arm.L",
+          "bone_name": "upperarm_l",
           "location": null,
           "rotation": [
             0.0,
@@ -20,7 +20,7 @@
         },
         {
           "frame_index": 4,
-          "bone_name": "upper_arm.L",
+          "bone_name": "upperarm_l",
           "location": null,
           "rotation": [
             0.0,
@@ -33,12 +33,12 @@
         }
       ]
     },
-    "forearm.L": {
-      "bone_name": "forearm.L",
+    "lowerarm_l": {
+      "bone_name": "lowerarm_l",
       "samples": [
         {
           "frame_index": 0,
-          "bone_name": "forearm.L",
+          "bone_name": "lowerarm_l",
           "location": null,
           "rotation": [
             0.0,
@@ -51,7 +51,7 @@
         },
         {
           "frame_index": 4,
-          "bone_name": "forearm.L",
+          "bone_name": "lowerarm_l",
           "location": null,
           "rotation": [
             0.0,

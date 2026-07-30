@@ -1,9 +1,9 @@
 {
   "passed": false,
-  "summary": "retarget input quality check failed (upper_arm.L: visibility 0% is below 60%, mean confidence 0.14 is below 0.30; forearm.L: visibility 0% is below 60%, mean confidence 0.13 is below 0.30)",
+  "summary": "retarget input quality check failed (upperarm_l: visibility 0% is below 60%, mean confidence 0.14 is below 0.30; lowerarm_l: visibility 0% is below 60%, mean confidence 0.13 is below 0.30)",
   "mappings": [
     {
-      "target_bone": "upper_arm.L",
+      "target_bone": "upperarm_l",
       "source_names": [
         "left_shoulder",
         "left_elbow"
@@ -18,7 +18,7 @@
       ]
     },
     {
-      "target_bone": "forearm.L",
+      "target_bone": "lowerarm_l",
       "source_names": [
         "left_elbow",
         "left_wrist"

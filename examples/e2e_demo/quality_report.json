@@ -3,7 +3,7 @@
   "summary": "retarget input quality passed",
   "mappings": [
     {
-      "target_bone": "upper_arm.L",
+      "target_bone": "upperarm_l",
       "source_names": [
         "left_shoulder",
         "left_elbow"

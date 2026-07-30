@@ -1,10 +1,10 @@
 {
-  "rig_id": "demo_rig",
+  "rig_id": "BaseRig",
   "created_from_frame": 0,
-  "user_notes": "Mapping for the generated E2E demo armature.",
+  "user_notes": "Mapping for examples/BaseRig.fbx (UE-mannequin-style skeleton).",
   "entries": [
     {
-      "target_bone": "upper_arm.L",
+      "target_bone": "upperarm_l",
       "source_type": "landmark",
       "source_names": ["left_shoulder", "left_elbow"],
       "mapping_mode": "direction",
@@ -13,7 +13,7 @@
       "locked": false
     },
     {
-      "target_bone": "forearm.L",
+      "target_bone": "lowerarm_l",
       "source_type": "landmark",
       "source_names": ["left_elbow", "left_wrist"],
       "mapping_mode": "direction",

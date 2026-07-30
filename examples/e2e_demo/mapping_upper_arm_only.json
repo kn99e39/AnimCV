@@ -1,10 +1,10 @@
 {
-  "rig_id": "demo_rig",
+  "rig_id": "BaseRig",
   "created_from_frame": 0,
   "user_notes": "Quality-gate passing subset: only the confidently detected upper-arm direction.",
   "entries": [
     {
-      "target_bone": "upper_arm.L",
+      "target_bone": "upperarm_l",
       "source_type": "landmark",
       "source_names": ["left_shoulder", "left_elbow"],
       "mapping_mode": "direction",

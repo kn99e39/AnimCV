@@ -147,6 +147,13 @@ fi
 echo "[11/11] Running PyInstaller (GUI entry point: src/app/gui.py)..."
 rm -rf build_output/mac_gui build_output/_work_gui motion-tool-gui.spec
 
+# PyInstaller's macOS bundle is code-signed. Its signature records every
+# bundled file, including any source-tree __pycache__ files copied by
+# --add-data below. Remove those caches *before* PyInstaller scans src/ and
+# scripts/; deleting them afterwards invalidates the bundle's resource seal
+# and macOS refuses to launch the app.
+find src scripts -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+
 # --windowed is what makes PyInstaller emit an actual .app bundle on
 # macOS (--onedir alone just gives a plain Unix binary in a folder, the
 # same as Linux) -- but a windowed .app has no attached terminal, so
@@ -182,7 +189,6 @@ rm -rf build_output/mac_gui build_output/_work_gui motion-tool-gui.spec
   src/app/gui.py
 
 rm -rf build_output/_work_gui motion-tool-gui.spec
-find build_output/mac_gui -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 
 cp USAGE_GUI.md USAGE_GUI.ko.md build_output/mac_gui/
 

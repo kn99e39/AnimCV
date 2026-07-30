@@ -1,0 +1,36 @@
+{
+  "passed": false,
+  "summary": "retarget input quality check failed (upper_arm.L: visibility 0% is below 60%, mean confidence 0.14 is below 0.30; forearm.L: visibility 0% is below 60%, mean confidence 0.13 is below 0.30)",
+  "mappings": [
+    {
+      "target_bone": "upper_arm.L",
+      "source_names": [
+        "left_shoulder",
+        "left_elbow"
+      ],
+      "mapping_mode": "direction",
+      "visibility_rate": 0.0,
+      "mean_confidence": 0.13623453825712203,
+      "max_direction_step_degrees": null,
+      "failures": [
+        "visibility 0% is below 60%",
+        "mean confidence 0.14 is below 0.30"
+      ]
+    },
+    {
+      "target_bone": "forearm.L",
+      "source_names": [
+        "left_elbow",
+        "left_wrist"
+      ],
+      "mapping_mode": "direction",
+      "visibility_rate": 0.0,
+      "mean_confidence": 0.13498637676239014,
+      "max_direction_step_degrees": null,
+      "failures": [
+        "visibility 0% is below 60%",
+        "mean confidence 0.13 is below 0.30"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "rig_id": "demo_rig",
+  "created_from_frame": 0,
+  "user_notes": "Mapping for the generated E2E demo armature.",
+  "entries": [
+    {
+      "target_bone": "upper_arm.L",
+      "source_type": "landmark",
+      "source_names": ["left_shoulder", "left_elbow"],
+      "mapping_mode": "direction",
+      "weight": 1.0,
+      "axis_hint": "+Y",
+      "locked": false
+    },
+    {
+      "target_bone": "forearm.L",
+      "source_type": "landmark",
+      "source_names": ["left_elbow", "left_wrist"],
+      "mapping_mode": "direction",
+      "weight": 1.0,
+      "axis_hint": "+Y",
+      "locked": false
+    }
+  ],
+  "ik_chains": []
+}

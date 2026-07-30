@@ -13,6 +13,7 @@ from ui.gui_app import (
     fit_scale,
     frame_index_from_path,
     nearest_landmark,
+    normalized_box,
 )
 
 
@@ -102,3 +103,8 @@ def test_clamp_frame_range_dragging_start_past_end_pushes_end_up():
 def test_clamp_frame_range_dragging_end_below_start_pulls_start_down():
     # moved handle (end) wins -- start drops to meet it
     assert clamp_frame_range(20, 5, "end") == (5, 5)
+
+
+def test_normalized_box_orders_drag_coordinates_and_rejects_click():
+    assert normalized_box(20, 30, 5, 10) == (5, 10, 20, 30)
+    assert normalized_box(5, 5, 5, 8) is None

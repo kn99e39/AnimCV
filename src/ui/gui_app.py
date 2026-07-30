@@ -121,6 +121,13 @@ def clamp_frame_range(start: int, end: int, moved: str) -> tuple[int, int]:
     return end, end
 
 
+def normalized_box(start_x: int, start_y: int, end_x: int, end_y: int) -> tuple[int, int, int, int] | None:
+    """Normalize a drag into an xyxy box; a zero-area click is invalid."""
+    x1, x2 = sorted((start_x, end_x))
+    y1, y2 = sorted((start_y, end_y))
+    return (x1, y1, x2, y2) if x1 < x2 and y1 < y2 else None
+
+
 class MotionToolApp:
     def __init__(self, root: tk.Tk):
         self.root = root
@@ -675,6 +682,50 @@ class MotionToolApp:
             row=11, column=0, columnspan=3, sticky="w", padx=4
         )
 
+        self.pose_subject_box = tk.StringVar()
+        ttk.Label(tab, text="Tracked subject box:").grid(row=12, column=0, sticky="w", padx=4)
+        ttk.Entry(tab, textvariable=self.pose_subject_box, width=30).grid(row=12, column=1, sticky="w", padx=4)
+        ttk.Button(tab, text="Select on first frame", command=self._on_select_pose_subject).grid(row=12, column=2, padx=4)
+        self.pose_detector_config = self._path_row(tab, 13, "Person detector config:", "open_file", [("Python config", "*.py")])
+        self.pose_detector_checkpoint = self._path_row(tab, 14, "Person detector checkpoint:", "open_file", [("Checkpoint", "*.pth")])
+
+    def _on_select_pose_subject(self) -> None:
+        frames_dir = self.pose_frames_dir.get().strip()
+        frames = sorted(Path(frames_dir).glob("*.png")) if frames_dir else []
+        if not frames:
+            messagebox.showwarning("Missing frames", "Extract frames first, then select a subject.")
+            return
+        try:
+            photo = tk.PhotoImage(file=str(frames[0]))
+        except tk.TclError as exc:
+            messagebox.showerror("Could not load frame", str(exc))
+            return
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Drag over the subject to track")
+        canvas = tk.Canvas(dialog, width=photo.width(), height=photo.height(), cursor="crosshair")
+        canvas.pack()
+        canvas.create_image(0, 0, anchor="nw", image=photo)
+        canvas.image = photo  # keep the image alive for the dialog lifetime
+        state: dict[str, int | None] = {"x": None, "y": None, "rectangle": None}
+
+        def on_start(event):
+            state["x"], state["y"] = event.x, event.y
+            state["rectangle"] = canvas.create_rectangle(event.x, event.y, event.x, event.y, outline="#00ff66", width=2)
+
+        def on_drag(event):
+            if state["rectangle"] is not None:
+                canvas.coords(state["rectangle"], state["x"], state["y"], event.x, event.y)
+
+        def on_finish(event):
+            box = normalized_box(state["x"], state["y"], event.x, event.y)
+            if box is not None:
+                self.pose_subject_box.set(",".join(map(str, box)))
+                dialog.destroy()
+
+        canvas.bind("<ButtonPress-1>", on_start)
+        canvas.bind("<B1-Motion>", on_drag)
+        canvas.bind("<ButtonRelease-1>", on_finish)
+
     def _on_use_default_pose_model(self) -> None:
         def work():
             from pose.default_model import get_default_pose_checkpoint_path, get_default_pose_config_path
@@ -709,6 +760,20 @@ class MotionToolApp:
         depth_checkpoint = self.pose_depth_checkpoint.get().strip() or None
         depth_encoder = self.pose_depth_encoder.get()
         depth_device = self.pose_depth_device.get() or "auto"
+        subject_box_text = self.pose_subject_box.get().strip()
+        detector_config = self.pose_detector_config.get().strip() or None
+        detector_checkpoint = self.pose_detector_checkpoint.get().strip() or None
+        try:
+            subject_box = tuple(float(value.strip()) for value in subject_box_text.split(",")) if subject_box_text else None
+        except ValueError:
+            messagebox.showwarning("Invalid subject box", "Use x1,y1,x2,y2 or select it on the first frame.")
+            return
+        if subject_box is not None and (len(subject_box) != 4 or subject_box[2] <= subject_box[0] or subject_box[3] <= subject_box[1]):
+            messagebox.showwarning("Invalid subject box", "The selected subject box must have positive width and height.")
+            return
+        if subject_box is not None and not (detector_config and detector_checkpoint):
+            messagebox.showwarning("Missing detector", "Subject tracking needs a detector config and checkpoint.")
+            return
 
         def work():
             from common.serialization import write_json
@@ -722,6 +787,9 @@ class MotionToolApp:
                 checkpoint_path=checkpoint,
                 device=device,
                 visibility_threshold=visibility_threshold,
+                subject_box=subject_box,
+                detector_config_path=detector_config,
+                detector_checkpoint_path=detector_checkpoint,
             )
             poses = PoseEstimator(pose_config).process_sequence(sequence)
 

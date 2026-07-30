@@ -1,0 +1,219 @@
+{
+  "rig_id": "demo_rig",
+  "source_path": "examples/e2e_demo/demo_rig.fbx",
+  "bones": {
+    "RootNode": {
+      "name": "RootNode",
+      "parent": null,
+      "children": [
+        "DemoArmature"
+      ],
+      "rest_local_matrix": [
+        [
+          1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          1.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "rest_world_matrix": null,
+      "local_axis_hint": null
+    },
+    "DemoArmature": {
+      "name": "DemoArmature",
+      "parent": "RootNode",
+      "children": [
+        "root"
+      ],
+      "rest_local_matrix": [
+        [
+          100.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          -1.6292067812173627e-05,
+          100.0,
+          0.0
+        ],
+        [
+          0.0,
+          -100.0,
+          -1.6292067812173627e-05,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "rest_world_matrix": null,
+      "local_axis_hint": null
+    },
+    "root": {
+      "name": "root",
+      "parent": "DemoArmature",
+      "children": [
+        "upper_arm.L"
+      ],
+      "rest_local_matrix": [
+        [
+          1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          -1.6292068494294654e-07,
+          -1.0,
+          0.0
+        ],
+        [
+          0.0,
+          1.0,
+          -1.6292068494294654e-07,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "rest_world_matrix": null,
+      "local_axis_hint": null
+    },
+    "upper_arm.L": {
+      "name": "upper_arm.L",
+      "parent": "root",
+      "children": [
+        "forearm.L"
+      ],
+      "rest_local_matrix": [
+        [
+          -4.371138828673793e-08,
+          1.0,
+          4.371138828673793e-08,
+          0.0
+        ],
+        [
+          0.0,
+          -4.371138828673793e-08,
+          1.0,
+          1.0
+        ],
+        [
+          1.0,
+          4.371138828673793e-08,
+          1.910685465164705e-15,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "rest_world_matrix": null,
+      "local_axis_hint": null
+    },
+    "forearm.L": {
+      "name": "forearm.L",
+      "parent": "upper_arm.L",
+      "children": [
+        "forearm.L_end"
+      ],
+      "rest_local_matrix": [
+        [
+          1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          1.0,
+          0.0,
+          1.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "rest_world_matrix": null,
+      "local_axis_hint": null
+    },
+    "forearm.L_end": {
+      "name": "forearm.L_end",
+      "parent": "forearm.L",
+      "children": [],
+      "rest_local_matrix": [
+        [
+          1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          1.0,
+          0.0,
+          1.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "rest_world_matrix": null,
+      "local_axis_hint": null
+    }
+  },
+  "root_bone": "DemoArmature",
+  "scale": 1.0,
+  "metadata": {
+    "parser": "assimp"
+  }
+}

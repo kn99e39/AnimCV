@@ -4,6 +4,7 @@ import pytest
 
 from motion.motion_graph import MotionFrame, MotionGraph, MotionPoint
 from retarget.axis_utils import quaternion_from_axis_angle
+from retarget.quality import RetargetQualityConfig, RetargetQualityError
 from retarget.solver import (
     AnimationClip,
     AnimationTrack,
@@ -338,3 +339,104 @@ def test_solve_skips_disabled_ik_chain():
     clip = RetargetSolver().solve(motion_graph, rig_profile, mapping)
 
     assert clip.tracks == {}
+
+
+def test_solve_rejects_mapping_when_landmarks_are_not_visible():
+    graph = _swinging_arm_motion_graph()
+    for frame in graph.frames:
+        frame.points["left_shoulder"].visible = False
+        frame.points["left_elbow"].visible = False
+        frame.points["left_shoulder"].confidence = 0.1
+        frame.points["left_elbow"].confidence = 0.1
+    mapping = BoneMappingProfile(
+        rig_id="character_01",
+        entries=[
+            BoneMappingEntry(
+                target_bone="upper_arm.L",
+                source_type="landmark",
+                source_names=["left_shoulder", "left_elbow"],
+                mapping_mode="direction",
+            )
+        ],
+    )
+
+    with pytest.raises(RetargetQualityError, match="visibility 0%"):
+        RetargetSolver().solve(graph, _rig_with_bone("upper_arm.L"), mapping)
+
+
+def test_solve_rejects_impossible_one_frame_direction_jump():
+    graph = _swinging_arm_motion_graph()
+    # The regular 90 degree swing is acceptable. Add a reversal in one frame.
+    graph.frames.append(
+        MotionFrame(
+            frame_index=2,
+            timestamp=2 / 24.0,
+            points={
+                "left_shoulder": _point("left_shoulder", 0.0, 0.0, 2),
+                "left_elbow": _point("left_elbow", 0.0, -1.0, 2),
+            },
+        )
+    )
+    mapping = BoneMappingProfile(
+        rig_id="character_01",
+        entries=[
+            BoneMappingEntry(
+                target_bone="upper_arm.L",
+                source_type="landmark",
+                source_names=["left_shoulder", "left_elbow"],
+                mapping_mode="direction",
+            )
+        ],
+    )
+
+    with pytest.raises(RetargetQualityError, match="one-frame direction change 180.0°"):
+        RetargetSolver().solve(graph, _rig_with_bone("upper_arm.L"), mapping)
+
+
+def test_solve_can_explicitly_bypass_quality_gate_for_manual_recovery():
+    graph = _swinging_arm_motion_graph()
+    for frame in graph.frames:
+        frame.points["left_shoulder"].visible = False
+        frame.points["left_elbow"].visible = False
+    mapping = BoneMappingProfile(
+        rig_id="character_01",
+        entries=[
+            BoneMappingEntry(
+                target_bone="upper_arm.L",
+                source_type="landmark",
+                source_names=["left_shoulder", "left_elbow"],
+                mapping_mode="direction",
+            )
+        ],
+    )
+
+    clip = RetargetSolver().solve(
+        graph,
+        _rig_with_bone("upper_arm.L"),
+        mapping,
+        validate_quality=False,
+    )
+
+    assert len(clip.tracks["upper_arm.L"].samples) == 2
+
+
+def test_quality_report_is_json_serializable():
+    from retarget.quality import assess_retarget_quality
+
+    graph = _swinging_arm_motion_graph()
+    mapping = BoneMappingProfile(
+        rig_id="character_01",
+        entries=[
+            BoneMappingEntry(
+                target_bone="upper_arm.L",
+                source_type="landmark",
+                source_names=["left_shoulder", "left_elbow"],
+                mapping_mode="direction",
+            )
+        ],
+    )
+
+    report = assess_retarget_quality(graph, _rig_with_bone("upper_arm.L"), mapping)
+
+    assert report.to_dict()["passed"] is True
+    assert report.to_dict()["mappings"][0]["visibility_rate"] == 1.0

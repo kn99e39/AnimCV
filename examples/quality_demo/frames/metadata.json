@@ -1,0 +1,14 @@
+{
+  "fps": 30.0,
+  "width": 1280,
+  "height": 720,
+  "source_path": "examples/quality_demo/source.mp4",
+  "frame_count": 5,
+  "frame_timestamps": [
+    0.0,
+    0.03333333333333333,
+    0.06666666666666667,
+    0.1,
+    0.13333333333333333
+  ]
+}

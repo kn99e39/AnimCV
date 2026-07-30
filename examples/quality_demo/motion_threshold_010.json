@@ -1,0 +1,1890 @@
+{
+  "fps": 24.0,
+  "source_metadata": {
+    "pose_source": "examples/quality_demo/pose_threshold_010.json"
+  },
+  "frames": [
+    {
+      "frame_index": 0,
+      "timestamp": 0.0,
+      "points": {
+        "left_wrist": {
+          "semantic_name": "left_wrist",
+          "frame_index": 0,
+          "position_2d": [
+            760.8333129882812,
+            368.3333435058594
+          ],
+          "position_3d": null,
+          "confidence": 0.18337002396583557,
+          "visible": true
+        },
+        "right_knee": {
+          "semantic_name": "right_knee",
+          "frame_index": 0,
+          "position_2d": [
+            752.5,
+            389.1666564941406
+          ],
+          "position_3d": null,
+          "confidence": 0.1631951779127121,
+          "visible": true
+        },
+        "right_ankle": {
+          "semantic_name": "right_ankle",
+          "frame_index": 0,
+          "position_2d": [
+            781.6666870117188,
+            447.5
+          ],
+          "position_3d": null,
+          "confidence": 0.2582094073295593,
+          "visible": true
+        },
+        "right_elbow": {
+          "semantic_name": "right_elbow",
+          "frame_index": 0,
+          "position_2d": [
+            744.1666870117188,
+            305.8333435058594
+          ],
+          "position_3d": null,
+          "confidence": 0.16886809468269348,
+          "visible": true
+        },
+        "right_wrist": {
+          "semantic_name": "right_wrist",
+          "frame_index": 0,
+          "position_2d": [
+            752.5,
+            385.0
+          ],
+          "position_3d": null,
+          "confidence": 0.23516857624053955,
+          "visible": true
+        },
+        "right_hip": {
+          "semantic_name": "right_hip",
+          "frame_index": 0,
+          "position_2d": [
+            723.3333129882812,
+            322.5
+          ],
+          "position_3d": null,
+          "confidence": 0.1292632520198822,
+          "visible": true
+        },
+        "left_knee": {
+          "semantic_name": "left_knee",
+          "frame_index": 0,
+          "position_2d": [
+            477.5,
+            389.1666564941406
+          ],
+          "position_3d": null,
+          "confidence": 0.17076870799064636,
+          "visible": true
+        },
+        "left_hip": {
+          "semantic_name": "left_hip",
+          "frame_index": 0,
+          "position_2d": [
+            723.3333129882812,
+            335.0
+          ],
+          "position_3d": null,
+          "confidence": 0.12214456498622894,
+          "visible": true
+        },
+        "left_shoulder": {
+          "semantic_name": "left_shoulder",
+          "frame_index": 0,
+          "position_2d": [
+            502.5,
+            318.3333435058594
+          ],
+          "position_3d": null,
+          "confidence": 0.21257680654525757,
+          "visible": true
+        },
+        "left_ankle": {
+          "semantic_name": "left_ankle",
+          "frame_index": 0,
+          "position_2d": [
+            485.8333435058594,
+            447.5
+          ],
+          "position_3d": null,
+          "confidence": 0.25884363055229187,
+          "visible": true
+        },
+        "right_shoulder": {
+          "semantic_name": "right_shoulder",
+          "frame_index": 0,
+          "position_2d": [
+            510.8333435058594,
+            326.6666564941406
+          ],
+          "position_3d": null,
+          "confidence": 0.1906438171863556,
+          "visible": true
+        },
+        "left_elbow": {
+          "semantic_name": "left_elbow",
+          "frame_index": 0,
+          "position_2d": [
+            748.3333129882812,
+            314.1666564941406
+          ],
+          "position_3d": null,
+          "confidence": 0.16826710104942322,
+          "visible": true
+        },
+        "head": {
+          "semantic_name": "head",
+          "frame_index": 0,
+          "position_2d": [
+            490.0,
+            347.5
+          ],
+          "position_3d": null,
+          "confidence": 0.24510356783866882,
+          "visible": true
+        },
+        "neck": {
+          "semantic_name": "neck",
+          "frame_index": 0,
+          "position_2d": [
+            506.6666717529297,
+            322.5
+          ],
+          "position_3d": null,
+          "confidence": 0.1906438171863556,
+          "visible": true
+        },
+        "pelvis": {
+          "semantic_name": "pelvis",
+          "frame_index": 0,
+          "position_2d": [
+            723.3333129882812,
+            328.75
+          ],
+          "position_3d": null,
+          "confidence": 0.12214456498622894,
+          "visible": true
+        },
+        "spine": {
+          "semantic_name": "spine",
+          "frame_index": 0,
+          "position_2d": [
+            614.9999923706055,
+            325.625
+          ],
+          "position_3d": null,
+          "confidence": 0.12214456498622894,
+          "visible": true
+        }
+      },
+      "importance": 0.0,
+      "locked": false
+    },
+    {
+      "frame_index": 1,
+      "timestamp": 0.041666666666666664,
+      "points": {
+        "left_wrist": {
+          "semantic_name": "left_wrist",
+          "frame_index": 1,
+          "position_2d": [
+            744.1666870117188,
+            360.0
+          ],
+          "position_3d": null,
+          "confidence": 0.1661835014820099,
+          "visible": true
+        },
+        "right_knee": {
+          "semantic_name": "right_knee",
+          "frame_index": 1,
+          "position_2d": [
+            744.1666870117188,
+            389.1666564941406
+          ],
+          "position_3d": null,
+          "confidence": 0.15399736166000366,
+          "visible": true
+        },
+        "right_ankle": {
+          "semantic_name": "right_ankle",
+          "frame_index": 1,
+          "position_2d": [
+            769.1666870117188,
+            447.5
+          ],
+          "position_3d": null,
+          "confidence": 0.2739318013191223,
+          "visible": true
+        },
+        "right_elbow": {
+          "semantic_name": "right_elbow",
+          "frame_index": 1,
+          "position_2d": [
+            731.6666870117188,
+            310.0
+          ],
+          "position_3d": null,
+          "confidence": 0.17204786837100983,
+          "visible": true
+        },
+        "right_wrist": {
+          "semantic_name": "right_wrist",
+          "frame_index": 1,
+          "position_2d": [
+            744.1666870117188,
+            376.6666564941406
+          ],
+          "position_3d": null,
+          "confidence": 0.23613807559013367,
+          "visible": true
+        },
+        "right_hip": {
+          "semantic_name": "right_hip",
+          "frame_index": 1,
+          "position_2d": [
+            719.1666870117188,
+            326.6666564941406
+          ],
+          "position_3d": null,
+          "confidence": 0.14173224568367004,
+          "visible": true
+        },
+        "left_knee": {
+          "semantic_name": "left_knee",
+          "frame_index": 1,
+          "position_2d": [
+            469.1666564941406,
+            393.3333435058594
+          ],
+          "position_3d": null,
+          "confidence": 0.168247252702713,
+          "visible": true
+        },
+        "left_hip": {
+          "semantic_name": "left_hip",
+          "frame_index": 1,
+          "position_2d": [
+            723.3333129882812,
+            330.8333435058594
+          ],
+          "position_3d": null,
+          "confidence": 0.13321562111377716,
+          "visible": true
+        },
+        "left_shoulder": {
+          "semantic_name": "left_shoulder",
+          "frame_index": 1,
+          "position_2d": [
+            490.0,
+            318.3333435058594
+          ],
+          "position_3d": null,
+          "confidence": 0.22971075773239136,
+          "visible": true
+        },
+        "left_ankle": {
+          "semantic_name": "left_ankle",
+          "frame_index": 1,
+          "position_2d": [
+            469.1666564941406,
+            443.3333435058594
+          ],
+          "position_3d": null,
+          "confidence": 0.257101833820343,
+          "visible": true
+        },
+        "right_shoulder": {
+          "semantic_name": "right_shoulder",
+          "frame_index": 1,
+          "position_2d": [
+            527.5,
+            335.0
+          ],
+          "position_3d": null,
+          "confidence": 0.19366970658302307,
+          "visible": true
+        },
+        "left_elbow": {
+          "semantic_name": "left_elbow",
+          "frame_index": 1,
+          "position_2d": [
+            456.6666564941406,
+            310.0
+          ],
+          "position_3d": null,
+          "confidence": 0.1503657102584839,
+          "visible": true
+        },
+        "head": {
+          "semantic_name": "head",
+          "frame_index": 1,
+          "position_2d": [
+            485.8333435058594,
+            347.5
+          ],
+          "position_3d": null,
+          "confidence": 0.23447994887828827,
+          "visible": true
+        },
+        "neck": {
+          "semantic_name": "neck",
+          "frame_index": 1,
+          "position_2d": [
+            508.75,
+            326.6666717529297
+          ],
+          "position_3d": null,
+          "confidence": 0.19366970658302307,
+          "visible": true
+        },
+        "pelvis": {
+          "semantic_name": "pelvis",
+          "frame_index": 1,
+          "position_2d": [
+            721.25,
+            328.75
+          ],
+          "position_3d": null,
+          "confidence": 0.13321562111377716,
+          "visible": true
+        },
+        "spine": {
+          "semantic_name": "spine",
+          "frame_index": 1,
+          "position_2d": [
+            615.0,
+            327.70833587646484
+          ],
+          "position_3d": null,
+          "confidence": 0.13321562111377716,
+          "visible": true
+        }
+      },
+      "importance": 0.0,
+      "locked": false
+    },
+    {
+      "frame_index": 2,
+      "timestamp": 0.08333333333333333,
+      "points": {
+        "left_wrist": {
+          "semantic_name": "left_wrist",
+          "frame_index": 2,
+          "position_2d": [
+            731.6666870117188,
+            347.5
+          ],
+          "position_3d": null,
+          "confidence": 0.18611210584640503,
+          "visible": true
+        },
+        "right_knee": {
+          "semantic_name": "right_knee",
+          "frame_index": 2,
+          "position_2d": [
+            752.5,
+            385.0
+          ],
+          "position_3d": null,
+          "confidence": 0.15772566199302673,
+          "visible": true
+        },
+        "right_ankle": {
+          "semantic_name": "right_ankle",
+          "frame_index": 2,
+          "position_2d": [
+            769.1666870117188,
+            460.0
+          ],
+          "position_3d": null,
+          "confidence": 0.25979065895080566,
+          "visible": true
+        },
+        "right_elbow": {
+          "semantic_name": "right_elbow",
+          "frame_index": 2,
+          "position_2d": [
+            685.8333129882812,
+            310.0
+          ],
+          "position_3d": null,
+          "confidence": 0.15173344314098358,
+          "visible": true
+        },
+        "right_wrist": {
+          "semantic_name": "right_wrist",
+          "frame_index": 2,
+          "position_2d": [
+            727.5,
+            372.5
+          ],
+          "position_3d": null,
+          "confidence": 0.23180784285068512,
+          "visible": true
+        },
+        "right_hip": {
+          "semantic_name": "right_hip",
+          "frame_index": 2,
+          "position_2d": [
+            681.6666870117188,
+            335.0
+          ],
+          "position_3d": null,
+          "confidence": 0.14161290228366852,
+          "visible": true
+        },
+        "left_knee": {
+          "semantic_name": "left_knee",
+          "frame_index": 2,
+          "position_2d": [
+            456.6666564941406,
+            389.1666564941406
+          ],
+          "position_3d": null,
+          "confidence": 0.16467228531837463,
+          "visible": true
+        },
+        "left_hip": {
+          "semantic_name": "left_hip",
+          "frame_index": 2,
+          "position_2d": [
+            719.1666870117188,
+            343.3333435058594
+          ],
+          "position_3d": null,
+          "confidence": 0.1270936131477356,
+          "visible": true
+        },
+        "left_shoulder": {
+          "semantic_name": "left_shoulder",
+          "frame_index": 2,
+          "position_2d": [
+            469.1666564941406,
+            314.1666564941406
+          ],
+          "position_3d": null,
+          "confidence": 0.20691484212875366,
+          "visible": true
+        },
+        "left_ankle": {
+          "semantic_name": "left_ankle",
+          "frame_index": 2,
+          "position_2d": [
+            460.8333435058594,
+            451.6666564941406
+          ],
+          "position_3d": null,
+          "confidence": 0.2500073313713074,
+          "visible": true
+        },
+        "right_shoulder": {
+          "semantic_name": "right_shoulder",
+          "frame_index": 2,
+          "position_2d": [
+            652.5,
+            326.6666564941406
+          ],
+          "position_3d": null,
+          "confidence": 0.17440269887447357,
+          "visible": true
+        },
+        "left_elbow": {
+          "semantic_name": "left_elbow",
+          "frame_index": 2,
+          "position_2d": [
+            681.6666870117188,
+            310.0
+          ],
+          "position_3d": null,
+          "confidence": 0.13406330347061157,
+          "visible": true
+        },
+        "head": {
+          "semantic_name": "head",
+          "frame_index": 2,
+          "position_2d": [
+            456.6666564941406,
+            355.8333435058594
+          ],
+          "position_3d": null,
+          "confidence": 0.2179391086101532,
+          "visible": true
+        },
+        "neck": {
+          "semantic_name": "neck",
+          "frame_index": 2,
+          "position_2d": [
+            560.8333282470703,
+            320.4166564941406
+          ],
+          "position_3d": null,
+          "confidence": 0.17440269887447357,
+          "visible": true
+        },
+        "pelvis": {
+          "semantic_name": "pelvis",
+          "frame_index": 2,
+          "position_2d": [
+            700.4166870117188,
+            339.1666717529297
+          ],
+          "position_3d": null,
+          "confidence": 0.1270936131477356,
+          "visible": true
+        },
+        "spine": {
+          "semantic_name": "spine",
+          "frame_index": 2,
+          "position_2d": [
+            630.6250076293945,
+            329.79166412353516
+          ],
+          "position_3d": null,
+          "confidence": 0.1270936131477356,
+          "visible": true
+        }
+      },
+      "importance": 0.0,
+      "locked": false
+    },
+    {
+      "frame_index": 3,
+      "timestamp": 0.125,
+      "points": {
+        "left_wrist": {
+          "semantic_name": "left_wrist",
+          "frame_index": 3,
+          "position_2d": [
+            719.1666870117188,
+            360.0
+          ],
+          "position_3d": null,
+          "confidence": 0.1596325933933258,
+          "visible": true
+        },
+        "right_knee": {
+          "semantic_name": "right_knee",
+          "frame_index": 3,
+          "position_2d": [
+            752.5,
+            368.3333435058594
+          ],
+          "position_3d": null,
+          "confidence": 0.12998679280281067,
+          "visible": true
+        },
+        "right_ankle": {
+          "semantic_name": "right_ankle",
+          "frame_index": 3,
+          "position_2d": [
+            748.3333129882812,
+            451.6666564941406
+          ],
+          "position_3d": null,
+          "confidence": 0.18891644477844238,
+          "visible": true
+        },
+        "right_elbow": {
+          "semantic_name": "right_elbow",
+          "frame_index": 3,
+          "position_2d": [
+            690.0,
+            305.8333435058594
+          ],
+          "position_3d": null,
+          "confidence": 0.1197841614484787,
+          "visible": true
+        },
+        "right_wrist": {
+          "semantic_name": "right_wrist",
+          "frame_index": 3,
+          "position_2d": [
+            719.1666870117188,
+            380.8333435058594
+          ],
+          "position_3d": null,
+          "confidence": 0.2177894115447998,
+          "visible": true
+        },
+        "right_hip": {
+          "semantic_name": "right_hip",
+          "frame_index": 3,
+          "position_2d": [
+            685.8333129882812,
+            326.6666564941406
+          ],
+          "position_3d": null,
+          "confidence": 0.11286938190460205,
+          "visible": true
+        },
+        "left_knee": {
+          "semantic_name": "left_knee",
+          "frame_index": 3,
+          "position_2d": [
+            448.3333435058594,
+            380.8333435058594
+          ],
+          "position_3d": null,
+          "confidence": 0.11989246308803558,
+          "visible": true
+        },
+        "left_hip": {
+          "semantic_name": "left_hip",
+          "frame_index": 3,
+          "position_2d": [
+            685.8333129882812,
+            335.0
+          ],
+          "position_3d": null,
+          "confidence": 0.08897896111011505,
+          "visible": false
+        },
+        "left_shoulder": {
+          "semantic_name": "left_shoulder",
+          "frame_index": 3,
+          "position_2d": [
+            452.5,
+            318.3333435058594
+          ],
+          "position_3d": null,
+          "confidence": 0.18657255172729492,
+          "visible": true
+        },
+        "left_ankle": {
+          "semantic_name": "left_ankle",
+          "frame_index": 3,
+          "position_2d": [
+            456.6666564941406,
+            460.0
+          ],
+          "position_3d": null,
+          "confidence": 0.19458997249603271,
+          "visible": true
+        },
+        "right_shoulder": {
+          "semantic_name": "right_shoulder",
+          "frame_index": 3,
+          "position_2d": [
+            598.3333129882812,
+            339.1666564941406
+          ],
+          "position_3d": null,
+          "confidence": 0.1408698856830597,
+          "visible": true
+        },
+        "left_elbow": {
+          "semantic_name": "left_elbow",
+          "frame_index": 3,
+          "position_2d": [
+            456.6666564941406,
+            314.1666564941406
+          ],
+          "position_3d": null,
+          "confidence": 0.11324002593755722,
+          "visible": true
+        },
+        "head": {
+          "semantic_name": "head",
+          "frame_index": 3,
+          "position_2d": [
+            448.3333435058594,
+            364.1666564941406
+          ],
+          "position_3d": null,
+          "confidence": 0.17385849356651306,
+          "visible": true
+        },
+        "neck": {
+          "semantic_name": "neck",
+          "frame_index": 3,
+          "position_2d": [
+            525.4166564941406,
+            328.75
+          ],
+          "position_3d": null,
+          "confidence": 0.1408698856830597,
+          "visible": true
+        },
+        "pelvis": {
+          "semantic_name": "pelvis",
+          "frame_index": 3,
+          "position_2d": [
+            685.8333129882812,
+            330.8333282470703
+          ],
+          "position_3d": null,
+          "confidence": 0.08897896111011505,
+          "visible": false
+        },
+        "spine": {
+          "semantic_name": "spine",
+          "frame_index": 3,
+          "position_2d": [
+            605.6249847412109,
+            329.79166412353516
+          ],
+          "position_3d": null,
+          "confidence": 0.08897896111011505,
+          "visible": false
+        }
+      },
+      "importance": 0.0,
+      "locked": false
+    },
+    {
+      "frame_index": 4,
+      "timestamp": 0.16666666666666666,
+      "points": {
+        "left_wrist": {
+          "semantic_name": "left_wrist",
+          "frame_index": 4,
+          "position_2d": [
+            685.8333129882812,
+            364.1666564941406
+          ],
+          "position_3d": null,
+          "confidence": 0.10899574309587479,
+          "visible": true
+        },
+        "right_knee": {
+          "semantic_name": "right_knee",
+          "frame_index": 4,
+          "position_2d": [
+            744.1666870117188,
+            389.1666564941406
+          ],
+          "position_3d": null,
+          "confidence": 0.11560864746570587,
+          "visible": true
+        },
+        "right_ankle": {
+          "semantic_name": "right_ankle",
+          "frame_index": 4,
+          "position_2d": [
+            694.1666870117188,
+            447.5
+          ],
+          "position_3d": null,
+          "confidence": 0.137746199965477,
+          "visible": true
+        },
+        "right_elbow": {
+          "semantic_name": "right_elbow",
+          "frame_index": 4,
+          "position_2d": [
+            656.6666870117188,
+            293.3333435058594
+          ],
+          "position_3d": null,
+          "confidence": 0.07695172727108002,
+          "visible": false
+        },
+        "right_wrist": {
+          "semantic_name": "right_wrist",
+          "frame_index": 4,
+          "position_2d": [
+            685.8333129882812,
+            368.3333435058594
+          ],
+          "position_3d": null,
+          "confidence": 0.15763267874717712,
+          "visible": true
+        },
+        "right_hip": {
+          "semantic_name": "right_hip",
+          "frame_index": 4,
+          "position_2d": [
+            681.6666870117188,
+            326.6666564941406
+          ],
+          "position_3d": null,
+          "confidence": 0.1023954302072525,
+          "visible": true
+        },
+        "left_knee": {
+          "semantic_name": "left_knee",
+          "frame_index": 4,
+          "position_2d": [
+            427.5,
+            389.1666564941406
+          ],
+          "position_3d": null,
+          "confidence": 0.10943181812763214,
+          "visible": true
+        },
+        "left_hip": {
+          "semantic_name": "left_hip",
+          "frame_index": 4,
+          "position_2d": [
+            677.5,
+            343.3333435058594
+          ],
+          "position_3d": null,
+          "confidence": 0.08922667801380157,
+          "visible": false
+        },
+        "left_shoulder": {
+          "semantic_name": "left_shoulder",
+          "frame_index": 4,
+          "position_2d": [
+            444.1666564941406,
+            326.6666564941406
+          ],
+          "position_3d": null,
+          "confidence": 0.1887783408164978,
+          "visible": true
+        },
+        "left_ankle": {
+          "semantic_name": "left_ankle",
+          "frame_index": 4,
+          "position_2d": [
+            431.6666564941406,
+            485.0
+          ],
+          "position_3d": null,
+          "confidence": 0.16781389713287354,
+          "visible": true
+        },
+        "right_shoulder": {
+          "semantic_name": "right_shoulder",
+          "frame_index": 4,
+          "position_2d": [
+            556.6666870117188,
+            351.6666564941406
+          ],
+          "position_3d": null,
+          "confidence": 0.1426500678062439,
+          "visible": true
+        },
+        "left_elbow": {
+          "semantic_name": "left_elbow",
+          "frame_index": 4,
+          "position_2d": [
+            440.0,
+            310.0
+          ],
+          "position_3d": null,
+          "confidence": 0.1152365505695343,
+          "visible": true
+        },
+        "head": {
+          "semantic_name": "head",
+          "frame_index": 4,
+          "position_2d": [
+            415.0,
+            351.6666564941406
+          ],
+          "position_3d": null,
+          "confidence": 0.18440751731395721,
+          "visible": true
+        },
+        "neck": {
+          "semantic_name": "neck",
+          "frame_index": 4,
+          "position_2d": [
+            500.4166717529297,
+            339.1666564941406
+          ],
+          "position_3d": null,
+          "confidence": 0.1426500678062439,
+          "visible": true
+        },
+        "pelvis": {
+          "semantic_name": "pelvis",
+          "frame_index": 4,
+          "position_2d": [
+            679.5833435058594,
+            335.0
+          ],
+          "position_3d": null,
+          "confidence": 0.08922667801380157,
+          "visible": false
+        },
+        "spine": {
+          "semantic_name": "spine",
+          "frame_index": 4,
+          "position_2d": [
+            590.0000076293945,
+            337.0833282470703
+          ],
+          "position_3d": null,
+          "confidence": 0.08922667801380157,
+          "visible": false
+        }
+      },
+      "importance": 0.0,
+      "locked": false
+    }
+  ],
+  "tracks": {
+    "left_wrist": {
+      "semantic_name": "left_wrist",
+      "points": [
+        {
+          "semantic_name": "left_wrist",
+          "frame_index": 0,
+          "position_2d": [
+            760.8333129882812,
+            368.3333435058594
+          ],
+          "position_3d": null,
+          "confidence": 0.18337002396583557,
+          "visible": true
+        },
+        {
+          "semantic_name": "left_wrist",
+          "frame_index": 1,
+          "position_2d": [
+            744.1666870117188,
+            360.0
+          ],
+          "position_3d": null,
+          "confidence": 0.1661835014820099,
+          "visible": true
+        },
+        {
+          "semantic_name": "left_wrist",
+          "frame_index": 2,
+          "position_2d": [
+            731.6666870117188,
+            347.5
+          ],
+          "position_3d": null,
+          "confidence": 0.18611210584640503,
+          "visible": true
+        },
+        {
+          "semantic_name": "left_wrist",
+          "frame_index": 3,
+          "position_2d": [
+            719.1666870117188,
+            360.0
+          ],
+          "position_3d": null,
+          "confidence": 0.1596325933933258,
+          "visible": true
+        },
+        {
+          "semantic_name": "left_wrist",
+          "frame_index": 4,
+          "position_2d": [
+            685.8333129882812,
+            364.1666564941406
+          ],
+          "position_3d": null,
+          "confidence": 0.10899574309587479,
+          "visible": true
+        }
+      ]
+    },
+    "right_knee": {
+      "semantic_name": "right_knee",
+      "points": [
+        {
+          "semantic_name": "right_knee",
+          "frame_index": 0,
+          "position_2d": [
+            752.5,
+            389.1666564941406
+          ],
+          "position_3d": null,
+          "confidence": 0.1631951779127121,
+          "visible": true
+        },
+        {
+          "semantic_name": "right_knee",
+          "frame_index": 1,
+          "position_2d": [
+            744.1666870117188,
+            389.1666564941406
+          ],
+          "position_3d": null,
+          "confidence": 0.15399736166000366,
+          "visible": true
+        },
+        {
+          "semantic_name": "right_knee",
+          "frame_index": 2,
+          "position_2d": [
+            752.5,
+            385.0
+          ],
+          "position_3d": null,
+          "confidence": 0.15772566199302673,
+          "visible": true
+        },
+        {
+          "semantic_name": "right_knee",
+          "frame_index": 3,
+          "position_2d": [
+            752.5,
+            368.3333435058594
+          ],
+          "position_3d": null,
+          "confidence": 0.12998679280281067,
+          "visible": true
+        },
+        {
+          "semantic_name": "right_knee",
+          "frame_index": 4,
+          "position_2d": [
+            744.1666870117188,
+            389.1666564941406
+          ],
+          "position_3d": null,
+          "confidence": 0.11560864746570587,
+          "visible": true
+        }
+      ]
+    },
+    "right_ankle": {
+      "semantic_name": "right_ankle",
+      "points": [
+        {
+          "semantic_name": "right_ankle",
+          "frame_index": 0,
+          "position_2d": [
+            781.6666870117188,
+            447.5
+          ],
+          "position_3d": null,
+          "confidence": 0.2582094073295593,
+          "visible": true
+        },
+        {
+          "semantic_name": "right_ankle",
+          "frame_index": 1,
+          "position_2d": [
+            769.1666870117188,
+            447.5
+          ],
+          "position_3d": null,
+          "confidence": 0.2739318013191223,
+          "visible": true
+        },
+        {
+          "semantic_name": "right_ankle",
+          "frame_index": 2,
+          "position_2d": [
+            769.1666870117188,
+            460.0
+          ],
+          "position_3d": null,
+          "confidence": 0.25979065895080566,
+          "visible": true
+        },
+        {
+          "semantic_name": "right_ankle",
+          "frame_index": 3,
+          "position_2d": [
+            748.3333129882812,
+            451.6666564941406
+          ],
+          "position_3d": null,
+          "confidence": 0.18891644477844238,
+          "visible": true
+        },
+        {
+          "semantic_name": "right_ankle",
+          "frame_index": 4,
+          "position_2d": [
+            694.1666870117188,
+            447.5
+          ],
+          "position_3d": null,
+          "confidence": 0.137746199965477,
+          "visible": true
+        }
+      ]
+    },
+    "right_elbow": {
+      "semantic_name": "right_elbow",
+      "points": [
+        {
+          "semantic_name": "right_elbow",
+          "frame_index": 0,
+          "position_2d": [
+            744.1666870117188,
+            305.8333435058594
+          ],
+          "position_3d": null,
+          "confidence": 0.16886809468269348,
+          "visible": true
+        },
+        {
+          "semantic_name": "right_elbow",
+          "frame_index": 1,
+          "position_2d": [
+            731.6666870117188,
+            310.0
+          ],
+          "position_3d": null,
+          "confidence": 0.17204786837100983,
+          "visible": true
+        },
+        {
+          "semantic_name": "right_elbow",
+          "frame_index": 2,
+          "position_2d": [
+            685.8333129882812,
+            310.0
+          ],
+          "position_3d": null,
+          "confidence": 0.15173344314098358,
+          "visible": true
+        },
+        {
+          "semantic_name": "right_elbow",
+          "frame_index": 3,
+          "position_2d": [
+            690.0,
+            305.8333435058594
+          ],
+          "position_3d": null,
+          "confidence": 0.1197841614484787,
+          "visible": true
+        },
+        {
+          "semantic_name": "right_elbow",
+          "frame_index": 4,
+          "position_2d": [
+            656.6666870117188,
+            293.3333435058594
+          ],
+          "position_3d": null,
+          "confidence": 0.07695172727108002,
+          "visible": false
+        }
+      ]
+    },
+    "right_wrist": {
+      "semantic_name": "right_wrist",
+      "points": [
+        {
+          "semantic_name": "right_wrist",
+          "frame_index": 0,
+          "position_2d": [
+            752.5,
+            385.0
+          ],
+          "position_3d": null,
+          "confidence": 0.23516857624053955,
+          "visible": true
+        },
+        {
+          "semantic_name": "right_wrist",
+          "frame_index": 1,
+          "position_2d": [
+            744.1666870117188,
+            376.6666564941406
+          ],
+          "position_3d": null,
+          "confidence": 0.23613807559013367,
+          "visible": true
+        },
+        {
+          "semantic_name": "right_wrist",
+          "frame_index": 2,
+          "position_2d": [
+            727.5,
+            372.5
+          ],
+          "position_3d": null,
+          "confidence": 0.23180784285068512,
+          "visible": true
+        },
+        {
+          "semantic_name": "right_wrist",
+          "frame_index": 3,
+          "position_2d": [
+            719.1666870117188,
+            380.8333435058594
+          ],
+          "position_3d": null,
+          "confidence": 0.2177894115447998,
+          "visible": true
+        },
+        {
+          "semantic_name": "right_wrist",
+          "frame_index": 4,
+          "position_2d": [
+            685.8333129882812,
+            368.3333435058594
+          ],
+          "position_3d": null,
+          "confidence": 0.15763267874717712,
+          "visible": true
+        }
+      ]
+    },
+    "right_hip": {
+      "semantic_name": "right_hip",
+      "points": [
+        {
+          "semantic_name": "right_hip",
+          "frame_index": 0,
+          "position_2d": [
+            723.3333129882812,
+            322.5
+          ],
+          "position_3d": null,
+          "confidence": 0.1292632520198822,
+          "visible": true
+        },
+        {
+          "semantic_name": "right_hip",
+          "frame_index": 1,
+          "position_2d": [
+            719.1666870117188,
+            326.6666564941406
+          ],
+          "position_3d": null,
+          "confidence": 0.14173224568367004,
+          "visible": true
+        },
+        {
+          "semantic_name": "right_hip",
+          "frame_index": 2,
+          "position_2d": [
+            681.6666870117188,
+            335.0
+          ],
+          "position_3d": null,
+          "confidence": 0.14161290228366852,
+          "visible": true
+        },
+        {
+          "semantic_name": "right_hip",
+          "frame_index": 3,
+          "position_2d": [
+            685.8333129882812,
+            326.6666564941406
+          ],
+          "position_3d": null,
+          "confidence": 0.11286938190460205,
+          "visible": true
+        },
+        {
+          "semantic_name": "right_hip",
+          "frame_index": 4,
+          "position_2d": [
+            681.6666870117188,
+            326.6666564941406
+          ],
+          "position_3d": null,
+          "confidence": 0.1023954302072525,
+          "visible": true
+        }
+      ]
+    },
+    "left_knee": {
+      "semantic_name": "left_knee",
+      "points": [
+        {
+          "semantic_name": "left_knee",
+          "frame_index": 0,
+          "position_2d": [
+            477.5,
+            389.1666564941406
+          ],
+          "position_3d": null,
+          "confidence": 0.17076870799064636,
+          "visible": true
+        },
+        {
+          "semantic_name": "left_knee",
+          "frame_index": 1,
+          "position_2d": [
+            469.1666564941406,
+            393.3333435058594
+          ],
+          "position_3d": null,
+          "confidence": 0.168247252702713,
+          "visible": true
+        },
+        {
+          "semantic_name": "left_knee",
+          "frame_index": 2,
+          "position_2d": [
+            456.6666564941406,
+            389.1666564941406
+          ],
+          "position_3d": null,
+          "confidence": 0.16467228531837463,
+          "visible": true
+        },
+        {
+          "semantic_name": "left_knee",
+          "frame_index": 3,
+          "position_2d": [
+            448.3333435058594,
+            380.8333435058594
+          ],
+          "position_3d": null,
+          "confidence": 0.11989246308803558,
+          "visible": true
+        },
+        {
+          "semantic_name": "left_knee",
+          "frame_index": 4,
+          "position_2d": [
+            427.5,
+            389.1666564941406
+          ],
+          "position_3d": null,
+          "confidence": 0.10943181812763214,
+          "visible": true
+        }
+      ]
+    },
+    "left_hip": {
+      "semantic_name": "left_hip",
+      "points": [
+        {
+          "semantic_name": "left_hip",
+          "frame_index": 0,
+          "position_2d": [
+            723.3333129882812,
+            335.0
+          ],
+          "position_3d": null,
+          "confidence": 0.12214456498622894,
+          "visible": true
+        },
+        {
+          "semantic_name": "left_hip",
+          "frame_index": 1,
+          "position_2d": [
+            723.3333129882812,
+            330.8333435058594
+          ],
+          "position_3d": null,
+          "confidence": 0.13321562111377716,
+          "visible": true
+        },
+        {
+          "semantic_name": "left_hip",
+          "frame_index": 2,
+          "position_2d": [
+            719.1666870117188,
+            343.3333435058594
+          ],
+          "position_3d": null,
+          "confidence": 0.1270936131477356,
+          "visible": true
+        },
+        {
+          "semantic_name": "left_hip",
+          "frame_index": 3,
+          "position_2d": [
+            685.8333129882812,
+            335.0
+          ],
+          "position_3d": null,
+          "confidence": 0.08897896111011505,
+          "visible": false
+        },
+        {
+          "semantic_name": "left_hip",
+          "frame_index": 4,
+          "position_2d": [
+            677.5,
+            343.3333435058594
+          ],
+          "position_3d": null,
+          "confidence": 0.08922667801380157,
+          "visible": false
+        }
+      ]
+    },
+    "left_shoulder": {
+      "semantic_name": "left_shoulder",
+      "points": [
+        {
+          "semantic_name": "left_shoulder",
+          "frame_index": 0,
+          "position_2d": [
+            502.5,
+            318.3333435058594
+          ],
+          "position_3d": null,
+          "confidence": 0.21257680654525757,
+          "visible": true
+        },
+        {
+          "semantic_name": "left_shoulder",
+          "frame_index": 1,
+          "position_2d": [
+            490.0,
+            318.3333435058594
+          ],
+          "position_3d": null,
+          "confidence": 0.22971075773239136,
+          "visible": true
+        },
+        {
+          "semantic_name": "left_shoulder",
+          "frame_index": 2,
+          "position_2d": [
+            469.1666564941406,
+            314.1666564941406
+          ],
+          "position_3d": null,
+          "confidence": 0.20691484212875366,
+          "visible": true
+        },
+        {
+          "semantic_name": "left_shoulder",
+          "frame_index": 3,
+          "position_2d": [
+            452.5,
+            318.3333435058594
+          ],
+          "position_3d": null,
+          "confidence": 0.18657255172729492,
+          "visible": true
+        },
+        {
+          "semantic_name": "left_shoulder",
+          "frame_index": 4,
+          "position_2d": [
+            444.1666564941406,
+            326.6666564941406
+          ],
+          "position_3d": null,
+          "confidence": 0.1887783408164978,
+          "visible": true
+        }
+      ]
+    },
+    "left_ankle": {
+      "semantic_name": "left_ankle",
+      "points": [
+        {
+          "semantic_name": "left_ankle",
+          "frame_index": 0,
+          "position_2d": [
+            485.8333435058594,
+            447.5
+          ],
+          "position_3d": null,
+          "confidence": 0.25884363055229187,
+          "visible": true
+        },
+        {
+          "semantic_name": "left_ankle",
+          "frame_index": 1,
+          "position_2d": [
+            469.1666564941406,
+            443.3333435058594
+          ],
+          "position_3d": null,
+          "confidence": 0.257101833820343,
+          "visible": true
+        },
+        {
+          "semantic_name": "left_ankle",
+          "frame_index": 2,
+          "position_2d": [
+            460.8333435058594,
+            451.6666564941406
+          ],
+          "position_3d": null,
+          "confidence": 0.2500073313713074,
+          "visible": true
+        },
+        {
+          "semantic_name": "left_ankle",
+          "frame_index": 3,
+          "position_2d": [
+            456.6666564941406,
+            460.0
+          ],
+          "position_3d": null,
+          "confidence": 0.19458997249603271,
+          "visible": true
+        },
+        {
+          "semantic_name": "left_ankle",
+          "frame_index": 4,
+          "position_2d": [
+            431.6666564941406,
+            485.0
+          ],
+          "position_3d": null,
+          "confidence": 0.16781389713287354,
+          "visible": true
+        }
+      ]
+    },
+    "right_shoulder": {
+      "semantic_name": "right_shoulder",
+      "points": [
+        {
+          "semantic_name": "right_shoulder",
+          "frame_index": 0,
+          "position_2d": [
+            510.8333435058594,
+            326.6666564941406
+          ],
+          "position_3d": null,
+          "confidence": 0.1906438171863556,
+          "visible": true
+        },
+        {
+          "semantic_name": "right_shoulder",
+          "frame_index": 1,
+          "position_2d": [
+            527.5,
+            335.0
+          ],
+          "position_3d": null,
+          "confidence": 0.19366970658302307,
+          "visible": true
+        },
+        {
+          "semantic_name": "right_shoulder",
+          "frame_index": 2,
+          "position_2d": [
+            652.5,
+            326.6666564941406
+          ],
+          "position_3d": null,
+          "confidence": 0.17440269887447357,
+          "visible": true
+        },
+        {
+          "semantic_name": "right_shoulder",
+          "frame_index": 3,
+          "position_2d": [
+            598.3333129882812,
+            339.1666564941406
+          ],
+          "position_3d": null,
+          "confidence": 0.1408698856830597,
+          "visible": true
+        },
+        {
+          "semantic_name": "right_shoulder",
+          "frame_index": 4,
+          "position_2d": [
+            556.6666870117188,
+            351.6666564941406
+          ],
+          "position_3d": null,
+          "confidence": 0.1426500678062439,
+          "visible": true
+        }
+      ]
+    },
+    "left_elbow": {
+      "semantic_name": "left_elbow",
+      "points": [
+        {
+          "semantic_name": "left_elbow",
+          "frame_index": 0,
+          "position_2d": [
+            748.3333129882812,
+            314.1666564941406
+          ],
+          "position_3d": null,
+          "confidence": 0.16826710104942322,
+          "visible": true
+        },
+        {
+          "semantic_name": "left_elbow",
+          "frame_index": 1,
+          "position_2d": [
+            456.6666564941406,
+            310.0
+          ],
+          "position_3d": null,
+          "confidence": 0.1503657102584839,
+          "visible": true
+        },
+        {
+          "semantic_name": "left_elbow",
+          "frame_index": 2,
+          "position_2d": [
+            681.6666870117188,
+            310.0
+          ],
+          "position_3d": null,
+          "confidence": 0.13406330347061157,
+          "visible": true
+        },
+        {
+          "semantic_name": "left_elbow",
+          "frame_index": 3,
+          "position_2d": [
+            456.6666564941406,
+            314.1666564941406
+          ],
+          "position_3d": null,
+          "confidence": 0.11324002593755722,
+          "visible": true
+        },
+        {
+          "semantic_name": "left_elbow",
+          "frame_index": 4,
+          "position_2d": [
+            440.0,
+            310.0
+          ],
+          "position_3d": null,
+          "confidence": 0.1152365505695343,
+          "visible": true
+        }
+      ]
+    },
+    "head": {
+      "semantic_name": "head",
+      "points": [
+        {
+          "semantic_name": "head",
+          "frame_index": 0,
+          "position_2d": [
+            490.0,
+            347.5
+          ],
+          "position_3d": null,
+          "confidence": 0.24510356783866882,
+          "visible": true
+        },
+        {
+          "semantic_name": "head",
+          "frame_index": 1,
+          "position_2d": [
+            485.8333435058594,
+            347.5
+          ],
+          "position_3d": null,
+          "confidence": 0.23447994887828827,
+          "visible": true
+        },
+        {
+          "semantic_name": "head",
+          "frame_index": 2,
+          "position_2d": [
+            456.6666564941406,
+            355.8333435058594
+          ],
+          "position_3d": null,
+          "confidence": 0.2179391086101532,
+          "visible": true
+        },
+        {
+          "semantic_name": "head",
+          "frame_index": 3,
+          "position_2d": [
+            448.3333435058594,
+            364.1666564941406
+          ],
+          "position_3d": null,
+          "confidence": 0.17385849356651306,
+          "visible": true
+        },
+        {
+          "semantic_name": "head",
+          "frame_index": 4,
+          "position_2d": [
+            415.0,
+            351.6666564941406
+          ],
+          "position_3d": null,
+          "confidence": 0.18440751731395721,
+          "visible": true
+        }
+      ]
+    },
+    "neck": {
+      "semantic_name": "neck",
+      "points": [
+        {
+          "semantic_name": "neck",
+          "frame_index": 0,
+          "position_2d": [
+            506.6666717529297,
+            322.5
+          ],
+          "position_3d": null,
+          "confidence": 0.1906438171863556,
+          "visible": true
+        },
+        {
+          "semantic_name": "neck",
+          "frame_index": 1,
+          "position_2d": [
+            508.75,
+            326.6666717529297
+          ],
+          "position_3d": null,
+          "confidence": 0.19366970658302307,
+          "visible": true
+        },
+        {
+          "semantic_name": "neck",
+          "frame_index": 2,
+          "position_2d": [
+            560.8333282470703,
+            320.4166564941406
+          ],
+          "position_3d": null,
+          "confidence": 0.17440269887447357,
+          "visible": true
+        },
+        {
+          "semantic_name": "neck",
+          "frame_index": 3,
+          "position_2d": [
+            525.4166564941406,
+            328.75
+          ],
+          "position_3d": null,
+          "confidence": 0.1408698856830597,
+          "visible": true
+        },
+        {
+          "semantic_name": "neck",
+          "frame_index": 4,
+          "position_2d": [
+            500.4166717529297,
+            339.1666564941406
+          ],
+          "position_3d": null,
+          "confidence": 0.1426500678062439,
+          "visible": true
+        }
+      ]
+    },
+    "pelvis": {
+      "semantic_name": "pelvis",
+      "points": [
+        {
+          "semantic_name": "pelvis",
+          "frame_index": 0,
+          "position_2d": [
+            723.3333129882812,
+            328.75
+          ],
+          "position_3d": null,
+          "confidence": 0.12214456498622894,
+          "visible": true
+        },
+        {
+          "semantic_name": "pelvis",
+          "frame_index": 1,
+          "position_2d": [
+            721.25,
+            328.75
+          ],
+          "position_3d": null,
+          "confidence": 0.13321562111377716,
+          "visible": true
+        },
+        {
+          "semantic_name": "pelvis",
+          "frame_index": 2,
+          "position_2d": [
+            700.4166870117188,
+            339.1666717529297
+          ],
+          "position_3d": null,
+          "confidence": 0.1270936131477356,
+          "visible": true
+        },
+        {
+          "semantic_name": "pelvis",
+          "frame_index": 3,
+          "position_2d": [
+            685.8333129882812,
+            330.8333282470703
+          ],
+          "position_3d": null,
+          "confidence": 0.08897896111011505,
+          "visible": false
+        },
+        {
+          "semantic_name": "pelvis",
+          "frame_index": 4,
+          "position_2d": [
+            679.5833435058594,
+            335.0
+          ],
+          "position_3d": null,
+          "confidence": 0.08922667801380157,
+          "visible": false
+        }
+      ]
+    },
+    "spine": {
+      "semantic_name": "spine",
+      "points": [
+        {
+          "semantic_name": "spine",
+          "frame_index": 0,
+          "position_2d": [
+            614.9999923706055,
+            325.625
+          ],
+          "position_3d": null,
+          "confidence": 0.12214456498622894,
+          "visible": true
+        },
+        {
+          "semantic_name": "spine",
+          "frame_index": 1,
+          "position_2d": [
+            615.0,
+            327.70833587646484
+          ],
+          "position_3d": null,
+          "confidence": 0.13321562111377716,
+          "visible": true
+        },
+        {
+          "semantic_name": "spine",
+          "frame_index": 2,
+          "position_2d": [
+            630.6250076293945,
+            329.79166412353516
+          ],
+          "position_3d": null,
+          "confidence": 0.1270936131477356,
+          "visible": true
+        },
+        {
+          "semantic_name": "spine",
+          "frame_index": 3,
+          "position_2d": [
+            605.6249847412109,
+            329.79166412353516
+          ],
+          "position_3d": null,
+          "confidence": 0.08897896111011505,
+          "visible": false
+        },
+        {
+          "semantic_name": "spine",
+          "frame_index": 4,
+          "position_2d": [
+            590.0000076293945,
+            337.0833282470703
+          ],
+          "position_3d": null,
+          "confidence": 0.08922667801380157,
+          "visible": false
+        }
+      ]
+    }
+  }
+}

@@ -477,6 +477,10 @@ def test_find_blender_executable_falls_back_to_macos_application_bundle(monkeypa
     monkeypatch.setattr("shutil.which", lambda name: None)
     monkeypatch.setattr("platform.system", lambda: "Darwin")
     monkeypatch.setattr("app.cli.Path.home", lambda: tmp_path)
+    # Keep this integration-level lookup test independent of any real Blender
+    # installed in /Applications on the machine running the suite. The helper's
+    # own macOS path enumeration is covered by the preceding unit tests.
+    monkeypatch.setattr("app.cli._default_blender_search_paths", lambda: [blender_path])
 
     assert _find_blender_executable() == str(blender_path)
 

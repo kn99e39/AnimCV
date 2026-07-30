@@ -1,0 +1,17 @@
+{
+  "fps": 8.0,
+  "width": 640,
+  "height": 424,
+  "source_path": "/private/tmp/animcv-e2e/person.mp4",
+  "frame_count": 8,
+  "frame_timestamps": [
+    0.0,
+    0.125,
+    0.25,
+    0.375,
+    0.5,
+    0.625,
+    0.75,
+    0.875
+  ]
+}

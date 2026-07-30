@@ -131,9 +131,23 @@ class RetargetSolver:
         motion_graph: MotionGraph,
         rig_profile: RigProfile,
         mapping_profile: BoneMappingProfile,
+        *,
+        quality_config=None,
+        validate_quality: bool = True,
+        smoothing_window: int = 1,
     ) -> AnimationClip:
         from retarget.fk_solver import solve_anchor_bone, solve_direction_bone
         from retarget.ik_solver import solve_ik_chain
+        from retarget.quality import require_retarget_quality
+
+        if validate_quality:
+            require_retarget_quality(
+                motion_graph, rig_profile, mapping_profile, quality_config
+            )
+        if smoothing_window > 1:
+            from retarget.temporal_filter import median_filter_motion_graph
+
+            motion_graph = median_filter_motion_graph(motion_graph, smoothing_window)
 
         tracks: dict[str, AnimationTrack] = {}
         for entry in mapping_profile.entries:

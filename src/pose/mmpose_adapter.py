@@ -20,6 +20,7 @@ import numpy as np
 
 from mediaio.frame_sequence import Frame, FrameSequence
 from pose.pose_types import PoseFrame, PoseLandmark, PoseSequence
+from pose.subject_tracker import Detection, SubjectTracker
 
 
 @contextlib.contextmanager
@@ -87,6 +88,9 @@ class MMPoseConfig:
     checkpoint_path: str
     device: str = "cpu"
     visibility_threshold: float = 0.3
+    subject_box: tuple[float, float, float, float] | None = None
+    detector_config_path: str | None = None
+    detector_checkpoint_path: str | None = None
 
 
 class PoseEstimator:
@@ -95,6 +99,7 @@ class PoseEstimator:
     def __init__(self, config: MMPoseConfig):
         self._config = config
         self._model = None
+        self._detector = None
 
     def _load_model(self):
         if self._model is None:
@@ -113,6 +118,21 @@ class PoseEstimator:
                 )
         return self._model
 
+    def _load_detector(self):
+        if self._config.detector_config_path is None or self._config.detector_checkpoint_path is None:
+            raise ValueError("subject tracking needs both detector_config_path and detector_checkpoint_path")
+        if self._detector is None:
+            from mmdet.apis import init_detector
+            # MMDetection's compatible mmengine release has the same
+            # PyTorch >=2.6 checkpoint-loading issue as MMPose.
+            with _mmengine_checkpoint_compat():
+                self._detector = init_detector(
+                    self._config.detector_config_path,
+                    self._config.detector_checkpoint_path,
+                    device=self._config.device,
+                )
+        return self._detector
+
     def process_frame(self, frame: Frame) -> PoseFrame:
         from mmpose.apis import inference_topdown
 
@@ -122,10 +142,41 @@ class PoseEstimator:
         return PoseFrame(frame_index=frame.index, timestamp=frame.timestamp, landmarks=landmarks)
 
     def process_sequence(self, frames: FrameSequence) -> PoseSequence:
+        if self._config.subject_box is not None:
+            return self._process_tracked_sequence(frames)
         pose_frames = [self.process_frame(frame) for frame in frames.frames]
         return PoseSequence(
             frames=pose_frames, source_fps=frames.fps, landmark_schema="canonical_v1"
         )
+
+    def _process_tracked_sequence(self, frames: FrameSequence) -> PoseSequence:
+        from mmdet.apis import inference_detector
+        from mmpose.apis import inference_topdown
+        from mmengine.registry import init_default_scope
+
+        detector = self._load_detector()
+        model = self._load_model()
+        tracker = SubjectTracker(self._config.subject_box)
+        pose_frames = []
+        for frame in frames.frames:
+            # inference_topdown switches the global default scope to mmpose;
+            # switch it back before constructing MMDetection's pipeline.
+            init_default_scope("mmdet")
+            result = inference_detector(detector, frame.image)
+            instances = result.pred_instances
+            detections = [
+                Detection(tuple(float(value) for value in bbox), float(score))
+                for bbox, score, label in zip(instances.bboxes.cpu().numpy(), instances.scores.cpu().numpy(), instances.labels.cpu().numpy())
+                if int(label) == 0 and float(score) >= 0.3
+            ]
+            selected = tracker.select(detections)
+            if selected is None:
+                landmarks = {}
+            else:
+                results = inference_topdown(model, frame.image, [selected.bbox])
+                landmarks = _extract_canonical_landmarks(results, self._config.visibility_threshold)
+            pose_frames.append(PoseFrame(frame_index=frame.index, timestamp=frame.timestamp, landmarks=landmarks))
+        return PoseSequence(frames=pose_frames, source_fps=frames.fps, landmark_schema="canonical_v1")
 
 
 def _extract_canonical_landmarks(

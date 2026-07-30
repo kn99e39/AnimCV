@@ -1,0 +1,14 @@
+{
+  "fps": 5.0,
+  "width": 960,
+  "height": 540,
+  "source_path": "examples/quality_demo/official_demo.mp4",
+  "frame_count": 5,
+  "frame_timestamps": [
+    0.0,
+    0.2,
+    0.4,
+    0.6,
+    0.8
+  ]
+}

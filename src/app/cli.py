@@ -70,6 +70,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--device", default="cpu")
     p.add_argument("--visibility-threshold", type=float, default=0.3)
+    p.add_argument("--subject-box", default=None, help="Track one subject from x1,y1,x2,y2; requires detector options")
+    p.add_argument("--detector-config", default=None, help="MMDetection person-detector config for --subject-box")
+    p.add_argument("--detector-checkpoint", default=None, help="MMDetection person-detector checkpoint for --subject-box")
     p.add_argument(
         "--depth-checkpoint",
         default=None,
@@ -103,6 +106,30 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--rig", required=True)
     p.add_argument("--mapping", required=True)
     p.add_argument("--out", required=True)
+    p.add_argument(
+        "--min-visibility-rate", type=float, default=0.60,
+        help="Minimum fraction of frames where every landmark of a mapping is visible",
+    )
+    p.add_argument(
+        "--min-mean-confidence", type=float, default=0.30,
+        help="Minimum mean confidence across each mapping's required landmarks",
+    )
+    p.add_argument(
+        "--max-direction-step-degrees", type=float, default=120.0,
+        help="Reject a direction mapping whose consecutive-frame turn exceeds this angle",
+    )
+    p.add_argument(
+        "--skip-quality-check", action="store_true",
+        help="Allow retargeting low-quality input; intended only for manual recovery workflows",
+    )
+    p.add_argument(
+        "--quality-report", default=None,
+        help="Optional JSON path for per-mapping quality metrics; written even if retarget is rejected",
+    )
+    p.add_argument(
+        "--smoothing-window", type=int, default=3,
+        help="Odd median-filter window for valid landmarks after quality validation (default: 3; 1 disables)",
+    )
 
     p = sub.add_parser("optimize", help="Collapse dense animation samples into sparse keyframes")
     p.add_argument("--animation", required=True)
@@ -170,6 +197,9 @@ def _estimate_pose(args: argparse.Namespace) -> None:
         checkpoint_path=pose_checkpoint_path,
         device=args.device,
         visibility_threshold=args.visibility_threshold,
+        subject_box=_parse_subject_box(args.subject_box),
+        detector_config_path=args.detector_config,
+        detector_checkpoint_path=args.detector_checkpoint,
     )
     poses = PoseEstimator(config).process_sequence(sequence)
 
@@ -197,6 +227,18 @@ def _estimate_pose(args: argparse.Namespace) -> None:
 
     write_json(args.out, poses.to_dict())
     print(f"[motion-tool] estimated pose for {len(poses.frames)} frames -> {args.out}")
+
+
+def _parse_subject_box(value: str | None) -> tuple[float, float, float, float] | None:
+    if value is None:
+        return None
+    try:
+        box = tuple(float(item.strip()) for item in value.split(","))
+    except ValueError as exc:
+        raise ValueError("--subject-box must be x1,y1,x2,y2") from exc
+    if len(box) != 4 or box[2] <= box[0] or box[3] <= box[1]:
+        raise ValueError("--subject-box must be x1,y1,x2,y2 with x2>x1 and y2>y1")
+    return box
 
 
 def _parse_rig(args: argparse.Namespace) -> None:
@@ -246,16 +288,36 @@ def _build_motion(args: argparse.Namespace) -> None:
 
 
 def _retarget(args: argparse.Namespace) -> None:
+    from common.serialization import write_json
     from motion.motion_io import load_motion_graph
     from retarget.solver import RetargetSolver, save_animation_clip
     from rig.bone_mapping import load_bone_mapping_profile
     from rig.rig_parser import RigParser
+    from retarget.quality import RetargetQualityConfig, RetargetQualityError, assess_retarget_quality
 
     motion_graph = load_motion_graph(args.motion)
     rig_profile = RigParser().load(args.rig)
     mapping_profile = load_bone_mapping_profile(args.mapping)
 
-    clip = RetargetSolver().solve(motion_graph, rig_profile, mapping_profile)
+    quality_config = RetargetQualityConfig(
+        min_visibility_rate=args.min_visibility_rate,
+        min_mean_confidence=args.min_mean_confidence,
+        max_direction_step_degrees=args.max_direction_step_degrees,
+    )
+    report = assess_retarget_quality(motion_graph, rig_profile, mapping_profile, quality_config)
+    if args.quality_report:
+        write_json(args.quality_report, report.to_dict())
+    if not args.skip_quality_check and not report.passed:
+        raise RetargetQualityError(report)
+
+    clip = RetargetSolver().solve(
+        motion_graph,
+        rig_profile,
+        mapping_profile,
+        quality_config=quality_config,
+        validate_quality=False,
+        smoothing_window=args.smoothing_window,
+    )
 
     save_animation_clip(clip, args.out)
     print(f"[motion-tool] retargeted {len(clip.tracks)} bone tracks -> {args.out}")

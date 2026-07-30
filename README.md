@@ -141,6 +141,20 @@ rig doesn't have, or an unrecognized `mapping_mode`, are silently
 skipped rather than raising — partial mapping is expected, not an
 error (section 6.5).
 
+Before writing an animation, `retarget` applies an input-quality gate to every
+supported mapping: the required landmarks must be visible in at least 60% of
+frames, have mean confidence at least 0.30, and direction mappings may not
+make a consecutive-frame turn over 120 degrees. This prevents all-zero or
+severely jittery tracks from being reported as successful animation. Tune the
+limits with `--min-visibility-rate`, `--min-mean-confidence`, and
+`--max-direction-step-degrees`; `--skip-quality-check` is for manual recovery
+workflows where held low-confidence poses are intentional.
+Pass `--quality-report report.json` to retain the per-mapping metrics even when
+the gate rejects the input. After a successful check, a three-frame median
+filter is applied to visible landmark positions before solving to suppress
+isolated detector spikes; use `--smoothing-window 1` to disable it or another
+odd window size to tune it.
+
 `create-mapping` prompts once per rig bone (in name order) on stdin:
 
 ```text

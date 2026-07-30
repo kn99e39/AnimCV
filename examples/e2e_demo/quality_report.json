@@ -1,0 +1,18 @@
+{
+  "passed": true,
+  "summary": "retarget input quality passed",
+  "mappings": [
+    {
+      "target_bone": "upper_arm.L",
+      "source_names": [
+        "left_shoulder",
+        "left_elbow"
+      ],
+      "mapping_mode": "direction",
+      "visibility_rate": 1.0,
+      "mean_confidence": 0.4001628942787647,
+      "max_direction_step_degrees": 3.366471856852818,
+      "failures": []
+    }
+  ]
+}

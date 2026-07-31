@@ -189,7 +189,7 @@ def test_solve_handles_landmark_anchor_mapping():
     assert clip.tracks["head"].samples[0].location == pytest.approx((0.0, 0.0, 0.0))
 
 
-def test_solve_applies_rest_pose_correction_via_rig_profile():
+def test_solve_keeps_direction_rotation_in_world_space_for_blender_export():
     motion_graph = _swinging_arm_motion_graph()
     rig_profile = RigProfile(
         rig_id="character_01",
@@ -212,8 +212,8 @@ def test_solve_applies_rest_pose_correction_via_rig_profile():
         ],
     )
 
-    corrected_clip = RetargetSolver().solve(motion_graph, rig_profile, mapping)
-    uncorrected_clip = RetargetSolver().solve(
+    rig_clip = RetargetSolver().solve(motion_graph, rig_profile, mapping)
+    no_rig_basis_clip = RetargetSolver().solve(
         motion_graph,
         RigProfile(
             rig_id="character_01",
@@ -223,8 +223,11 @@ def test_solve_applies_rest_pose_correction_via_rig_profile():
         mapping,
     )
 
-    assert corrected_clip.tracks["upper_arm.L"].samples[1].rotation != pytest.approx(
-        uncorrected_clip.tracks["upper_arm.L"].samples[1].rotation
+    # Assimp's FBX node basis can differ from Blender's imported bone basis.
+    # Retarget output therefore remains in world/image coordinates; the
+    # Blender writer converts it using the actual pose bone.matrix_local.
+    assert rig_clip.tracks["upper_arm.L"].samples[1].rotation == pytest.approx(
+        no_rig_basis_clip.tracks["upper_arm.L"].samples[1].rotation
     )
 
 

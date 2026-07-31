@@ -154,15 +154,19 @@ class RetargetSolver:
             bone_info = rig_profile.bones.get(entry.target_bone)
             if bone_info is None:
                 continue
-            rest_local_matrix = bone_info.rest_local_matrix
-
             if entry.mapping_mode == "direction":
+                # Direction rotations are calculated in the image/world frame.
+                # Do not convert through Assimp's FBX node transforms here:
+                # their basis is not guaranteed to match Blender's imported
+                # bone basis.  BlenderExecutor performs this conversion from
+                # the *actual imported pose bone* immediately before writing
+                # the keyframe.
                 samples = solve_direction_bone(
-                    motion_graph, entry.target_bone, entry, rest_local_matrix
+                    motion_graph, entry.target_bone, entry
                 )
             elif entry.mapping_mode in ("landmark", "point"):
                 samples = solve_anchor_bone(
-                    motion_graph, entry.target_bone, entry, rest_local_matrix
+                    motion_graph, entry.target_bone, entry
                 )
             else:
                 continue
@@ -182,8 +186,6 @@ class RetargetSolver:
             chain_samples = solve_ik_chain(
                 motion_graph,
                 chain,
-                root_rest_local_matrix=root_info.rest_local_matrix,
-                mid_rest_local_matrix=mid_info.rest_local_matrix,
             )
             tracks[chain.root_bone] = AnimationTrack(
                 bone_name=chain.root_bone, samples=chain_samples[chain.root_bone]

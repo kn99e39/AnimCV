@@ -45,6 +45,8 @@ class BlenderExecutor:
         return armature_object
 
     def apply_animation(self, animation: AnimationClip, rig_profile: RigProfile | None = None) -> None:
+        import bpy
+
         from blender.keyframe_writer import write_keyframes
 
         armature_object = _find_armature_object()
@@ -55,6 +57,7 @@ class BlenderExecutor:
         # (section 3.4) and for future per-bone axis correction; the
         # Milestone 5 fk_solver already bakes axis_hint into its
         # rotations, so this MVP writer doesn't need it yet.
+        _set_scene_fps(bpy.context.scene, animation.fps)
         write_keyframes(armature_object, animation)
 
     def save_blend(self, path: str) -> None:
@@ -66,3 +69,12 @@ class BlenderExecutor:
         from blender.export import export_fbx
 
         export_fbx(path)
+
+
+def _set_scene_fps(scene, fps: float) -> None:
+    """Set Blender's integer/fractional FPS pair to the clip's FPS."""
+    if fps <= 0:
+        raise ValueError(f"animation fps must be positive, got {fps}")
+    rounded_fps = max(1, round(fps))
+    scene.render.fps = rounded_fps
+    scene.render.fps_base = rounded_fps / fps

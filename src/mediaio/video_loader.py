@@ -10,7 +10,8 @@ from pathlib import Path
 
 import cv2
 
-from mediaio.frame_sequence import Frame, FrameSequence
+from common.serialization import read_json
+from mediaio.frame_sequence import Frame, FrameSequence, FrameSequenceMetadata
 
 _IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
 
@@ -97,7 +98,7 @@ class VideoLoader:
         if not image_paths:
             raise FileNotFoundError(f"No images found in: {directory}")
 
-        fps = self.default_image_sequence_fps
+        fps, timestamps = self._image_sequence_timing(directory_path, len(image_paths))
         frames: list[Frame] = []
         width = height = 0
         for index, image_path in enumerate(image_paths):
@@ -106,12 +107,30 @@ class VideoLoader:
                 raise ValueError(f"Failed to read image: {image_path}")
             height, width = image.shape[:2]
             frames.append(
-                Frame(index=index, timestamp=index / fps, image=image, width=width, height=height)
+                Frame(index=index, timestamp=timestamps[index], image=image, width=width, height=height)
             )
 
         return FrameSequence(
             frames=frames, fps=fps, width=width, height=height, source_path=str(directory_path)
         )
+
+    def _image_sequence_timing(self, directory: Path, frame_count: int) -> tuple[float, list[float]]:
+        """Restore the source timing written by ``extract-frames`` when present.
+
+        Image directories created outside AnimCV have no metadata and retain the
+        documented 24fps fallback. Invalid or stale metadata is ignored rather
+        than making a directory of otherwise readable images unusable.
+        """
+        metadata_path = directory / "metadata.json"
+        if metadata_path.is_file():
+            try:
+                metadata = FrameSequenceMetadata.from_dict(read_json(metadata_path))
+                if metadata.fps > 0 and len(metadata.frame_timestamps) == frame_count:
+                    return metadata.fps, metadata.frame_timestamps
+            except (OSError, ValueError, KeyError, TypeError):
+                pass
+        fps = self.default_image_sequence_fps
+        return fps, [index / fps for index in range(frame_count)]
 
     def open_scrubber(self, path: str) -> "VideoScrubber":
         """Open a random-access single-frame reader for the GUI's Frames-tab

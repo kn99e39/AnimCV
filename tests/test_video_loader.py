@@ -1,6 +1,8 @@
 import cv2
 import numpy as np
 
+from common.serialization import write_json
+from mediaio.frame_sequence import FrameSequenceMetadata
 from mediaio.video_loader import VideoLoader
 
 
@@ -112,6 +114,39 @@ def test_load_image_sequence_empty_directory_raises(tmp_path):
 
     with pytest.raises(FileNotFoundError):
         VideoLoader().load_image_sequence(str(tmp_path))
+
+
+def test_load_image_sequence_restores_extract_frames_fps_and_timestamps(tmp_path):
+    for i in range(3):
+        cv2.imwrite(str(tmp_path / f"{i:04d}.png"), np.zeros((10, 20, 3), dtype=np.uint8))
+    write_json(
+        tmp_path / "metadata.json",
+        FrameSequenceMetadata(
+            fps=8.0,
+            width=20,
+            height=10,
+            source_path="source.mp4",
+            frame_count=3,
+            frame_timestamps=[0.0, 0.125, 0.25],
+        ).to_dict(),
+    )
+
+    sequence = VideoLoader().load_image_sequence(str(tmp_path))
+
+    assert sequence.fps == 8.0
+    assert [frame.timestamp for frame in sequence.frames] == [0.0, 0.125, 0.25]
+
+
+def test_load_image_sequence_ignores_stale_metadata(tmp_path):
+    cv2.imwrite(str(tmp_path / "0000.png"), np.zeros((10, 20, 3), dtype=np.uint8))
+    write_json(
+        tmp_path / "metadata.json",
+        {"fps": 8.0, "width": 20, "height": 10, "source_path": "x", "frame_count": 2, "frame_timestamps": [0.0, 0.125]},
+    )
+
+    sequence = VideoLoader().load_image_sequence(str(tmp_path))
+
+    assert sequence.fps == 24.0
 
 
 def test_scrubber_reports_video_metadata(tmp_path):

@@ -56,6 +56,8 @@ def test_write_keyframes_inserts_rotation_and_location(fake_bpy):
     upper_arm_bone = armature.pose.bones["upper_arm.L"]
     assert upper_arm_bone.rotation_mode == "QUATERNION"
     assert [call[0] for call in upper_arm_bone.keyframe_calls] == ["rotation_quaternion"] * 3
+    # Project clips are (x, y, z, w); Blender RNA receives (w, x, y, z).
+    assert upper_arm_bone.rotation_quaternion == (1.0, 0.0, 0.0, 0.0)
 
     hand_bone = armature.pose.bones["hand.L"]
     assert [call[0] for call in hand_bone.keyframe_calls] == ["location"] * 3
@@ -144,6 +146,21 @@ def test_apply_animation_writes_keyframes_onto_scene_armature(fake_bpy):
     BlenderExecutor().apply_animation(clip)
 
     assert len(armature.pose.bones["upper_arm.L"].keyframe_calls) == 3
+    assert fake_bpy.context.scene.render.fps == 24
+    assert fake_bpy.context.scene.render.fps_base == 1.0
+
+
+def test_apply_animation_sets_fractional_scene_fps(fake_bpy):
+    from blender.executor import BlenderExecutor
+
+    armature = FakeArmatureObject("Armature", ["upper_arm.L"])
+    fake_bpy.data.objects.append(armature)
+    clip = AnimationClip(name="Generated_Motion", fps=23.976, tracks={})
+
+    BlenderExecutor().apply_animation(clip)
+
+    assert fake_bpy.context.scene.render.fps == 24
+    assert fake_bpy.context.scene.render.fps_base == pytest.approx(24 / 23.976)
 
 
 def test_apply_animation_no_armature_raises(fake_bpy):

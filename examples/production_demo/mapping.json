@@ -1,0 +1,16 @@
+{
+  "rig_id": "BaseRig",
+  "created_from_frame": 0,
+  "user_notes": "Quality-audit mapping for the BaseRig major limb chains.",
+  "entries": [
+    {"target_bone": "upperarm_l", "source_type": "landmark", "source_names": ["left_shoulder", "left_elbow"], "mapping_mode": "direction", "weight": 1.0, "axis_hint": "+Y", "locked": false},
+    {"target_bone": "lowerarm_l", "source_type": "landmark", "source_names": ["left_elbow", "left_wrist"], "mapping_mode": "direction", "weight": 1.0, "axis_hint": "+Y", "locked": false},
+    {"target_bone": "upperarm_r", "source_type": "landmark", "source_names": ["right_shoulder", "right_elbow"], "mapping_mode": "direction", "weight": 1.0, "axis_hint": "+Y", "locked": false},
+    {"target_bone": "lowerarm_r", "source_type": "landmark", "source_names": ["right_elbow", "right_wrist"], "mapping_mode": "direction", "weight": 1.0, "axis_hint": "+Y", "locked": false},
+    {"target_bone": "thigh_l", "source_type": "landmark", "source_names": ["left_hip", "left_knee"], "mapping_mode": "direction", "weight": 1.0, "axis_hint": "+Y", "locked": false},
+    {"target_bone": "calf_l", "source_type": "landmark", "source_names": ["left_knee", "left_ankle"], "mapping_mode": "direction", "weight": 1.0, "axis_hint": "+Y", "locked": false},
+    {"target_bone": "thigh_r", "source_type": "landmark", "source_names": ["right_hip", "right_knee"], "mapping_mode": "direction", "weight": 1.0, "axis_hint": "+Y", "locked": false},
+    {"target_bone": "calf_r", "source_type": "landmark", "source_names": ["right_knee", "right_ankle"], "mapping_mode": "direction", "weight": 1.0, "axis_hint": "+Y", "locked": false}
+  ],
+  "ik_chains": []
+}

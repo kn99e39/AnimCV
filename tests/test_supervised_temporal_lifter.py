@@ -1,6 +1,6 @@
 from pose.pose_lifter import LiftedPoseFrame, LiftedPosePoint, LiftedPoseSequence, H36M_NAMES
 from pose.pose_types import PoseFrame, PoseLandmark, PoseSequence
-from training.temporal_lifter import TrainingConfig, build_dataset, evaluate, infer, load_dataset, save_dataset, train
+from training.temporal_lifter import TrainingConfig, build_dataset, combine_datasets, evaluate, infer, load_dataset, preflight, save_dataset, train
 
 
 def _pose(index):
@@ -24,3 +24,35 @@ def test_supervised_dataset_and_training_smoke(tmp_path):
     assert report["frame_count"] == 4
     assert evaluate(load_dataset(path), checkpoint)["frame_count"] == 4
     assert infer(pose, checkpoint, (100, 100)).backend == "animcv_supervised_temporal_lifter_v1"
+
+
+def test_combined_dataset_keeps_windows_inside_each_sequence():
+    first = build_dataset(PoseSequence([_pose(i) for i in range(3)], 25), LiftedPoseSequence([_target(i) for i in range(3)], 25), (100, 100), "first")
+    second = build_dataset(PoseSequence([_pose(i + 10) for i in range(3)], 25), LiftedPoseSequence([_target(i + 10) for i in range(3)], 25), (100, 100), "second")
+    combined = combine_datasets([first, second])
+    assert [item["sequence_id"] for item in combined["sequences"]] == ["first", "second"]
+    assert all(frame["target_valid"][0] for frame in combined["frames"])
+
+
+def test_invalid_joint_is_masked_from_supervised_dataset():
+    pose = PoseSequence([_pose(0)], 25)
+    target = _target(0)
+    points = dict(target.points)
+    points["left_wrist"] = LiftedPosePoint("left_wrist", (99, 99, 99), 1.0, 0.0, observation_valid=False)
+    dataset = build_dataset(pose, LiftedPoseSequence([LiftedPoseFrame(0, 0.0, points)], 25), (100, 100), "masked")
+    wrist = H36M_NAMES.index("left_wrist")
+    assert not dataset["frames"][0]["target_valid"][wrist]
+
+
+def test_combining_rejects_wrong_declared_split():
+    dataset = build_dataset(PoseSequence([_pose(i) for i in range(3)], 25), LiftedPoseSequence([_target(i) for i in range(3)], 25), (100, 100), "train")
+    dataset["source"] = {"split": "holdout"}
+    import pytest
+    with pytest.raises(ValueError, match="expected 'train'"):
+        combine_datasets([dataset], expected_split="train")
+
+
+def test_training_preflight_reports_cpu_runtime():
+    report = preflight("cpu")
+    assert report["passed"]
+    assert report["requested_device"] == "cpu"

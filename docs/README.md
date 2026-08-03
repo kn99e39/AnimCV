@@ -13,6 +13,8 @@
 | [04_MPI-INF-3DHP_보정_평가](04_MPI_INF_3DHP_보정_평가.md) | 외부 GT 기반 2D/3D/yaw 평가 | 3D·yaw 실패, 제품 채택 불가 |
 | [05_자체_학습_전환_계획](05_자체_학습_전환_계획.md) | licensed 데이터 기반 학습·holdout 운영 | baseline 구현 중 |
 | [06_SERVER_AI_AGENT_TRAINING_RUNBOOK](06_SERVER_AI_AGENT_TRAINING_RUNBOOK.md) | 서버 Agent용 데이터 검증·학습·판정 실행 지침 | 실행 준비 완료 |
+| [07_WEB_DATASET_TRAINING_PLAN](07_WEB_DATASET_TRAINING_PLAN.md) | 웹 원천 데이터셋 도입·license·adapter 계획 | C1–C6 선행 구현 필요 |
+| [08_RESEARCH_DATASET_ASSESSMENT](08_RESEARCH_DATASET_ASSESSMENT.md) | 공개 dataset 조사, 코드 현황, 구현 배치 | 설계 완료·구현 승인 대기 |
 
 ## 원칙
 

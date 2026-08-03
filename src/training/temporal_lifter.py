@@ -20,7 +20,8 @@ from pose.pose_lifter import LiftedPoseFrame, LiftedPosePoint
 from pose.pose_types import PoseSequence
 
 
-SCHEMA = "animcv_supervised_3d_lifter_dataset_v1"
+SCHEMA = "animcv_supervised_3d_lifter_dataset_v2"
+LEGACY_SCHEMA = "animcv_supervised_3d_lifter_dataset_v1"
 
 
 def build_dataset(
@@ -37,20 +38,31 @@ def build_dataset(
         if target_frame is None:
             continue
         inputs, outputs = [], []
+        valid = []
         for name in H36M_NAMES:
             landmark_name = "neck" if name == "thorax" else name
             landmark = frame.landmarks.get(landmark_name)
             point = target_frame.points.get(name) or target_frame.points.get(landmark_name)
-            if landmark is None or point is None:
-                raise ValueError(f"frame {frame.frame_index} lacks {landmark_name} required by the supervised schema")
-            inputs.append([landmark.x / width, landmark.y / height, landmark.confidence])
-            outputs.append(list(point.position))
-        frames.append({"frame_index": frame.frame_index, "input_2d": inputs, "target_3d": outputs})
+            input_valid = landmark is not None and landmark.visible
+            target_valid = point is not None and point.observation_valid
+            if landmark is None:
+                inputs.append([0.0, 0.0, 0.0])
+            else:
+                inputs.append([landmark.x / width, landmark.y / height, landmark.confidence])
+            outputs.append(list(point.position) if point is not None else [0.0, 0.0, 0.0])
+            valid.append(bool(input_valid and target_valid))
+        # A missing pelvis makes root-relative supervision meaningless.
+        if not valid[0]:
+            continue
+        frames.append({"frame_index": frame.frame_index, "input_2d": inputs, "target_3d": outputs,
+                       "target_valid": valid})
     if not frames:
         raise ValueError("no aligned 2D/3D frames for supervised dataset")
     return {
         "schema": SCHEMA, "joint_names": list(H36M_NAMES), "sequence_id": sequence_id,
         "source_fps": pose.source_fps, "image_size": [width, height], "frames": frames,
+        "sequences": [{"sequence_id": sequence_id, "source_fps": pose.source_fps,
+                       "image_size": [width, height], "frames": frames}],
     }
 
 
@@ -60,11 +72,38 @@ def save_dataset(dataset: dict[str, Any], path: str | Path) -> None:
 
 def load_dataset(path: str | Path) -> dict[str, Any]:
     dataset = read_json(path)
-    if dataset.get("schema") != SCHEMA or dataset.get("joint_names") != list(H36M_NAMES):
+    if dataset.get("schema") not in (SCHEMA, LEGACY_SCHEMA) or dataset.get("joint_names") != list(H36M_NAMES):
         raise ValueError("unsupported supervised 3D lifter dataset")
     if not dataset.get("frames"):
         raise ValueError("supervised dataset contains no frames")
     return dataset
+
+
+def combine_datasets(datasets: list[dict[str, Any]], expected_split: str | None = None) -> dict[str, Any]:
+    """Combine complete clips without allowing temporal windows to cross clips."""
+    if not datasets:
+        raise ValueError("at least one dataset is required")
+    sequences = []
+    identifiers = set()
+    for dataset in datasets:
+        if dataset.get("joint_names") != list(H36M_NAMES):
+            raise ValueError("dataset joint schema mismatch")
+        source = dataset.get("source", {})
+        if expected_split is not None and source.get("split") != expected_split:
+            raise ValueError(f"dataset split {source.get('split')!r} does not match expected {expected_split!r}")
+        for sequence in dataset.get("sequences", [{"sequence_id": dataset.get("sequence_id"), "frames": dataset["frames"]}]):
+            sequence_id = sequence.get("sequence_id")
+            if not sequence_id or sequence_id in identifiers:
+                raise ValueError("combined datasets require unique sequence_id values")
+            identifiers.add(sequence_id)
+            if not sequence.get("frames"):
+                continue
+            sequences.append(sequence)
+    if not sequences:
+        raise ValueError("combined datasets contain no frames")
+    frames = [frame for sequence in sequences for frame in sequence["frames"]]
+    return {"schema": SCHEMA, "joint_names": list(H36M_NAMES), "sequence_id": "combined",
+            "source_fps": 0.0, "image_size": None, "frames": frames, "sequences": sequences}
 
 
 @dataclass(frozen=True)
@@ -85,31 +124,34 @@ class TrainingConfig:
 
 def train(dataset: dict[str, Any], checkpoint_path: str | Path, config: TrainingConfig) -> dict[str, Any]:
     torch, nn = _torch()
-    inputs, targets = _arrays(dataset)
+    inputs, targets, valid, offsets = _arrays(dataset, config.window)
     model = _model(nn, config.channels).to(config.device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=config.learning_rate)
     x = torch.as_tensor(inputs, dtype=torch.float32, device=config.device)
     y = torch.as_tensor(targets, dtype=torch.float32, device=config.device)
-    offsets = _window_offsets(len(inputs), config.window)
     indices = torch.arange(len(inputs), device=config.device)
     for _ in range(config.epochs):
         permutation = indices[torch.randperm(len(indices), device=config.device)]
         for batch in permutation.split(config.batch_size):
             windows = torch.stack([x[offsets[int(index)]] for index in batch])
             prediction = model(windows)
-            loss = torch.nn.functional.smooth_l1_loss(prediction, y[batch])
+            mask = torch.as_tensor(valid[batch.cpu().numpy()], dtype=torch.float32, device=config.device).unsqueeze(-1)
+            loss = (torch.nn.functional.smooth_l1_loss(prediction, y[batch], reduction="none") * mask).sum() / mask.sum().clamp_min(1.0)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
     model.eval()
     with torch.no_grad():
         prediction = torch.stack([model(x[offsets[index:index + 1]])[0] for index in range(len(inputs))])
-        mpjpe_mm = float(torch.linalg.vector_norm(prediction - y, dim=-1).mean().item() * 1000)
+        errors = torch.linalg.vector_norm(prediction - y, dim=-1)
+        valid_tensor = torch.as_tensor(valid, dtype=torch.bool, device=config.device)
+        mpjpe_mm = float(errors[valid_tensor].mean().item() * 1000)
     payload = {"schema": "animcv_temporal_lifter_checkpoint_v1", "joint_names": list(H36M_NAMES),
                "channels": config.channels, "window": config.window, "state_dict": model.state_dict()}
     Path(checkpoint_path).parent.mkdir(parents=True, exist_ok=True)
     torch.save(payload, checkpoint_path)
-    return {"frame_count": len(inputs), "training_mpjpe_mm": mpjpe_mm, "config": config.__dict__}
+    return {"frame_count": len(inputs), "training_mpjpe_mm": mpjpe_mm,
+            "valid_joint_count": int(valid.sum()), "config": config.__dict__}
 
 
 def evaluate(dataset: dict[str, Any], checkpoint_path: str | Path, device: str = "cpu") -> dict[str, Any]:
@@ -117,18 +159,18 @@ def evaluate(dataset: dict[str, Any], checkpoint_path: str | Path, device: str =
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
     if checkpoint.get("schema") != "animcv_temporal_lifter_checkpoint_v1":
         raise ValueError("unsupported temporal lifter checkpoint")
-    inputs, targets = _arrays(dataset)
+    inputs, targets, valid, offsets = _arrays(dataset, int(checkpoint["window"]))
     model = _model(nn, int(checkpoint["channels"])).to(device)
     model.load_state_dict(checkpoint["state_dict"])
     model.eval()
     x = torch.as_tensor(inputs, dtype=torch.float32, device=device)
     y = torch.as_tensor(targets, dtype=torch.float32, device=device)
-    offsets = _window_offsets(len(inputs), int(checkpoint["window"]))
     with torch.no_grad():
         prediction = torch.stack([model(x[offsets[index:index + 1]])[0] for index in range(len(inputs))])
-    errors = torch.linalg.vector_norm(prediction - y, dim=-1).flatten() * 1000
+    errors = torch.linalg.vector_norm(prediction - y, dim=-1)[torch.as_tensor(valid, dtype=torch.bool, device=device)] * 1000
     return {"schema": "animcv_supervised_lifter_evaluation_v1", "frame_count": len(inputs),
             "mpjpe_mm": float(errors.mean().item()), "p95_joint_error_mm": float(torch.quantile(errors, 0.95).item()),
+            "valid_joint_count": int(valid.sum()),
             "passed": False, "verdict": "informational: evaluate on a held-out sequence before defining a gate"}
 
 
@@ -170,9 +212,18 @@ def infer(pose: PoseSequence, checkpoint_path: str | Path, image_size: tuple[int
     )
 
 
-def _arrays(dataset: dict[str, Any]) -> tuple[np.ndarray, np.ndarray]:
-    return (np.asarray([frame["input_2d"] for frame in dataset["frames"]], dtype=np.float32),
-            np.asarray([frame["target_3d"] for frame in dataset["frames"]], dtype=np.float32))
+def _arrays(dataset: dict[str, Any], window: int) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    sequences = dataset.get("sequences", [{"frames": dataset["frames"]}])
+    frames = [frame for sequence in sequences for frame in sequence["frames"]]
+    inputs = np.asarray([frame["input_2d"] for frame in frames], dtype=np.float32)
+    targets = np.asarray([frame["target_3d"] for frame in frames], dtype=np.float32)
+    valid = np.asarray([frame.get("target_valid", [True] * len(H36M_NAMES)) for frame in frames], dtype=bool)
+    offset_groups, cursor = [], 0
+    for sequence in sequences:
+        length = len(sequence["frames"])
+        offset_groups.append(_window_offsets(length, window) + cursor)
+        cursor += length
+    return inputs, targets, valid, np.concatenate(offset_groups)
 
 
 def _window_offsets(length: int, window: int) -> np.ndarray:
@@ -202,3 +253,18 @@ def _torch():
     except ImportError as exc:
         raise ImportError("supervised 3D lifter training requires torch; install the training extra") from exc
     return torch, nn
+
+
+def preflight(device: str = "cuda") -> dict[str, Any]:
+    """Report whether the requested training device is genuinely usable."""
+    torch, _ = _torch()
+    if device == "cuda" and not torch.cuda.is_available():
+        raise RuntimeError("CUDA was requested but is unavailable; install a CUDA-enabled PyTorch build or use cpu")
+    if device == "mps" and not torch.backends.mps.is_available():
+        raise RuntimeError("MPS was requested but is unavailable")
+    return {
+        "schema": "animcv_training_preflight_v1", "requested_device": device,
+        "torch_version": torch.__version__, "cuda_available": bool(torch.cuda.is_available()),
+        "cuda_version": torch.version.cuda, "device_name": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
+        "passed": True,
+    }

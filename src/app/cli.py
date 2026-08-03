@@ -106,6 +106,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--root-motion", required=True)
     p.add_argument("--out", required=True)
 
+    p = sub.add_parser("audit-supervised-3d", help="Compare a predicted 3D sequence with source-neutral ground truth")
+    p.add_argument("--predicted", required=True)
+    p.add_argument("--ground-truth", required=True)
+    p.add_argument("--predicted-root", default=None)
+    p.add_argument("--ground-truth-root", default=None)
+    p.add_argument("--out", required=True)
+
     p = sub.add_parser("import-mpi3dhp-ground-truth", help="Import a locally licensed MPI-INF-3DHP camera sequence")
     p.add_argument("--annotation", required=True, help="Official annot.mat path (kept outside the repository)")
     p.add_argument("--calibration", required=True, help="Official camera.calibration path")
@@ -113,6 +120,17 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--pose-out", required=True, help="Canonical GT 2D pose JSON output")
     p.add_argument("--lifted-out", required=True, help="Canonical root-relative GT 3D pose JSON output")
     p.add_argument("--calibration-out", required=True, help="AnimCV camera calibration JSON output")
+    p.add_argument("--start-frame", type=int, default=0)
+    p.add_argument("--end-frame", type=int, default=None)
+
+    p = sub.add_parser("import-mpi3dhp-supervised-dataset", help="Build a trainable supervised clip directly from MPI-INF-3DHP GT")
+    p.add_argument("--annotation", required=True)
+    p.add_argument("--camera-index", required=True, type=int)
+    p.add_argument("--image-width", required=True, type=int)
+    p.add_argument("--image-height", required=True, type=int)
+    p.add_argument("--sequence-id", required=True)
+    p.add_argument("--split", choices=["train", "validation", "holdout"], required=True)
+    p.add_argument("--out", required=True)
     p.add_argument("--start-frame", type=int, default=0)
     p.add_argument("--end-frame", type=int, default=None)
 
@@ -155,6 +173,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--learning-rate", type=float, default=1e-3)
     p.add_argument("--device", default="cpu")
     p.add_argument("--report-out", required=True)
+
+    p = sub.add_parser("preflight-training", help="Verify PyTorch and the requested training device before a server run")
+    p.add_argument("--device", default="cuda")
+    p.add_argument("--out", required=True)
+
+    p = sub.add_parser("combine-supervised-3d-datasets", help="Combine complete supervised clips without crossing temporal boundaries")
+    p.add_argument("--datasets", required=True, help="Comma-separated supervised dataset JSON paths")
+    p.add_argument("--expected-split", choices=["train", "validation", "holdout"], default=None)
+    p.add_argument("--out", required=True)
 
     p = sub.add_parser("evaluate-supervised-3d-lifter", help="Evaluate a trained own-data temporal baseline")
     p.add_argument("--dataset", required=True)
@@ -467,6 +494,21 @@ def _audit_3d_pose(args: argparse.Namespace) -> None:
     print(f"[motion-tool] 3D pose audit {status} -> {args.out}")
 
 
+def _audit_supervised_3d(args: argparse.Namespace) -> None:
+    from common.serialization import write_json
+    from pose.dataset_3d_audit import audit_supervised_3d
+    from pose.pose_lifter import load_lifted_pose_sequence
+    from pose.root_motion import load_root_motion_sequence
+
+    report = audit_supervised_3d(
+        load_lifted_pose_sequence(args.predicted), load_lifted_pose_sequence(args.ground_truth),
+        load_root_motion_sequence(args.predicted_root) if args.predicted_root else None,
+        load_root_motion_sequence(args.ground_truth_root) if args.ground_truth_root else None,
+    )
+    write_json(args.out, report)
+    print(f"[motion-tool] supervised 3D audit -> {args.out}")
+
+
 def _import_mpi3dhp_ground_truth(args: argparse.Namespace) -> None:
     from pose.camera_calibration import save_camera_calibration
     from pose.mpi3dhp_adapter import load_mpi3dhp_calibration, load_mpi3dhp_ground_truth
@@ -480,6 +522,16 @@ def _import_mpi3dhp_ground_truth(args: argparse.Namespace) -> None:
     save_lifted_pose_sequence(lifted, args.lifted_out)
     save_camera_calibration(load_mpi3dhp_calibration(args.calibration, args.camera_index), args.calibration_out)
     print(f"[motion-tool] imported {len(pose.frames)} MPI-INF-3DHP GT frames -> {args.pose_out}")
+
+
+def _import_mpi3dhp_supervised_dataset(args: argparse.Namespace) -> None:
+    from training.research_sources import import_mpi3dhp_dataset
+
+    report = import_mpi3dhp_dataset(
+        args.annotation, args.camera_index, (args.image_width, args.image_height), args.sequence_id,
+        args.out, args.start_frame, args.end_frame, args.split,
+    )
+    print(f"[motion-tool] imported {report['frame_count']} MPI-INF-3DHP {report['split']} frames -> {args.out}")
 
 
 def _audit_mpi3dhp_2d(args: argparse.Namespace) -> None:
@@ -554,6 +606,26 @@ def _train_supervised_3d_lifter(args: argparse.Namespace) -> None:
     ))
     write_json(args.report_out, report)
     print(f"[motion-tool] trained supervised 3D lifter -> {args.out}")
+
+
+def _preflight_training(args: argparse.Namespace) -> None:
+    from common.serialization import write_json
+    from training.temporal_lifter import preflight
+
+    report = preflight(args.device)
+    write_json(args.out, report)
+    print(f"[motion-tool] training preflight passed on {args.device} -> {args.out}")
+
+
+def _combine_supervised_3d_datasets(args: argparse.Namespace) -> None:
+    from training.temporal_lifter import combine_datasets, load_dataset, save_dataset
+
+    paths = [path for path in args.datasets.split(",") if path]
+    if not paths:
+        raise ValueError("--datasets must contain at least one path")
+    combined = combine_datasets([load_dataset(path) for path in paths], args.expected_split)
+    save_dataset(combined, args.out)
+    print(f"[motion-tool] combined {len(combined['sequences'])} sequences / {len(combined['frames'])} frames -> {args.out}")
 
 
 def _evaluate_supervised_3d_lifter(args: argparse.Namespace) -> None:
@@ -995,8 +1067,12 @@ def main(argv: list[str] | None = None) -> int:
             _estimate_root_motion(args)
         elif args.command == "audit-3d-pose":
             _audit_3d_pose(args)
+        elif args.command == "audit-supervised-3d":
+            _audit_supervised_3d(args)
         elif args.command == "import-mpi3dhp-ground-truth":
             _import_mpi3dhp_ground_truth(args)
+        elif args.command == "import-mpi3dhp-supervised-dataset":
+            _import_mpi3dhp_supervised_dataset(args)
         elif args.command == "audit-mpi3dhp-2d":
             _audit_mpi3dhp_2d(args)
         elif args.command == "audit-mpi3dhp-3d":
@@ -1007,6 +1083,10 @@ def main(argv: list[str] | None = None) -> int:
             _triangulate_supervised_3d_ground_truth(args)
         elif args.command == "train-supervised-3d-lifter":
             _train_supervised_3d_lifter(args)
+        elif args.command == "preflight-training":
+            _preflight_training(args)
+        elif args.command == "combine-supervised-3d-datasets":
+            _combine_supervised_3d_datasets(args)
         elif args.command == "evaluate-supervised-3d-lifter":
             _evaluate_supervised_3d_lifter(args)
         elif args.command == "lift-supervised-3d":

@@ -46,15 +46,31 @@ with `--expected-split holdout`, and never place them in the train command.
 
 ## Verified Server Execution Chain
 
-Install with `pip install -e '.[training,pose]'`, then point the following
-commands at an installed MPI-INF-3DHP copy. Use separate source sequences or
-subjects for train and holdout when available; the short frame ranges below are
-only smoke-test examples.
+### Docker setup
+
+The repository includes `Dockerfile.train` and `compose.train.yaml`. On the
+server, select host paths for source data and writable outputs, then build and
+run CUDA preflight. It reuses the server's CUDA 11.8 PyTorch base image. The
+container mounts source data read-only at `/data` and writes artifacts to
+`/output`.
 
 ```bash
-motion-tool preflight-training --device cuda --out /data/animcv/preflight.json
+export ANIMCV_DATA_ROOT=/path/to/research-datasets
+export ANIMCV_OUTPUT_ROOT=/path/to/animcv-output
+mkdir -p "$ANIMCV_OUTPUT_ROOT"
+# LabServer's Docker build DNS is unreliable on its bridge network, so use
+# host networking only for the image build.
+docker build --network host -f Dockerfile.train -t animcv-train:cuda118 .
+docker compose -f compose.train.yaml run --rm train \
+  preflight-training --device cuda --out /output/preflight.json
+```
 
-motion-tool train-supervised-3d-lifter \
+Point the following commands at an installed MPI-INF-3DHP copy. Use separate
+source sequences or subjects for train and holdout when available; the short
+frame ranges below are only smoke-test examples.
+
+```bash
+docker compose -f compose.train.yaml run --rm train train-supervised-3d-lifter \
   --dataset /data/animcv/train_combined.json \
   --out /data/animcv/models/mpi_baseline.pth \
   --window 81 --channels 256 --epochs 30 --batch-size 128 \

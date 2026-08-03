@@ -1,0 +1,20 @@
+FROM osn-gs:cuda11.8
+
+ENV PIP_NO_CACHE_DIR=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /workspace/AnimCV
+
+# The LabServer already has this CUDA 11.8 / PyTorch image. Its Python 3.10
+# runtime is supported by AnimCV and avoids a second multi-gigabyte CUDA pull.
+COPY pyproject.toml ./
+COPY src ./src
+RUN python3 -m pip install --upgrade pip && \
+    python3 -m pip install -e '.[training]'
+
+COPY . .
+RUN python3 -m pip install -e '.[training]'
+
+ENTRYPOINT ["motion-tool"]
+CMD ["--help"]

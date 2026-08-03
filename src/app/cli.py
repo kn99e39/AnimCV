@@ -128,6 +128,48 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--ground-truth-root-motion", required=True)
     p.add_argument("--out", required=True)
 
+    p = sub.add_parser("build-supervised-3d-dataset", help="Pair licensed 2D pose and root-relative 3D GT for own-data training")
+    p.add_argument("--pose", required=True)
+    p.add_argument("--ground-truth", required=True, help="Root-relative LiftedPoseSequence ground truth")
+    p.add_argument("--image-width", required=True, type=int)
+    p.add_argument("--image-height", required=True, type=int)
+    p.add_argument("--sequence-id", required=True)
+    p.add_argument("--out", required=True)
+
+    p = sub.add_parser("triangulate-supervised-3d-ground-truth", help="Triangulate synchronised calibrated camera poses into own-data 3D GT")
+    p.add_argument("--observations", required=True, help="Comma-separated camera=pose.json pairs, e.g. front=front_pose.json,side=side_pose.json")
+    p.add_argument("--calibration", required=True, help="animcv_multiview_calibration_v1 JSON in metres")
+    p.add_argument("--reference-camera", required=True, help="Camera whose coordinates define emitted 3D GT")
+    p.add_argument("--out", required=True, help="Output root-relative LiftedPoseSequence JSON")
+    p.add_argument("--report-out", required=True, help="Output triangulation coverage/reprojection report")
+    p.add_argument("--min-confidence", type=float, default=0.3)
+    p.add_argument("--max-reprojection-error-pixels", type=float, default=10.0)
+
+    p = sub.add_parser("train-supervised-3d-lifter", help="Train the own-data temporal 2D-to-3D baseline")
+    p.add_argument("--dataset", required=True)
+    p.add_argument("--out", required=True, help="Output checkpoint path")
+    p.add_argument("--window", type=int, default=81)
+    p.add_argument("--channels", type=int, default=256)
+    p.add_argument("--epochs", type=int, default=30)
+    p.add_argument("--batch-size", type=int, default=128)
+    p.add_argument("--learning-rate", type=float, default=1e-3)
+    p.add_argument("--device", default="cpu")
+    p.add_argument("--report-out", required=True)
+
+    p = sub.add_parser("evaluate-supervised-3d-lifter", help="Evaluate a trained own-data temporal baseline")
+    p.add_argument("--dataset", required=True)
+    p.add_argument("--checkpoint", required=True)
+    p.add_argument("--device", default="cpu")
+    p.add_argument("--out", required=True)
+
+    p = sub.add_parser("lift-supervised-3d", help="Lift 2D pose with a trained own-data temporal checkpoint")
+    p.add_argument("--pose", required=True)
+    p.add_argument("--checkpoint", required=True)
+    p.add_argument("--image-width", required=True, type=int)
+    p.add_argument("--image-height", required=True, type=int)
+    p.add_argument("--device", default="cpu")
+    p.add_argument("--out", required=True)
+
     p = sub.add_parser("lift-pose3d", help="Temporally lift tracked 2D pose into pelvis-relative 3D joints")
     p.add_argument("--pose", required=True, help="Input canonical pose.json path")
     p.add_argument("--out", required=True, help="Output lifted_pose.json path")
@@ -464,6 +506,77 @@ def _audit_mpi3dhp_3d(args: argparse.Namespace) -> None:
     )
     write_json(args.out, report)
     print(f"[motion-tool] MPI-INF-3DHP 3D audit -> {args.out}")
+
+
+def _build_supervised_3d_dataset(args: argparse.Namespace) -> None:
+    from common.serialization import read_json
+    from pose.pose_lifter import load_lifted_pose_sequence
+    from pose.pose_types import PoseSequence
+    from training.temporal_lifter import build_dataset, save_dataset
+
+    dataset = build_dataset(
+        PoseSequence.from_dict(read_json(args.pose)), load_lifted_pose_sequence(args.ground_truth),
+        (args.image_width, args.image_height), args.sequence_id,
+    )
+    save_dataset(dataset, args.out)
+    print(f"[motion-tool] built {len(dataset['frames'])} supervised 3D training frames -> {args.out}")
+
+
+def _triangulate_supervised_3d_ground_truth(args: argparse.Namespace) -> None:
+    from common.serialization import read_json, write_json
+    from pose.multiview_triangulation import load_calibration, triangulate
+    from pose.pose_lifter import save_lifted_pose_sequence
+    from pose.pose_types import PoseSequence
+
+    observations = {}
+    for item in args.observations.split(","):
+        name, separator, path = item.partition("=")
+        if not separator or not name or not path or name in observations:
+            raise ValueError("--observations must be unique comma-separated camera=pose.json pairs")
+        observations[name] = PoseSequence.from_dict(read_json(path))
+    result, report = triangulate(
+        observations, load_calibration(args.calibration), args.reference_camera,
+        args.min_confidence, args.max_reprojection_error_pixels,
+    )
+    save_lifted_pose_sequence(result, args.out)
+    write_json(args.report_out, report)
+    print(f"[motion-tool] triangulated {report['triangulated_joint_count']} joint samples; "
+          f"coverage={report['coverage']:.1%} -> {args.out}")
+
+
+def _train_supervised_3d_lifter(args: argparse.Namespace) -> None:
+    from common.serialization import write_json
+    from training.temporal_lifter import TrainingConfig, load_dataset, train
+
+    report = train(load_dataset(args.dataset), args.out, TrainingConfig(
+        window=args.window, channels=args.channels, epochs=args.epochs, batch_size=args.batch_size,
+        learning_rate=args.learning_rate, device=args.device,
+    ))
+    write_json(args.report_out, report)
+    print(f"[motion-tool] trained supervised 3D lifter -> {args.out}")
+
+
+def _evaluate_supervised_3d_lifter(args: argparse.Namespace) -> None:
+    from common.serialization import write_json
+    from training.temporal_lifter import evaluate, load_dataset
+
+    report = evaluate(load_dataset(args.dataset), args.checkpoint, args.device)
+    write_json(args.out, report)
+    print(f"[motion-tool] evaluated supervised 3D lifter -> {args.out}")
+
+
+def _lift_supervised_3d(args: argparse.Namespace) -> None:
+    from common.serialization import read_json
+    from pose.pose_lifter import save_lifted_pose_sequence
+    from pose.pose_types import PoseSequence
+    from training.temporal_lifter import infer
+
+    result = infer(
+        PoseSequence.from_dict(read_json(args.pose)), args.checkpoint,
+        (args.image_width, args.image_height), args.device,
+    )
+    save_lifted_pose_sequence(result, args.out)
+    print(f"[motion-tool] lifted {len(result.frames)} frames with supervised temporal checkpoint -> {args.out}")
 
 
 def _reconstruct_kinematic_pose(args: argparse.Namespace) -> None:
@@ -888,6 +1001,16 @@ def main(argv: list[str] | None = None) -> int:
             _audit_mpi3dhp_2d(args)
         elif args.command == "audit-mpi3dhp-3d":
             _audit_mpi3dhp_3d(args)
+        elif args.command == "build-supervised-3d-dataset":
+            _build_supervised_3d_dataset(args)
+        elif args.command == "triangulate-supervised-3d-ground-truth":
+            _triangulate_supervised_3d_ground_truth(args)
+        elif args.command == "train-supervised-3d-lifter":
+            _train_supervised_3d_lifter(args)
+        elif args.command == "evaluate-supervised-3d-lifter":
+            _evaluate_supervised_3d_lifter(args)
+        elif args.command == "lift-supervised-3d":
+            _lift_supervised_3d(args)
         elif args.command == "reconstruct-kinematic-pose":
             _reconstruct_kinematic_pose(args)
         elif args.command == "stabilize-bend-planes":

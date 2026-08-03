@@ -71,11 +71,15 @@ class PoseSequence:
     frames: list[PoseFrame] = field(default_factory=list)
     source_fps: float = 0.0
     landmark_schema: str = "canonical_v1"
+    # The threshold used to mark ``visible``. Downstream 3D stages inherit it
+    # unless the caller deliberately supplies a stricter override.
+    observation_confidence_threshold: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "source_fps": self.source_fps,
             "landmark_schema": self.landmark_schema,
+            "observation_confidence_threshold": self.observation_confidence_threshold,
             "frames": [frame.to_dict() for frame in self.frames],
         }
 
@@ -85,4 +89,5 @@ class PoseSequence:
             frames=[PoseFrame.from_dict(f) for f in data["frames"]],
             source_fps=data["source_fps"],
             landmark_schema=data["landmark_schema"],
+            observation_confidence_threshold=data.get("observation_confidence_threshold"),
         )

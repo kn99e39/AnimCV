@@ -1,0 +1,31 @@
+{
+  "schema": "animcv_calibrated_evaluation_summary_v1",
+  "dataset": "MPI-INF-3DHP S1/Seq1 camera 0",
+  "source_frame_range": [3212, 3331],
+  "frame_count": 120,
+  "evaluation_condition": "GT bounding boxes; benchmark-only, detector excluded",
+  "ground_truth_yaw_range_degrees": 315.3314,
+  "two_d": {"matched_joints": 1920, "mean_pixel_error": 56.1393, "median_pixel_error": 36.3704, "pck_at_0_2": 0.94427, "gate": 0.9, "passed": true},
+  "three_d": {"root_relative_mpjpe_mm": 356.8181, "pa_mpjpe_mm": 179.2513, "root_yaw_mae_degrees": 112.3226, "root_yaw_p95_degrees": 167.8187, "passed": false},
+  "default_pipeline": {"person_detection": "absent: full-frame top-down inference returned zero visible landmark frames on the 0..119 probe", "verdict": "not production-ready"}
+  ,"phase_1_detector_tracker": {
+    "model": "RTMDet-tiny COCO person detector",
+    "source_frame_range": [3212, 3331],
+    "frame_count": 120,
+    "tracking_success_rate": 1.0,
+    "no_detection_frame_count": 0,
+    "mean_person_candidates_per_frame": 1.0583,
+    "two_d_first_30_frames": {"matched_joints": 480, "pck_at_0_2": 1.0, "mean_pixel_error": 25.2407},
+    "passed": true,
+    "note": "This replaces the prior full-frame top-down failure; it does not validate 3D lifting or root yaw."
+  },
+  "phase_2_confidence_policy": {
+    "policy": "The 2D observation threshold is serialized into pose JSON and inherited by lift and root motion unless explicitly overridden.",
+    "evaluation_threshold": 0.1,
+    "inherited_lift_threshold": 0.1,
+    "inherited_root_threshold": 0.1,
+    "completed_root_motion_frames": 120,
+    "passed": true,
+    "note": "Legacy pose JSON without policy metadata remains compatible through a conservative 0.3 fallback."
+  }
+}

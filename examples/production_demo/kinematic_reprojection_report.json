@@ -1,0 +1,19 @@
+{
+  "method": "per-frame weak-perspective affine proxy (not calibrated camera reprojection)",
+  "trusted_joint_samples": 2031,
+  "baseline": {
+    "median_pixels": 8.789428805445745,
+    "mean_pixels": 9.80052306759049,
+    "p95_pixels": 21.0666210539815,
+    "median_body_diagonal_ratio": 0.01916627825312662
+  },
+  "reconstructed": {
+    "median_pixels": 9.09110458534585,
+    "mean_pixels": 10.302398633259621,
+    "p95_pixels": 23.90046788957216,
+    "median_body_diagonal_ratio": 0.020174404519952994
+  },
+  "median_error_ratio": 1.0343225693702864,
+  "max_median_worsening_ratio": 1.05,
+  "passed": true
+}

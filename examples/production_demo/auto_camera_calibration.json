@@ -1,0 +1,26 @@
+{
+  "schema": "animcv_camera_calibration_v1",
+  "image_size": [
+    960,
+    540
+  ],
+  "intrinsics": {
+    "fx": 2879.9993550114004,
+    "fy": 2879.9993550114004,
+    "cx": 480.0,
+    "cy": 270.0
+  },
+  "distortion": {
+    "radial": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "tangential": [
+      0.0,
+      0.0
+    ]
+  },
+  "source": "auto_pose_self_calibration",
+  "calibration_rms_pixels": 70.86430781632136
+}

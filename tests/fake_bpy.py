@@ -63,6 +63,8 @@ class FakeArmatureObject:
 class FakeScene:
     def __init__(self):
         self.frame_current = 0
+        self.frame_start = 1
+        self.frame_end = 250
         self.render = SimpleNamespace(fps=24, fps_base=1.0)
 
     def frame_set(self, frame):

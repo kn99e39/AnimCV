@@ -69,6 +69,13 @@ def build_parser() -> argparse.ArgumentParser:
         "~/.cache/animcv/models on first use if not already cached there)",
     )
     p.add_argument("--device", default="cpu")
+    p.add_argument("--tracking-report-out", default=None, help="Output tracking gate report (default: beside --out)")
+
+    p.add_argument(
+        "--evaluation-ground-truth", default=None,
+        help="Benchmark-only GT pose JSON used to supply per-frame person boxes; never use for production output",
+    )
+
     p.add_argument("--visibility-threshold", type=float, default=0.3)
     p.add_argument("--subject-box", default=None, help="Track one subject from x1,y1,x2,y2; requires detector options")
     p.add_argument("--detector-config", default=None, help="MMDetection person-detector config for --subject-box")
@@ -87,6 +94,125 @@ def build_parser() -> argparse.ArgumentParser:
         help="'auto' (recommended), or an explicit device matching what "
         "depth_anything_v2 will actually use (see pose/depth_estimator.py)",
     )
+
+    p = sub.add_parser("estimate-root-motion", help="Estimate root yaw and character-space 3D joints")
+    p.add_argument("--lifted-pose", required=True, help="Input lifted_pose.json path")
+    p.add_argument("--out", required=True, help="Output root_motion.json path")
+    p.add_argument("--smoothing-window", type=int, default=5)
+    p.add_argument("--max-yaw-step-degrees", type=float, default=20.0)
+
+    p = sub.add_parser("audit-3d-pose", help="Evaluate temporal 3D pose and root-orientation quality")
+    p.add_argument("--lifted-pose", required=True)
+    p.add_argument("--root-motion", required=True)
+    p.add_argument("--out", required=True)
+
+    p = sub.add_parser("import-mpi3dhp-ground-truth", help="Import a locally licensed MPI-INF-3DHP camera sequence")
+    p.add_argument("--annotation", required=True, help="Official annot.mat path (kept outside the repository)")
+    p.add_argument("--calibration", required=True, help="Official camera.calibration path")
+    p.add_argument("--camera-index", required=True, type=int)
+    p.add_argument("--pose-out", required=True, help="Canonical GT 2D pose JSON output")
+    p.add_argument("--lifted-out", required=True, help="Canonical root-relative GT 3D pose JSON output")
+    p.add_argument("--calibration-out", required=True, help="AnimCV camera calibration JSON output")
+    p.add_argument("--start-frame", type=int, default=0)
+    p.add_argument("--end-frame", type=int, default=None)
+
+    p = sub.add_parser("audit-mpi3dhp-2d", help="Evaluate estimated 2D pose against imported MPI-INF-3DHP GT")
+    p.add_argument("--pose", required=True, help="Estimated canonical 2D pose JSON")
+    p.add_argument("--ground-truth", required=True, help="Canonical GT 2D pose JSON from import-mpi3dhp-ground-truth")
+    p.add_argument("--out", required=True)
+
+    p = sub.add_parser("audit-mpi3dhp-3d", help="Evaluate lifted pose and root yaw against imported MPI-INF-3DHP GT")
+    p.add_argument("--lifted-pose", required=True)
+    p.add_argument("--ground-truth", required=True)
+    p.add_argument("--root-motion", required=True)
+    p.add_argument("--ground-truth-root-motion", required=True)
+    p.add_argument("--out", required=True)
+
+    p = sub.add_parser("lift-pose3d", help="Temporally lift tracked 2D pose into pelvis-relative 3D joints")
+    p.add_argument("--pose", required=True, help="Input canonical pose.json path")
+    p.add_argument("--out", required=True, help="Output lifted_pose.json path")
+    p.add_argument("--image-width", required=True, type=int)
+    p.add_argument("--image-height", required=True, type=int)
+    p.add_argument("--checkpoint", required=True, help="MMPose VideoPose3D 81-frame checkpoint")
+    p.add_argument("--config", default=None, help="Optional MMPose VideoPose3D config override")
+    p.add_argument("--device", default="cpu")
+    p.add_argument(
+        "--min-observation-confidence", type=float, default=None,
+        help="Override the recorded 2D observation threshold; defaults to the input pose policy",
+    )
+    p.add_argument("--max-interpolation-gap", type=int, default=5)
+
+    p = sub.add_parser("reconstruct-kinematic-pose", help="Apply subject-specific fixed-length reconstruction to lifted 3D pose")
+    p.add_argument("--lifted-pose", required=True)
+    p.add_argument("--out", required=True)
+    p.add_argument("--min-confidence", type=float, default=0.3)
+
+    p = sub.add_parser("stabilize-bend-planes", help="Stabilize knee/elbow bend direction in fixed-length 3D pose")
+    p.add_argument("--lifted-pose", required=True)
+    p.add_argument("--root-motion", required=True)
+    p.add_argument("--out", required=True)
+    p.add_argument("--min-bend-degrees", type=float, default=12.0)
+
+    p = sub.add_parser("audit-reprojection", help="Check 2D preservation with a weak-perspective proxy")
+    p.add_argument("--pose", required=True, help="Trusted tracked 2D pose JSON")
+    p.add_argument("--baseline", required=True, help="Raw lifted 3D pose JSON")
+    p.add_argument("--reconstructed", required=True, help="Kinematically reconstructed 3D pose JSON")
+    p.add_argument("--out", required=True)
+    p.add_argument("--min-confidence", type=float, default=0.3)
+    p.add_argument("--max-median-worsening-ratio", type=float, default=1.05)
+
+    p = sub.add_parser("audit-calibrated-reprojection", help="Check 2D preservation with supplied pinhole camera calibration")
+    p.add_argument("--pose", required=True, help="Trusted tracked 2D pose JSON")
+    p.add_argument("--baseline", required=True, help="Raw lifted 3D pose JSON")
+    p.add_argument("--reconstructed", required=True, help="Kinematically reconstructed 3D pose JSON")
+    p.add_argument("--calibration", required=True, help="animcv_camera_calibration_v1 JSON")
+    p.add_argument("--out", required=True)
+    p.add_argument("--min-confidence", type=float, default=0.3)
+    p.add_argument("--max-median-worsening-ratio", type=float, default=1.05)
+
+    p = sub.add_parser("estimate-camera-calibration", help="Conservatively self-calibrate a static camera from 2D/3D pose")
+    p.add_argument("--pose", required=True, help="Trusted tracked 2D pose JSON")
+    p.add_argument("--lifted-pose", required=True, help="Lifted camera-relative 3D pose JSON")
+    p.add_argument("--image-width", required=True, type=int)
+    p.add_argument("--image-height", required=True, type=int)
+    p.add_argument("--out", required=True, help="Output animcv_camera_calibration_v1 JSON")
+    p.add_argument("--report-out", required=True, help="Output self-calibration quality report JSON")
+    p.add_argument("--min-confidence", type=float, default=0.3)
+    p.add_argument("--max-focal-uncertainty-ratio", type=float, default=1.5)
+
+    p = sub.add_parser("prepare-constraint-targets", help="Run R2/R4/R3 in a safe order for future constraint retargeting")
+    p.add_argument("--lifted-pose", required=True)
+    p.add_argument("--pose-out", required=True, help="Final bend-stabilized lifted pose JSON")
+    p.add_argument("--root-motion-out", required=True, help="Final matching root-motion JSON")
+    p.add_argument("--min-confidence", type=float, default=0.3)
+    p.add_argument("--smoothing-window", type=int, default=5)
+    p.add_argument("--max-yaw-step-degrees", type=float, default=15.0)
+    p.add_argument("--min-bend-degrees", type=float, default=12.0)
+
+    p = sub.add_parser("audit-pose-uncertainty", help="Write traceable per-joint 3D quality scores and limb gate rates")
+    p.add_argument("--raw-lifted-pose", required=True)
+    p.add_argument("--prepared-pose", required=True)
+    p.add_argument("--root-motion", required=True)
+    p.add_argument("--out", required=True)
+    p.add_argument("--unsafe-threshold", type=float, default=0.55)
+
+    p = sub.add_parser("render-3d-audit", help="Render front, side, and top SVG views for selected 3D audit frames")
+    p.add_argument("--root-motion", required=True)
+    p.add_argument("--out", required=True, help="Output SVG path")
+    p.add_argument("--frames", default=None, help="Comma-separated frame indices; default is first/middle/last")
+
+    p = sub.add_parser("build-constraint-targets", help="Build R3/R5-gated 3D end-effector and pole targets for a rig adapter")
+    p.add_argument("--root-motion", required=True)
+    p.add_argument("--uncertainty", required=True)
+    p.add_argument("--out", required=True)
+    p.add_argument("--max-limb-unsafe-rate", type=float, default=0.20)
+
+    p = sub.add_parser("retarget-constraint-targets", help="Bake safe prepared 3D targets into rig direction FK tracks")
+    p.add_argument("--root-motion", required=True)
+    p.add_argument("--constraint-targets", required=True)
+    p.add_argument("--rig", required=True)
+    p.add_argument("--mapping", required=True)
+    p.add_argument("--out", required=True)
 
     p = sub.add_parser("parse-rig", help="Parse a rig file into a RigProfile JSON")
     p.add_argument("--rig", required=True, help="Path to .fbx or any Assimp-readable rig file")
@@ -201,7 +327,26 @@ def _estimate_pose(args: argparse.Namespace) -> None:
         detector_config_path=args.detector_config,
         detector_checkpoint_path=args.detector_checkpoint,
     )
-    poses = PoseEstimator(config).process_sequence(sequence)
+    estimator = PoseEstimator(config)
+    if args.evaluation_ground_truth:
+        from common.serialization import read_json
+        poses = estimator.process_sequence_with_evaluation_boxes(
+            sequence, PoseSequence.from_dict(read_json(args.evaluation_ground_truth))
+        )
+        print("[motion-tool] evaluation-only GT boxes supplied; detector quality is not measured")
+    else:
+        poses = estimator.process_sequence(sequence)
+        tracking_report = {
+            "schema": "animcv_tracking_audit_v1",
+            **estimator.last_tracking_report,
+            "passed": estimator.last_tracking_report.get("tracking_success_rate", 0.0) >= 0.95,
+            "gate": {"minimum_tracking_success_rate": 0.95},
+        }
+        tracking_path = Path(args.tracking_report_out) if args.tracking_report_out else Path(args.out).with_name(
+            Path(args.out).stem + "_tracking_report.json"
+        )
+        write_json(tracking_path, tracking_report)
+        print(f"[motion-tool] tracking audit {'passed' if tracking_report['passed'] else 'failed'} -> {tracking_path}")
 
     if args.depth_checkpoint:
         from pose.depth_estimator import DepthEstimator, DepthEstimatorConfig
@@ -227,6 +372,242 @@ def _estimate_pose(args: argparse.Namespace) -> None:
 
     write_json(args.out, poses.to_dict())
     print(f"[motion-tool] estimated pose for {len(poses.frames)} frames -> {args.out}")
+
+
+def _lift_pose3d(args: argparse.Namespace) -> None:
+    from common.serialization import read_json
+    from pose.pose_lifter import VideoPose3DConfig, VideoPose3DLifter, save_lifted_pose_sequence
+    from pose.pose_types import PoseSequence
+
+    poses = PoseSequence.from_dict(read_json(Path(args.pose)))
+    observation_threshold = args.min_observation_confidence
+    if observation_threshold is None:
+        observation_threshold = poses.observation_confidence_threshold
+    if observation_threshold is None:
+        observation_threshold = 0.3  # legacy pose artifacts have no recorded policy
+    lifter = VideoPose3DLifter(
+        VideoPose3DConfig(
+            checkpoint_path=args.checkpoint,
+            config_path=args.config,
+            device=args.device,
+            min_observation_confidence=observation_threshold,
+            max_interpolation_gap=args.max_interpolation_gap,
+        )
+    )
+    lifted = lifter.lift(poses, (args.image_width, args.image_height))
+    save_lifted_pose_sequence(lifted, args.out)
+    print(f"[motion-tool] lifted {len(lifted.frames)} 3D pose frames -> {args.out}")
+
+
+def _estimate_root_motion(args: argparse.Namespace) -> None:
+    from pose.pose_lifter import load_lifted_pose_sequence
+    from pose.root_motion import estimate_root_motion, save_root_motion_sequence
+
+    root_motion = estimate_root_motion(
+        load_lifted_pose_sequence(args.lifted_pose), args.smoothing_window,
+        args.max_yaw_step_degrees,
+    )
+    save_root_motion_sequence(root_motion, args.out)
+    print(f"[motion-tool] estimated root yaw for {len(root_motion.frames)} frames -> {args.out}")
+
+
+def _audit_3d_pose(args: argparse.Namespace) -> None:
+    from common.serialization import write_json
+    from pose.pose_lifter import load_lifted_pose_sequence
+    from pose.quality_audit import audit_3d_pose
+    from pose.root_motion import load_root_motion_sequence
+
+    report = audit_3d_pose(
+        load_lifted_pose_sequence(args.lifted_pose), load_root_motion_sequence(args.root_motion)
+    )
+    write_json(args.out, report)
+    status = "passed" if report["passed"] else "failed"
+    print(f"[motion-tool] 3D pose audit {status} -> {args.out}")
+
+
+def _import_mpi3dhp_ground_truth(args: argparse.Namespace) -> None:
+    from pose.camera_calibration import save_camera_calibration
+    from pose.mpi3dhp_adapter import load_mpi3dhp_calibration, load_mpi3dhp_ground_truth
+    from pose.pose_lifter import save_lifted_pose_sequence
+    from common.serialization import write_json
+
+    pose, lifted = load_mpi3dhp_ground_truth(
+        args.annotation, args.camera_index, start_frame=args.start_frame, end_frame=args.end_frame
+    )
+    write_json(args.pose_out, pose.to_dict())
+    save_lifted_pose_sequence(lifted, args.lifted_out)
+    save_camera_calibration(load_mpi3dhp_calibration(args.calibration, args.camera_index), args.calibration_out)
+    print(f"[motion-tool] imported {len(pose.frames)} MPI-INF-3DHP GT frames -> {args.pose_out}")
+
+
+def _audit_mpi3dhp_2d(args: argparse.Namespace) -> None:
+    from common.serialization import read_json, write_json
+    from pose.mpi3dhp_audit import audit_mpi3dhp_2d
+    from pose.pose_types import PoseSequence
+
+    report = audit_mpi3dhp_2d(
+        PoseSequence.from_dict(read_json(args.pose)), PoseSequence.from_dict(read_json(args.ground_truth))
+    )
+    write_json(args.out, report)
+    print(f"[motion-tool] MPI-INF-3DHP 2D audit {'passed' if report['passed'] else 'failed'} -> {args.out}")
+
+
+def _audit_mpi3dhp_3d(args: argparse.Namespace) -> None:
+    from common.serialization import write_json
+    from pose.mpi3dhp_3d_audit import audit_mpi3dhp_3d
+    from pose.pose_lifter import load_lifted_pose_sequence
+    from pose.root_motion import load_root_motion_sequence
+
+    report = audit_mpi3dhp_3d(
+        load_lifted_pose_sequence(args.lifted_pose), load_lifted_pose_sequence(args.ground_truth),
+        load_root_motion_sequence(args.root_motion), load_root_motion_sequence(args.ground_truth_root_motion),
+    )
+    write_json(args.out, report)
+    print(f"[motion-tool] MPI-INF-3DHP 3D audit -> {args.out}")
+
+
+def _reconstruct_kinematic_pose(args: argparse.Namespace) -> None:
+    from pose.kinematic_reconstruction import reconstruct_kinematic_pose
+    from pose.pose_lifter import load_lifted_pose_sequence, save_lifted_pose_sequence
+
+    result = reconstruct_kinematic_pose(load_lifted_pose_sequence(args.lifted_pose), args.min_confidence)
+    save_lifted_pose_sequence(result, args.out)
+    print(f"[motion-tool] reconstructed {len(result.frames)} fixed-length 3D frames -> {args.out}")
+
+
+def _stabilize_bend_planes(args: argparse.Namespace) -> None:
+    from pose.bend_plane import stabilize_bend_planes
+    from pose.pose_lifter import load_lifted_pose_sequence, save_lifted_pose_sequence
+    from pose.root_motion import load_root_motion_sequence
+
+    result = stabilize_bend_planes(
+        load_lifted_pose_sequence(args.lifted_pose), load_root_motion_sequence(args.root_motion),
+        args.min_bend_degrees,
+    )
+    save_lifted_pose_sequence(result, args.out)
+    print(f"[motion-tool] stabilized bend planes for {len(result.frames)} frames -> {args.out}")
+
+
+def _audit_reprojection(args: argparse.Namespace) -> None:
+    from common.serialization import read_json, write_json
+    from pose.pose_lifter import load_lifted_pose_sequence
+    from pose.pose_types import PoseSequence
+    from pose.reprojection_audit import audit_weak_perspective_reprojection
+
+    report = audit_weak_perspective_reprojection(
+        PoseSequence.from_dict(read_json(args.pose)),
+        load_lifted_pose_sequence(args.baseline),
+        load_lifted_pose_sequence(args.reconstructed),
+        args.min_confidence,
+        args.max_median_worsening_ratio,
+    )
+    write_json(args.out, report)
+    status = "passed" if report["passed"] else "failed"
+    print(f"[motion-tool] weak-perspective reprojection audit {status} -> {args.out}")
+
+
+def _audit_calibrated_reprojection(args: argparse.Namespace) -> None:
+    from common.serialization import read_json, write_json
+    from pose.calibrated_reprojection_audit import audit_calibrated_reprojection
+    from pose.camera_calibration import load_camera_calibration
+    from pose.pose_lifter import load_lifted_pose_sequence
+    from pose.pose_types import PoseSequence
+
+    report = audit_calibrated_reprojection(
+        PoseSequence.from_dict(read_json(args.pose)),
+        load_lifted_pose_sequence(args.baseline),
+        load_lifted_pose_sequence(args.reconstructed),
+        load_camera_calibration(args.calibration),
+        args.min_confidence,
+        args.max_median_worsening_ratio,
+    )
+    write_json(args.out, report)
+    status = "passed" if report["passed"] else "failed"
+    print(f"[motion-tool] calibrated reprojection audit {status} -> {args.out}")
+
+
+def _estimate_camera_calibration(args: argparse.Namespace) -> None:
+    from common.serialization import read_json, write_json
+    from pose.camera_calibration import save_camera_calibration
+    from pose.camera_self_calibration import estimate_static_camera_calibration
+    from pose.pose_lifter import load_lifted_pose_sequence
+    from pose.pose_types import PoseSequence
+
+    calibration, report = estimate_static_camera_calibration(
+        PoseSequence.from_dict(read_json(args.pose)), load_lifted_pose_sequence(args.lifted_pose),
+        args.image_width, args.image_height, args.min_confidence, args.max_focal_uncertainty_ratio,
+    )
+    save_camera_calibration(calibration, args.out)
+    write_json(args.report_out, report)
+    status = "accepted" if report["accepted_for_limited_calibrated_audit"] else "rejected"
+    print(f"[motion-tool] static camera self-calibration {status} -> {args.out}")
+
+
+def _prepare_constraint_targets(args: argparse.Namespace) -> None:
+    from pose.constraint_targets import prepare_constraint_targets
+    from pose.pose_lifter import load_lifted_pose_sequence, save_lifted_pose_sequence
+    from pose.root_motion import save_root_motion_sequence
+
+    pose, root = prepare_constraint_targets(
+        load_lifted_pose_sequence(args.lifted_pose), args.min_confidence, args.smoothing_window,
+        args.max_yaw_step_degrees, args.min_bend_degrees,
+    )
+    save_lifted_pose_sequence(pose, args.pose_out)
+    save_root_motion_sequence(root, args.root_motion_out)
+    print(f"[motion-tool] prepared {len(pose.frames)} constraint-ready 3D target frames")
+
+
+def _audit_pose_uncertainty(args: argparse.Namespace) -> None:
+    from common.serialization import write_json
+    from pose.pose_lifter import load_lifted_pose_sequence
+    from pose.root_motion import load_root_motion_sequence
+    from pose.uncertainty import audit_pose_uncertainty
+
+    report = audit_pose_uncertainty(
+        load_lifted_pose_sequence(args.raw_lifted_pose),
+        load_lifted_pose_sequence(args.prepared_pose),
+        load_root_motion_sequence(args.root_motion),
+        args.unsafe_threshold,
+    )
+    write_json(args.out, report)
+    print(f"[motion-tool] audited {report['point_count']} joint quality scores -> {args.out}")
+
+
+def _render_3d_audit(args: argparse.Namespace) -> None:
+    from pose.audit_visualization import render_audit_views
+    from pose.root_motion import load_root_motion_sequence
+
+    indices = [int(value) for value in args.frames.split(",")] if args.frames else None
+    render_audit_views(load_root_motion_sequence(args.root_motion), args.out, indices)
+    print(f"[motion-tool] rendered 3D audit views -> {args.out}")
+
+
+def _build_constraint_targets(args: argparse.Namespace) -> None:
+    from common.serialization import read_json, write_json
+    from pose.constraint_target_builder import build_constraint_targets
+    from pose.root_motion import load_root_motion_sequence
+
+    result = build_constraint_targets(
+        load_root_motion_sequence(args.root_motion), read_json(args.uncertainty), args.max_limb_unsafe_rate
+    )
+    write_json(args.out, result)
+    print(f"[motion-tool] built {result['frame_count']} constraint target frames -> {args.out}")
+
+
+def _retarget_constraint_targets(args: argparse.Namespace) -> None:
+    from common.serialization import read_json
+    from pose.root_motion import load_root_motion_sequence
+    from retarget.constraint_target_solver import solve_constraint_target_animation
+    from retarget.solver import save_animation_clip
+    from rig.bone_mapping import load_bone_mapping_profile
+    from rig.rig_profile import load_rig_profile
+
+    clip = solve_constraint_target_animation(
+        load_root_motion_sequence(args.root_motion), read_json(args.constraint_targets),
+        load_rig_profile(args.rig), load_bone_mapping_profile(args.mapping),
+    )
+    save_animation_clip(clip, args.out)
+    print(f"[motion-tool] baked {len(clip.tracks)} constraint-target FK tracks -> {args.out}")
 
 
 def _parse_subject_box(value: str | None) -> tuple[float, float, float, float] | None:
@@ -495,6 +876,38 @@ def main(argv: list[str] | None = None) -> int:
             _extract_frames(args)
         elif args.command == "estimate-pose":
             _estimate_pose(args)
+        elif args.command == "lift-pose3d":
+            _lift_pose3d(args)
+        elif args.command == "estimate-root-motion":
+            _estimate_root_motion(args)
+        elif args.command == "audit-3d-pose":
+            _audit_3d_pose(args)
+        elif args.command == "import-mpi3dhp-ground-truth":
+            _import_mpi3dhp_ground_truth(args)
+        elif args.command == "audit-mpi3dhp-2d":
+            _audit_mpi3dhp_2d(args)
+        elif args.command == "audit-mpi3dhp-3d":
+            _audit_mpi3dhp_3d(args)
+        elif args.command == "reconstruct-kinematic-pose":
+            _reconstruct_kinematic_pose(args)
+        elif args.command == "stabilize-bend-planes":
+            _stabilize_bend_planes(args)
+        elif args.command == "audit-reprojection":
+            _audit_reprojection(args)
+        elif args.command == "audit-calibrated-reprojection":
+            _audit_calibrated_reprojection(args)
+        elif args.command == "estimate-camera-calibration":
+            _estimate_camera_calibration(args)
+        elif args.command == "prepare-constraint-targets":
+            _prepare_constraint_targets(args)
+        elif args.command == "audit-pose-uncertainty":
+            _audit_pose_uncertainty(args)
+        elif args.command == "render-3d-audit":
+            _render_3d_audit(args)
+        elif args.command == "build-constraint-targets":
+            _build_constraint_targets(args)
+        elif args.command == "retarget-constraint-targets":
+            _retarget_constraint_targets(args)
         elif args.command == "build-motion":
             _build_motion(args)
         elif args.command == "parse-rig":

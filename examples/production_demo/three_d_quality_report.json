@@ -1,0 +1,41 @@
+{
+  "passed": false,
+  "failures": [
+    "knee bend direction flips: {'left': 0, 'right': 2}"
+  ],
+  "frame_count": 120,
+  "coordinate_contract": {
+    "lifted_frame": "camera_root_relative",
+    "units": "metres",
+    "root_frame": "character_root_relative",
+    "global_translation_available": false
+  },
+  "limb_length_cv": {
+    "left_hip->left_knee": 0.03116688780021773,
+    "left_knee->left_ankle": 0.039282646068331144,
+    "right_hip->right_knee": 0.03569371757590791,
+    "right_knee->right_ankle": 0.08908817204552788,
+    "left_shoulder->left_elbow": 0.07164394436277106,
+    "left_elbow->left_wrist": 0.057994278729786165,
+    "right_shoulder->right_elbow": 0.029698113470685607,
+    "right_elbow->right_wrist": 0.04860611104741968
+  },
+  "max_yaw_step_degrees": 6.993082317615791,
+  "low_yaw_confidence_rate": 0.03333333333333333,
+  "knee_bend_direction_flips": {
+    "left": 0,
+    "right": 2
+  },
+  "observation_integrity": {
+    "point_count": 2040,
+    "invalid_observation_count": 9,
+    "interpolated_input_count": 9,
+    "silently_accepted_invalid_count": 0
+  },
+  "thresholds": {
+    "max_limb_length_cv": 0.1,
+    "max_yaw_step_degrees": 15.0,
+    "max_low_yaw_confidence_rate": 0.1,
+    "max_knee_bend_direction_flips": 0
+  }
+}

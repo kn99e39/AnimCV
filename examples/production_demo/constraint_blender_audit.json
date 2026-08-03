@@ -1,0 +1,22 @@
+{
+  "passed": true,
+  "armature_name": "root",
+  "action_name": "Constraint_Target_Motion",
+  "frame_range": [
+    0,
+    119
+  ],
+  "fps": 50.0,
+  "fcurve_count": 32,
+  "keyframe_count": 328,
+  "animated_bones": [
+    "calf_l",
+    "calf_r",
+    "lowerarm_l",
+    "lowerarm_r",
+    "thigh_l",
+    "thigh_r",
+    "upperarm_l",
+    "upperarm_r"
+  ]
+}

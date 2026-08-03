@@ -21,7 +21,10 @@ def test_frame_sequence_metadata_roundtrip():
 def test_pose_sequence_roundtrip():
     landmark = PoseLandmark(name="left_wrist", x=0.4, y=0.6, confidence=0.95, visible=True)
     frame = PoseFrame(frame_index=0, timestamp=0.0, landmarks={"left_wrist": landmark})
-    sequence = PoseSequence(frames=[frame], source_fps=24.0, landmark_schema="canonical_v1")
+    sequence = PoseSequence(
+        frames=[frame], source_fps=24.0, landmark_schema="canonical_v1",
+        observation_confidence_threshold=0.25,
+    )
 
     restored = PoseSequence.from_dict(sequence.to_dict())
 

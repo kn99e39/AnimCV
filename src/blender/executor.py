@@ -58,6 +58,7 @@ class BlenderExecutor:
         # Milestone 5 fk_solver already bakes axis_hint into its
         # rotations, so this MVP writer doesn't need it yet.
         _set_scene_fps(bpy.context.scene, animation.fps)
+        _set_scene_frame_range(bpy.context.scene, animation.frame_start, animation.frame_end)
         write_keyframes(armature_object, animation)
 
     def save_blend(self, path: str) -> None:
@@ -78,3 +79,10 @@ def _set_scene_fps(scene, fps: float) -> None:
     rounded_fps = max(1, round(fps))
     scene.render.fps = rounded_fps
     scene.render.fps_base = rounded_fps / fps
+
+
+def _set_scene_frame_range(scene, frame_start: int, frame_end: int) -> None:
+    if frame_end < frame_start:
+        raise ValueError(f"animation frame end {frame_end} precedes start {frame_start}")
+    scene.frame_start = frame_start
+    scene.frame_end = frame_end

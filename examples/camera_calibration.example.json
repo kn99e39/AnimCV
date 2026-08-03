@@ -1,0 +1,8 @@
+{
+  "schema": "animcv_camera_calibration_v1",
+  "image_size": [1920, 1080],
+  "intrinsics": {"fx": 1500.0, "fy": 1500.0, "cx": 960.0, "cy": 540.0},
+  "distortion": {"radial": [0.0, 0.0, 0.0], "tangential": [0.0, 0.0]},
+  "source": "checkerboard_opencv",
+  "calibration_rms_pixels": 0.35
+}

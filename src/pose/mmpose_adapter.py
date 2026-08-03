@@ -100,6 +100,7 @@ class PoseEstimator:
         self._config = config
         self._model = None
         self._detector = None
+        self.last_tracking_report: dict[str, int | float] = {}
 
     def _load_model(self):
         if self._model is None:
@@ -120,7 +121,9 @@ class PoseEstimator:
 
     def _load_detector(self):
         if self._config.detector_config_path is None or self._config.detector_checkpoint_path is None:
-            raise ValueError("subject tracking needs both detector_config_path and detector_checkpoint_path")
+            from pose.default_detector import get_default_detector_checkpoint_path, get_default_detector_config_path
+            self._config.detector_config_path = get_default_detector_config_path()
+            self._config.detector_checkpoint_path = get_default_detector_checkpoint_path()
         if self._detector is None:
             from mmdet.apis import init_detector
             # MMDetection's compatible mmengine release has the same
@@ -134,19 +137,52 @@ class PoseEstimator:
         return self._detector
 
     def process_frame(self, frame: Frame) -> PoseFrame:
-        from mmpose.apis import inference_topdown
+        """Estimate one frame through the same detector-first path as clips.
 
-        model = self._load_model()
-        results = inference_topdown(model, frame.image)
-        landmarks = _extract_canonical_landmarks(results, self._config.visibility_threshold)
-        return PoseFrame(frame_index=frame.index, timestamp=frame.timestamp, landmarks=landmarks)
+        A top-down pose model over a whole image is not a valid production
+        fallback: it silently fails on a small or off-centre subject.  Keep
+        the public one-frame API, but make its contract detector-first too.
+        """
+        sequence = FrameSequence(
+            frames=[frame], fps=1.0, width=frame.width, height=frame.height,
+            source_path="single_frame",
+        )
+        return self._process_tracked_sequence(sequence).frames[0]
 
     def process_sequence(self, frames: FrameSequence) -> PoseSequence:
-        if self._config.subject_box is not None:
-            return self._process_tracked_sequence(frames)
-        pose_frames = [self.process_frame(frame) for frame in frames.frames]
+        return self._process_tracked_sequence(frames)
+
+    def process_sequence_with_evaluation_boxes(
+        self, frames: FrameSequence, ground_truth: PoseSequence, padding: float = 1.25
+    ) -> PoseSequence:
+        """Run top-down pose only inside GT-derived boxes for benchmark diagnosis.
+
+        This is deliberately named as an *evaluation* method: it separates
+        top-down keypoint regression from person detection, but must never be
+        used to claim an end-user video pipeline has solved tracking.
+        """
+        from mmpose.apis import inference_topdown
+
+        truth_by_index = {frame.frame_index: frame for frame in ground_truth.frames}
+        model = self._load_model()
+        output = []
+        for frame in frames.frames:
+            truth = truth_by_index.get(frame.index)
+            if truth is None or not truth.landmarks:
+                output.append(PoseFrame(frame.index, frame.timestamp, {}))
+                continue
+            xs = [point.x for point in truth.landmarks.values()]
+            ys = [point.y for point in truth.landmarks.values()]
+            cx, cy = (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2
+            width, height = (max(xs) - min(xs)) * padding, (max(ys) - min(ys)) * padding
+            bbox = (cx - width / 2, cy - height / 2, cx + width / 2, cy + height / 2)
+            results = inference_topdown(model, frame.image, [bbox])
+            output.append(PoseFrame(frame.index, frame.timestamp, _extract_canonical_landmarks(
+                results, self._config.visibility_threshold
+            )))
         return PoseSequence(
-            frames=pose_frames, source_fps=frames.fps, landmark_schema="canonical_v1"
+            output, source_fps=frames.fps, landmark_schema="canonical_v1",
+            observation_confidence_threshold=self._config.visibility_threshold,
         )
 
     def _process_tracked_sequence(self, frames: FrameSequence) -> PoseSequence:
@@ -158,6 +194,8 @@ class PoseEstimator:
         model = self._load_model()
         tracker = SubjectTracker(self._config.subject_box)
         pose_frames = []
+        detector_candidates = 0
+        selected_frames = 0
         for frame in frames.frames:
             # inference_topdown switches the global default scope to mmpose;
             # switch it back before constructing MMDetection's pipeline.
@@ -169,14 +207,27 @@ class PoseEstimator:
                 for bbox, score, label in zip(instances.bboxes.cpu().numpy(), instances.scores.cpu().numpy(), instances.labels.cpu().numpy())
                 if int(label) == 0 and float(score) >= 0.3
             ]
+            detector_candidates += len(detections)
             selected = tracker.select(detections)
             if selected is None:
                 landmarks = {}
             else:
+                selected_frames += 1
                 results = inference_topdown(model, frame.image, [selected.bbox])
                 landmarks = _extract_canonical_landmarks(results, self._config.visibility_threshold)
             pose_frames.append(PoseFrame(frame_index=frame.index, timestamp=frame.timestamp, landmarks=landmarks))
-        return PoseSequence(frames=pose_frames, source_fps=frames.fps, landmark_schema="canonical_v1")
+        total = len(frames.frames)
+        self.last_tracking_report = {
+            "frame_count": total,
+            "tracked_frame_count": selected_frames,
+            "tracking_success_rate": selected_frames / total if total else 0.0,
+            "no_detection_frame_count": total - selected_frames,
+            "mean_person_candidates_per_frame": detector_candidates / total if total else 0.0,
+        }
+        return PoseSequence(
+            frames=pose_frames, source_fps=frames.fps, landmark_schema="canonical_v1",
+            observation_confidence_threshold=self._config.visibility_threshold,
+        )
 
 
 def _extract_canonical_landmarks(

@@ -1,0 +1,19 @@
+{
+  "method": "static-camera pose self-calibration; centred principal point and zero distortion assumed",
+  "fitted_frame_count": 30,
+  "focal_pixels": 2879.9993550114004,
+  "reprojection_rms_pixels": 70.86430781632136,
+  "one_pixel_focal_interval": [
+    1406.47490476009,
+    2880.0
+  ],
+  "focal_uncertainty_ratio": 2.0476725110792198,
+  "max_focal_uncertainty_ratio": 1.5,
+  "search_hit_boundary": true,
+  "accepted_for_limited_calibrated_audit": false,
+  "limitations": [
+    "Not a checkerboard calibration and not evidence of lens distortion.",
+    "Valid only for a static camera; moving cameras require camera tracking or bundle adjustment.",
+    "Fitted pelvis translations are not global root motion."
+  ]
+}

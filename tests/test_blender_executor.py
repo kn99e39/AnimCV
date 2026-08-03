@@ -148,6 +148,8 @@ def test_apply_animation_writes_keyframes_onto_scene_armature(fake_bpy):
     assert len(armature.pose.bones["upper_arm.L"].keyframe_calls) == 3
     assert fake_bpy.context.scene.render.fps == 24
     assert fake_bpy.context.scene.render.fps_base == 1.0
+    assert fake_bpy.context.scene.frame_start == 0
+    assert fake_bpy.context.scene.frame_end == 0
 
 
 def test_apply_animation_sets_fractional_scene_fps(fake_bpy):

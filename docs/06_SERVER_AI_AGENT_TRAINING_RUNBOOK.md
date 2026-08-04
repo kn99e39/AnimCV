@@ -22,8 +22,9 @@ Read [08_RESEARCH_DATASET_ASSESSMENT](08_RESEARCH_DATASET_ASSESSMENT.md), then
 ## Current Implementation Boundary
 
 The current code has an executable MPI-INF-3DHP ingestion path, invalid-joint
-loss/metric masking, clip-safe temporal windows, train/holdout split checks,
-and source-neutral MPJPE/PA-MPJPE/yaw evaluation. Human3.6M, AMASS, and 3DPW
+loss/metric masking, clip-safe temporal windows, GPU-resident vectorized
+batching, CUDA AMP, two-GPU DDP training, train/holdout split checks, and
+source-neutral MPJPE/PA-MPJPE/yaw evaluation. Human3.6M, AMASS, and 3DPW
 adapters remain future extensions; they are not required for the first server
 training run.
 
@@ -108,9 +109,17 @@ motion-tool audit-supervised-3d \
    Reject any coordinate, scale, camera-frame, or joint-mapping ambiguity.
 3. Build train and holdout datasets by official source split, sequence, subject,
    and action-clip boundaries. Record every included sequence ID and frame count.
-4. Train on the RTX 3090 using `--device cuda`; start with window 81, channels
-   256, epochs 30, batch size 128, learning rate 0.001. The RTX 3080 Ti may run
-   independent evaluation or data preparation.
+4. The current server is a single RTX 3080 Ti with 12 GB VRAM. Train with the
+   documented single-process command and `--device cuda`; it still uses
+   GPU-resident vectorized temporal windows and CUDA AMP. Start with window
+   81, channels 256, epochs 30, batch size 128, learning rate 0.001. If CUDA
+   reports out-of-memory, retry with batch size 64; do not silently alter the
+   model or evaluation split. The training report records `parallelism`,
+   elapsed time, global samples/sec, and peak GPU memory.
+
+   DDP remains an optional future path for a multi-GPU server: invoke
+   `torchrun --standalone --nproc_per_node=2 -m app.cli` and add
+   `--distributed`; halve the per-GPU batch size to preserve the global batch.
 5. Preserve git SHA, hardware, PyTorch version, random seed, config, source
    manifests, dataset manifests, checkpoint, training report, and holdout report.
 6. Evaluate holdout quality. Product promotion requires tracker success ≥95%,

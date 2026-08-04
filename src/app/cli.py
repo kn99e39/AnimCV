@@ -172,6 +172,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--batch-size", type=int, default=128)
     p.add_argument("--learning-rate", type=float, default=1e-3)
     p.add_argument("--device", default="cpu")
+    p.add_argument("--distributed", action="store_true", help="Use DDP; launch this command with torchrun")
+    p.add_argument("--no-mixed-precision", action="store_true", help="Disable CUDA AMP")
+    p.add_argument("--seed", type=int, default=1337)
+    p.add_argument("--inference-batch-size", type=int, default=1024)
     p.add_argument("--report-out", required=True)
 
     p = sub.add_parser("preflight-training", help="Verify PyTorch and the requested training device before a server run")
@@ -602,10 +606,13 @@ def _train_supervised_3d_lifter(args: argparse.Namespace) -> None:
 
     report = train(load_dataset(args.dataset), args.out, TrainingConfig(
         window=args.window, channels=args.channels, epochs=args.epochs, batch_size=args.batch_size,
-        learning_rate=args.learning_rate, device=args.device,
+        learning_rate=args.learning_rate, device=args.device, distributed=args.distributed,
+        mixed_precision=not args.no_mixed_precision, seed=args.seed,
+        inference_batch_size=args.inference_batch_size,
     ))
-    write_json(args.report_out, report)
-    print(f"[motion-tool] trained supervised 3D lifter -> {args.out}")
+    if report["is_primary"]:
+        write_json(args.report_out, report)
+        print(f"[motion-tool] trained supervised 3D lifter -> {args.out}")
 
 
 def _preflight_training(args: argparse.Namespace) -> None:

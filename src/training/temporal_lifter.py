@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from time import perf_counter
 from typing import Any
 
 import numpy as np
@@ -114,50 +115,96 @@ class TrainingConfig:
     batch_size: int = 128
     learning_rate: float = 1e-3
     device: str = "cpu"
+    mixed_precision: bool = True
+    distributed: bool = False
+    seed: int = 1337
+    inference_batch_size: int = 1024
 
     def __post_init__(self) -> None:
         if self.window < 3 or self.window % 2 == 0:
             raise ValueError("window must be an odd value of at least 3")
-        if min(self.channels, self.epochs, self.batch_size) <= 0 or self.learning_rate <= 0:
+        if min(self.channels, self.epochs, self.batch_size, self.inference_batch_size) <= 0 or self.learning_rate <= 0:
             raise ValueError("training dimensions, epochs, batch size, and learning rate must be positive")
 
 
 def train(dataset: dict[str, Any], checkpoint_path: str | Path, config: TrainingConfig) -> dict[str, Any]:
     torch, nn = _torch()
     inputs, targets, valid, offsets = _arrays(dataset, config.window)
-    model = _model(nn, config.channels).to(config.device)
+    context = _distributed_context(torch, config)
+    device = context["device"]
+    model = _model(nn, config.channels).to(device)
+    if context["enabled"]:
+        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[context["local_rank"]])
     optimizer = torch.optim.AdamW(model.parameters(), lr=config.learning_rate)
-    x = torch.as_tensor(inputs, dtype=torch.float32, device=config.device)
-    y = torch.as_tensor(targets, dtype=torch.float32, device=config.device)
-    indices = torch.arange(len(inputs), device=config.device)
-    for _ in range(config.epochs):
-        permutation = indices[torch.randperm(len(indices), device=config.device)]
+    # Pose supervision is compact; GPU-resident tensors avoid worker/PCIe overhead.
+    x = torch.as_tensor(inputs, dtype=torch.float32, device=device)
+    y = torch.as_tensor(targets, dtype=torch.float32, device=device)
+    valid_tensor = torch.as_tensor(valid, dtype=torch.float32, device=device).unsqueeze(-1)
+    offset_tensor = torch.as_tensor(offsets, dtype=torch.long, device=device)
+    indices = torch.arange(len(inputs), device=device)
+    amp_enabled = bool(config.mixed_precision and device.type == "cuda")
+    if device.type == "cuda":
+        torch.cuda.reset_peak_memory_stats(device)
+    scaler = torch.amp.GradScaler("cuda", enabled=amp_enabled)
+    started = perf_counter()
+    local_samples_seen = 0
+    for epoch in range(config.epochs):
+        generator = torch.Generator(device=device).manual_seed(config.seed + epoch)
+        permutation = indices[torch.randperm(len(indices), generator=generator, device=device)]
+        permutation = _rank_shard(torch, permutation, context["rank"], context["world_size"])
+        local_samples_seen += len(permutation)
         for batch in permutation.split(config.batch_size):
-            windows = torch.stack([x[offsets[int(index)]] for index in batch])
-            prediction = model(windows)
-            mask = torch.as_tensor(valid[batch.cpu().numpy()], dtype=torch.float32, device=config.device).unsqueeze(-1)
-            loss = (torch.nn.functional.smooth_l1_loss(prediction, y[batch], reduction="none") * mask).sum() / mask.sum().clamp_min(1.0)
+            # Advanced indexing builds every temporal window in one GPU operation.
+            windows = x[offset_tensor[batch]]
             optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
+            with torch.amp.autocast("cuda", enabled=amp_enabled):
+                prediction = model(windows)
+                mask = valid_tensor[batch]
+                loss = (torch.nn.functional.smooth_l1_loss(prediction, y[batch], reduction="none") * mask).sum() / mask.sum().clamp_min(1.0)
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
     model.eval()
     with torch.no_grad():
-        prediction = torch.stack([model(x[offsets[index:index + 1]])[0] for index in range(len(inputs))])
-        errors = torch.linalg.vector_norm(prediction - y, dim=-1)
-        valid_tensor = torch.as_tensor(valid, dtype=torch.bool, device=config.device)
-        mpjpe_mm = float(errors[valid_tensor].mean().item() * 1000)
-    payload = {"schema": "animcv_temporal_lifter_checkpoint_v1", "joint_names": list(H36M_NAMES),
-               "channels": config.channels, "window": config.window, "state_dict": model.state_dict()}
-    Path(checkpoint_path).parent.mkdir(parents=True, exist_ok=True)
-    torch.save(payload, checkpoint_path)
+        # Evaluation has no gradient collectives, so ranks can use unequal shards
+        # and together cover each sample exactly once.
+        metric_indices = indices[context["rank"]::context["world_size"]]
+        prediction = _predict_batched(model, x, offset_tensor[metric_indices], config.inference_batch_size, amp_enabled)
+        errors = torch.linalg.vector_norm(prediction - y[metric_indices], dim=-1)
+        metric_sum = (errors * valid_tensor[metric_indices].squeeze(-1)).sum()
+        metric_count = valid_tensor[metric_indices].sum()
+        if context["enabled"]:
+            torch.distributed.all_reduce(metric_sum)
+            torch.distributed.all_reduce(metric_count)
+        mpjpe_mm = float((metric_sum / metric_count.clamp_min(1.0)).item() * 1000)
+    if context["primary"]:
+        payload = {"schema": "animcv_temporal_lifter_checkpoint_v2", "joint_names": list(H36M_NAMES),
+                   "channels": config.channels, "window": config.window,
+                   "state_dict": (model.module if context["enabled"] else model).state_dict()}
+        Path(checkpoint_path).parent.mkdir(parents=True, exist_ok=True)
+        torch.save(payload, checkpoint_path)
+    if context["enabled"]:
+        torch.distributed.barrier()
+        torch.distributed.destroy_process_group()
+    elapsed_seconds = perf_counter() - started
+    global_samples_seen = local_samples_seen * context["world_size"]
+    performance = {
+        "training_seconds": elapsed_seconds,
+        "global_samples_seen": global_samples_seen,
+        "global_samples_per_second": global_samples_seen / max(elapsed_seconds, 1e-9),
+        "peak_gpu_memory_mb": (torch.cuda.max_memory_allocated(device) / (1024 ** 2)) if device.type == "cuda" else None,
+    }
     return {"frame_count": len(inputs), "training_mpjpe_mm": mpjpe_mm,
-            "valid_joint_count": int(valid.sum()), "config": config.__dict__}
+            "valid_joint_count": int(valid.sum()), "config": config.__dict__,
+            "parallelism": {"mode": "ddp" if config.distributed else "single_gpu", "world_size": context["world_size"],
+                            "device": str(device), "mixed_precision": amp_enabled}, "performance": performance,
+            "is_primary": context["primary"]}
 
 
 def evaluate(dataset: dict[str, Any], checkpoint_path: str | Path, device: str = "cpu") -> dict[str, Any]:
     torch, nn = _torch()
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
-    if checkpoint.get("schema") != "animcv_temporal_lifter_checkpoint_v1":
+    if checkpoint.get("schema") not in ("animcv_temporal_lifter_checkpoint_v1", "animcv_temporal_lifter_checkpoint_v2"):
         raise ValueError("unsupported temporal lifter checkpoint")
     inputs, targets, valid, offsets = _arrays(dataset, int(checkpoint["window"]))
     model = _model(nn, int(checkpoint["channels"])).to(device)
@@ -166,7 +213,7 @@ def evaluate(dataset: dict[str, Any], checkpoint_path: str | Path, device: str =
     x = torch.as_tensor(inputs, dtype=torch.float32, device=device)
     y = torch.as_tensor(targets, dtype=torch.float32, device=device)
     with torch.no_grad():
-        prediction = torch.stack([model(x[offsets[index:index + 1]])[0] for index in range(len(inputs))])
+        prediction = _predict_batched(model, x, torch.as_tensor(offsets, dtype=torch.long, device=device), 1024, device.startswith("cuda"))
     errors = torch.linalg.vector_norm(prediction - y, dim=-1)[torch.as_tensor(valid, dtype=torch.bool, device=device)] * 1000
     return {"schema": "animcv_supervised_lifter_evaluation_v1", "frame_count": len(inputs),
             "mpjpe_mm": float(errors.mean().item()), "p95_joint_error_mm": float(torch.quantile(errors, 0.95).item()),
@@ -181,7 +228,7 @@ def infer(pose: PoseSequence, checkpoint_path: str | Path, image_size: tuple[int
     if width <= 0 or height <= 0:
         raise ValueError("image dimensions must be positive")
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
-    if checkpoint.get("schema") != "animcv_temporal_lifter_checkpoint_v1":
+    if checkpoint.get("schema") not in ("animcv_temporal_lifter_checkpoint_v1", "animcv_temporal_lifter_checkpoint_v2"):
         raise ValueError("unsupported temporal lifter checkpoint")
     model = _model(nn, int(checkpoint["channels"])).to(device)
     model.load_state_dict(checkpoint["state_dict"])
@@ -198,7 +245,7 @@ def infer(pose: PoseSequence, checkpoint_path: str | Path, image_size: tuple[int
     x = torch.as_tensor(np.asarray(inputs), dtype=torch.float32, device=device)
     offsets = _window_offsets(len(inputs), int(checkpoint["window"]))
     with torch.no_grad():
-        prediction = torch.stack([model(x[offsets[index:index + 1]])[0] for index in range(len(inputs))]).cpu().numpy()
+        prediction = _predict_batched(model, x, torch.as_tensor(offsets, dtype=torch.long, device=device), 1024, device.startswith("cuda")).cpu().numpy()
     frames = []
     for source, values in zip(pose.frames, prediction):
         points = {
@@ -229,6 +276,52 @@ def _arrays(dataset: dict[str, Any], window: int) -> tuple[np.ndarray, np.ndarra
 def _window_offsets(length: int, window: int) -> np.ndarray:
     radius = window // 2
     return np.clip(np.arange(length)[:, None] + np.arange(-radius, radius + 1), 0, length - 1)
+
+
+def _predict_batched(model, x, offsets, batch_size: int, amp_enabled: bool):
+    """Vectorized evaluation/inference without materialising every window at once."""
+    torch, _ = _torch()
+    predictions = []
+    for batch_offsets in offsets.split(batch_size):
+        with torch.amp.autocast("cuda", enabled=amp_enabled):
+            predictions.append(model(x[batch_offsets]))
+    return torch.cat(predictions, dim=0)
+
+
+def _rank_shard(torch, indices, rank: int, world_size: int):
+    """Give every DDP rank the same step count, padding only the final global shard."""
+    if world_size == 1:
+        return indices
+    per_rank = (len(indices) + world_size - 1) // world_size
+    total = per_rank * world_size
+    if total != len(indices):
+        indices = torch.cat((indices, indices[:total - len(indices)]))
+    return indices.reshape(world_size, per_rank)[rank]
+
+
+def _distributed_context(torch, config: TrainingConfig) -> dict[str, Any]:
+    if not config.distributed:
+        return {"enabled": False, "rank": 0, "local_rank": 0, "world_size": 1, "primary": True,
+                "device": torch.device(config.device)}
+    import os
+    if not config.device.startswith("cuda"):
+        raise ValueError("distributed training requires a CUDA device")
+    world_size = int(os.environ.get("WORLD_SIZE", "1"))
+    local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+    rank = int(os.environ.get("RANK", "0"))
+    if world_size < 2:
+        raise ValueError("--distributed requires torchrun with at least two processes")
+    if not torch.cuda.is_available() or local_rank >= torch.cuda.device_count():
+        raise RuntimeError("torchrun rank does not map to an available CUDA device")
+    torch.cuda.set_device(local_rank)
+    # device_id is available in modern PyTorch and lets NCCL bind eagerly;
+    # retain compatibility with older supported CUDA images.
+    try:
+        torch.distributed.init_process_group(backend="nccl", device_id=torch.device(f"cuda:{local_rank}"))
+    except TypeError:
+        torch.distributed.init_process_group(backend="nccl")
+    return {"enabled": True, "rank": rank, "local_rank": local_rank, "world_size": world_size,
+            "primary": rank == 0, "device": torch.device(f"cuda:{local_rank}")}
 
 
 def _model(nn, channels: int):
@@ -266,5 +359,6 @@ def preflight(device: str = "cuda") -> dict[str, Any]:
         "schema": "animcv_training_preflight_v1", "requested_device": device,
         "torch_version": torch.__version__, "cuda_available": bool(torch.cuda.is_available()),
         "cuda_version": torch.version.cuda, "device_name": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
+        "cuda_device_count": torch.cuda.device_count() if torch.cuda.is_available() else 0,
         "passed": True,
     }

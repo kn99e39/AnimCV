@@ -1,6 +1,10 @@
+import pytest
+
+pytest.importorskip("torch", reason="supervised temporal lifter tests require the optional training extra")
+
 from pose.pose_lifter import LiftedPoseFrame, LiftedPosePoint, LiftedPoseSequence, H36M_NAMES
 from pose.pose_types import PoseFrame, PoseLandmark, PoseSequence
-from training.temporal_lifter import TrainingConfig, build_dataset, combine_datasets, evaluate, infer, load_dataset, preflight, save_dataset, train
+from training.temporal_lifter import TrainingConfig, _rank_shard, build_dataset, combine_datasets, evaluate, infer, load_dataset, preflight, save_dataset, train
 
 
 def _pose(index):
@@ -24,6 +28,14 @@ def test_supervised_dataset_and_training_smoke(tmp_path):
     assert report["frame_count"] == 4
     assert evaluate(load_dataset(path), checkpoint)["frame_count"] == 4
     assert infer(pose, checkpoint, (100, 100)).backend == "animcv_supervised_temporal_lifter_v1"
+    assert report["parallelism"]["mode"] == "single_gpu"
+
+
+def test_rank_shards_pad_only_to_equalize_ddp_steps():
+    import torch
+    indices = torch.arange(5)
+    shards = [_rank_shard(torch, indices, rank, 2).tolist() for rank in range(2)]
+    assert shards == [[0, 1, 2], [3, 4, 0]]
 
 
 def test_combined_dataset_keeps_windows_inside_each_sequence():
@@ -47,7 +59,6 @@ def test_invalid_joint_is_masked_from_supervised_dataset():
 def test_combining_rejects_wrong_declared_split():
     dataset = build_dataset(PoseSequence([_pose(i) for i in range(3)], 25), LiftedPoseSequence([_target(i) for i in range(3)], 25), (100, 100), "train")
     dataset["source"] = {"split": "holdout"}
-    import pytest
     with pytest.raises(ValueError, match="expected 'train'"):
         combine_datasets([dataset], expected_split="train")
 

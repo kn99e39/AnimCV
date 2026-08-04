@@ -1,0 +1,78 @@
+{
+  "schema": "animcv_holdout_gate_check_v1",
+  "clips": [
+    "s7_seq1_cam0",
+    "s7_seq2_cam0",
+    "s8_seq1_cam0",
+    "s8_seq2_cam0"
+  ],
+  "total_frames": 25081,
+  "total_joint_samples": 401296,
+  "pooled_metrics": {
+    "mpjpe_mm": 97.33749358261109,
+    "pa_mpjpe_mm": 80.12962609310868,
+    "p95_joint_error_mm": 275.4703171145981,
+    "root_yaw_mae_degrees": 69.38315962760394,
+    "root_yaw_p95_degrees": 164.61785976781673
+  },
+  "gates": {
+    "pa_mpjpe_mm": 80.0,
+    "root_yaw_mae_degrees": 15.0,
+    "root_yaw_p95_degrees": 30.0
+  },
+  "verdict": "FAIL",
+  "per_clip": [
+    {
+      "schema": "animcv_supervised_3d_audit_v1",
+      "matched_frames": 6239,
+      "matched_joints": 99824,
+      "mpjpe_mm": 82.86788332398413,
+      "pa_mpjpe_mm": 66.94090452817913,
+      "p95_joint_error_mm": 220.15216575098873,
+      "root_yaw_mae_degrees": 112.5821802660858,
+      "root_yaw_p95_degrees": 164.61785976781673,
+      "passed": false,
+      "verdict": "informational: use a representative source-level holdout before applying gates",
+      "_clip": "s7_seq1_cam0"
+    },
+    {
+      "schema": "animcv_supervised_3d_audit_v1",
+      "matched_frames": 6320,
+      "matched_joints": 101120,
+      "mpjpe_mm": 104.56462564283446,
+      "pa_mpjpe_mm": 85.02922541204268,
+      "p95_joint_error_mm": 297.81762614403,
+      "root_yaw_mae_degrees": 21.9907813673403,
+      "root_yaw_p95_degrees": 118.46658383770266,
+      "passed": false,
+      "verdict": "informational: use a representative source-level holdout before applying gates",
+      "_clip": "s7_seq2_cam0"
+    },
+    {
+      "schema": "animcv_supervised_3d_audit_v1",
+      "matched_frames": 6468,
+      "matched_joints": 103488,
+      "mpjpe_mm": 95.64331720313767,
+      "pa_mpjpe_mm": 79.35843243287385,
+      "p95_joint_error_mm": 262.8096338241781,
+      "root_yaw_mae_degrees": 104.12704658601541,
+      "root_yaw_p95_degrees": 112.392433744838,
+      "passed": false,
+      "verdict": "informational: use a representative source-level holdout before applying gates",
+      "_clip": "s8_seq1_cam0"
+    },
+    {
+      "schema": "animcv_supervised_3d_audit_v1",
+      "matched_frames": 6054,
+      "matched_joints": 96864,
+      "mpjpe_mm": 106.51462549628732,
+      "pa_mpjpe_mm": 89.43042667823117,
+      "p95_joint_error_mm": 322.676173212052,
+      "root_yaw_mae_degrees": 37.2189178030867,
+      "root_yaw_p95_degrees": 150.7856260091731,
+      "passed": false,
+      "verdict": "informational: use a representative source-level holdout before applying gates",
+      "_clip": "s8_seq2_cam0"
+    }
+  ]
+}

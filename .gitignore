@@ -8,3 +8,10 @@ __pycache__/
 *.egg-info/
 /build_output
 *.blend1
+
+# Large, fully regenerable training intermediates (see scripts/training/)
+/training_cache/
+
+# Reassembled from datasets/mpi_inf_3dhp/**/annot.mat.part-* by
+# scripts/training/reassemble_mpi_inf_3dhp.sh; only the split parts are committed.
+datasets/mpi_inf_3dhp/**/annot.mat

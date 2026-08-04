@@ -1,0 +1,13 @@
+{
+  "frame_count": 106512,
+  "training_mpjpe_mm": 79.50228452682495,
+  "valid_joint_count": 1810704,
+  "config": {
+    "window": 81,
+    "channels": 256,
+    "epochs": 30,
+    "batch_size": 128,
+    "learning_rate": 0.001,
+    "device": "cuda"
+  }
+}

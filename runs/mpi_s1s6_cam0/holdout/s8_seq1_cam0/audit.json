@@ -1,0 +1,12 @@
+{
+  "schema": "animcv_supervised_3d_audit_v1",
+  "matched_frames": 6468,
+  "matched_joints": 103488,
+  "mpjpe_mm": 95.64331720313767,
+  "pa_mpjpe_mm": 79.35843243287385,
+  "p95_joint_error_mm": 262.8096338241781,
+  "root_yaw_mae_degrees": 104.12704658601541,
+  "root_yaw_p95_degrees": 112.392433744838,
+  "passed": false,
+  "verdict": "informational: use a representative source-level holdout before applying gates"
+}

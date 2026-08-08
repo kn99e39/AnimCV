@@ -98,6 +98,11 @@ Writes the final animation into your rig file and saves a `.blend`
 machine — it's auto-detected from `PATH` or the default per-OS install
 location, or point at one explicitly. Not bundled with this app.
 
+## Settings
+The **Settings** tab has a language dropdown (English / 한국어). Changing
+it retranslates every tab immediately without losing anything you've
+entered, and the choice is remembered for next time.
+
 ## Setup this app does NOT do for you
 - **Blender** (step 8 / Export): install from blender.org.
 - **assimp** (step 3 / Rig, and therefore step 6 / Retarget): the

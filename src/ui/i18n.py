@@ -113,6 +113,37 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "Frames dir, MMPose config, checkpoint, and output path are required.",
         "ko": "프레임 폴더, MMPose 설정, 체크포인트, 출력 경로가 필요합니다.",
     },
+    "pose.subject_box": {"en": "Tracked subject box:", "ko": "추적 대상 박스:"},
+    "btn.select_on_frame": {"en": "Select on first frame", "ko": "첫 프레임에서 선택"},
+    "pose.detector_config": {"en": "Person detector config:", "ko": "사람 탐지기 설정:"},
+    "pose.detector_checkpoint": {
+        "en": "Person detector checkpoint:",
+        "ko": "사람 탐지기 체크포인트:",
+    },
+    "dlg.missing_frames.title": {"en": "Missing frames", "ko": "프레임 없음"},
+    "dlg.missing_frames.msg": {
+        "en": "Extract frames first, then select a subject.",
+        "ko": "먼저 프레임을 추출한 뒤 대상을 선택하세요.",
+    },
+    "dlg.load_frame_fail.title": {"en": "Could not load frame", "ko": "프레임을 불러올 수 없음"},
+    "dlg.select_subject.title": {
+        "en": "Drag over the subject to track",
+        "ko": "추적할 대상을 드래그하세요",
+    },
+    "dlg.invalid_box.title": {"en": "Invalid subject box", "ko": "잘못된 대상 박스"},
+    "dlg.invalid_box.format": {
+        "en": "Use x1,y1,x2,y2 or select it on the first frame.",
+        "ko": "x1,y1,x2,y2 형식으로 입력하거나 첫 프레임에서 선택하세요.",
+    },
+    "dlg.invalid_box.size": {
+        "en": "The selected subject box must have positive width and height.",
+        "ko": "선택한 대상 박스는 너비와 높이가 0보다 커야 합니다.",
+    },
+    "dlg.missing_detector.title": {"en": "Missing detector", "ko": "탐지기 없음"},
+    "dlg.missing_detector.msg": {
+        "en": "Subject tracking needs a detector config and checkpoint.",
+        "ko": "대상 추적에는 탐지기 설정과 체크포인트가 필요합니다.",
+    },
     # ---- Rig tab ----
     "rig.file": {"en": "Rig file (.fbx etc.):", "ko": "리그 파일 (.fbx 등):"},
     "rig.out": {"en": "Output rig_profile.json:", "ko": "출력 rig_profile.json:"},

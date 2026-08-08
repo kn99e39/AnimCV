@@ -301,7 +301,9 @@ python -m app.gui
 
 #### 탭별 사용법
 
-창을 열면 위쪽에 8개 탭이 있고, 아래쪽엔 항상 상태 표시줄 + 로그 창이 있습니다. 각 탭의 결과 경로는 다음 탭의 입력 필드에 자동으로 채워지므로(예: Frames 탭에서 추출한 디렉터리가 Pose 탭의 "Frames directory"에 자동 입력), 보통은 순서대로 진행하면서 필요한 값만 채우면 됩니다. 모든 경로 입력칸 옆의 `Browse...` 버튼은 파일/디렉터리 선택 대화상자를 엽니다.
+창을 열면 위쪽에 파이프라인 8개 탭 + **Settings** 탭이 있고, 아래쪽엔 항상 상태 표시줄 + 로그 창이 있습니다. 각 탭의 결과 경로는 다음 탭의 입력 필드에 자동으로 채워지므로(예: Frames 탭에서 추출한 디렉터리가 Pose 탭의 "Frames directory"에 자동 입력), 보통은 순서대로 진행하면서 필요한 값만 채우면 됩니다. 모든 경로 입력칸 옆의 `Browse...` 버튼은 파일/디렉터리 선택 대화상자를 엽니다.
+
+**언어 전환**: **Settings** 탭에서 언어를 English / 한국어로 바꿀 수 있습니다. 즉시 모든 탭(제목·라벨·버튼·상태 메시지)에 반영되고, 작업 중인 값은 그대로 유지됩니다(창을 새로 그리지 않고 텍스트만 갱신). 선택한 언어는 `~/.config/animcv/settings.json`에 저장되어 다음 실행 때도 유지됩니다. 구현은 `src/ui/i18n.py`(en/ko 문자열 테이블 + `Translator`)와 `gui_app.py`의 리트랜슬레이트 레지스트리입니다.
 
 1. **1. Frames**: `Video file`에서 영상 파일 선택 → (선택) 구간을 눈으로 보고 정하고 싶으면 **Load Preview**를 눌러 미리보기/스크러버를 엽니다. `Start frame`/`End frame` 슬라이더를 드래그하면 그 프레임이 위 미리보기에 실시간으로 표시되고(영상 편집 프로그램처럼), 옆의 숫자 입력칸과 양방향으로 동기화됩니다 — 숫자를 직접 입력해도 슬라이더가 따라가고, 슬라이더를 움직여도 숫자가 갱신됩니다. 슬라이더는 `Start <= End`를 자동으로 유지합니다(끌고 있는 쪽이 우선). Load Preview 없이 숫자 입력칸만 써도 되고, 비워두면 영상 전체가 대상입니다(양 끝 포함, 원본 영상 기준 인덱스) → (선택) `Target FPS` 입력 → `Output frames dir` 지정 → **Extract Frames** 클릭. 완료되면 프레임 개수가 표시됩니다.
 2. **2. Pose**: `Frames directory`(자동 채워짐), `MMPose config`(.py)와 `MMPose checkpoint`(.pth)를 직접 갖고 있으면 선택하고, 없으면 **Use Default Model (RTMPose-tiny)** 버튼 한 번으로 채울 수 있습니다(체크포인트는 최초 1회만 `~/.cache/animcv/models`에 다운로드되고, 이후엔 즉시 재사용됨) → `Device`는 CUDA 없으면 `cpu` → (선택) 깊이 기반 3D 리타게팅을 쓰려면 `Depth checkpoint` 지정 → `Output pose.json` 지정 → **Run Pose Estimation** 클릭. 시간이 걸리는 작업이라 창이 멈추지 않고 아래 상태 표시줄에 "Running pose estimation..."이 뜹니다.
@@ -311,6 +313,7 @@ python -m app.gui
 6. **6. Retarget**: `Motion graph JSON`/`Rig file`/`Mapping JSON`(모두 자동 채워짐), `Output animation.json` 지정 → **Retarget** 클릭.
 7. **7. Optimize**: `Animation JSON`(자동 채워짐), `Collapse preset`(`none`/`light`/`medium`/`aggressive`/`custom`) 선택(`custom`이면 `Custom threshold`도 입력) → `Output` 지정 → **Optimize** 클릭. 아래 텍스트 창에 본별 압축 전/후 키 개수가 표시됩니다.
 8. **8. Export**: `Optimized animation JSON`/`Rig file`(자동 채워짐), `Output .blend` 지정, (선택) `.fbx`도 함께 원하면 `Output .fbx`, Blender를 자동으로 못 찾으면 `Blender executable`에 직접 지정 → **Export to Blender** 클릭.
+9. **Settings**: `Language` 드롭다운에서 English / 한국어 선택. 즉시 적용되고 선택이 저장됩니다.
 
 #### Mapping 탭 자세히
 

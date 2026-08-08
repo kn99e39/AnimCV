@@ -340,6 +340,13 @@ class MotionToolApp:
         self._tr_button(load_row, "btn.load_preview", self._on_load_preview).pack(side="left")
         self.frames_preview_status = tk.StringVar(value=self.tr("frames.preview_hint"))
         ttk.Label(load_row, textvariable=self.frames_preview_status).pack(side="left", padx=(8, 0))
+        # Retranslate the hint only while no video is loaded (once one is,
+        # this var holds live stats we shouldn't clobber on a lang switch).
+        self._register(
+            lambda: self.frames_preview_status.set(self.tr("frames.preview_hint"))
+            if self._frames_scrubber is None
+            else None
+        )
 
         self.frames_preview_canvas = tk.Canvas(
             tab,
@@ -683,25 +690,33 @@ class MotionToolApp:
         )
 
         self.pose_subject_box = tk.StringVar()
-        ttk.Label(tab, text="Tracked subject box:").grid(row=12, column=0, sticky="w", padx=4)
+        self._tr_label(tab, "pose.subject_box").grid(row=12, column=0, sticky="w", padx=4)
         ttk.Entry(tab, textvariable=self.pose_subject_box, width=30).grid(row=12, column=1, sticky="w", padx=4)
-        ttk.Button(tab, text="Select on first frame", command=self._on_select_pose_subject).grid(row=12, column=2, padx=4)
-        self.pose_detector_config = self._path_row(tab, 13, "Person detector config:", "open_file", [("Python config", "*.py")])
-        self.pose_detector_checkpoint = self._path_row(tab, 14, "Person detector checkpoint:", "open_file", [("Checkpoint", "*.pth")])
+        self._tr_button(tab, "btn.select_on_frame", self._on_select_pose_subject).grid(
+            row=12, column=2, padx=4
+        )
+        self.pose_detector_config = self._path_row(
+            tab, 13, "pose.detector_config", "open_file", [("Python config", "*.py")]
+        )
+        self.pose_detector_checkpoint = self._path_row(
+            tab, 14, "pose.detector_checkpoint", "open_file", [("Checkpoint", "*.pth")]
+        )
 
     def _on_select_pose_subject(self) -> None:
         frames_dir = self.pose_frames_dir.get().strip()
         frames = sorted(Path(frames_dir).glob("*.png")) if frames_dir else []
         if not frames:
-            messagebox.showwarning("Missing frames", "Extract frames first, then select a subject.")
+            messagebox.showwarning(
+                self.tr("dlg.missing_frames.title"), self.tr("dlg.missing_frames.msg")
+            )
             return
         try:
             photo = tk.PhotoImage(file=str(frames[0]))
         except tk.TclError as exc:
-            messagebox.showerror("Could not load frame", str(exc))
+            messagebox.showerror(self.tr("dlg.load_frame_fail.title"), str(exc))
             return
         dialog = tk.Toplevel(self.root)
-        dialog.title("Drag over the subject to track")
+        dialog.title(self.tr("dlg.select_subject.title"))
         canvas = tk.Canvas(dialog, width=photo.width(), height=photo.height(), cursor="crosshair")
         canvas.pack()
         canvas.create_image(0, 0, anchor="nw", image=photo)
@@ -738,12 +753,10 @@ class MotionToolApp:
             config_path, checkpoint_path = result
             self.pose_config_path.set(config_path)
             self.pose_checkpoint_path.set(checkpoint_path)
-            self.pose_default_model_status_var.set("✓ RTMPose-tiny ready")
+            self.pose_default_model_status_var.set(self.tr("pose.default_ready"))
             self._log(f"[pose] using default model: {config_path} / {checkpoint_path}")
 
-        self._run_async(
-            work, on_success, "Fetching default model (downloads ~13MB on first use)..."
-        )
+        self._run_async(work, on_success, self.tr("busy.default_model"))
 
     def _on_estimate_pose(self) -> None:
         frames = self.pose_frames_dir.get().strip()
@@ -751,9 +764,7 @@ class MotionToolApp:
         checkpoint = self.pose_checkpoint_path.get().strip()
         out = self.pose_out.get().strip()
         if not all([frames, config, checkpoint, out]):
-            messagebox.showwarning(
-                "Missing input", "Frames dir, MMPose config, checkpoint, and output path are required."
-            )
+            messagebox.showwarning(self.tr("dlg.missing_input.title"), self.tr("dlg.pose_missing"))
             return
         device = self.pose_device.get()
         visibility_threshold = float(self.pose_visibility.get() or 0.3)
@@ -766,13 +777,17 @@ class MotionToolApp:
         try:
             subject_box = tuple(float(value.strip()) for value in subject_box_text.split(",")) if subject_box_text else None
         except ValueError:
-            messagebox.showwarning("Invalid subject box", "Use x1,y1,x2,y2 or select it on the first frame.")
+            messagebox.showwarning(
+                self.tr("dlg.invalid_box.title"), self.tr("dlg.invalid_box.format")
+            )
             return
         if subject_box is not None and (len(subject_box) != 4 or subject_box[2] <= subject_box[0] or subject_box[3] <= subject_box[1]):
-            messagebox.showwarning("Invalid subject box", "The selected subject box must have positive width and height.")
+            messagebox.showwarning(self.tr("dlg.invalid_box.title"), self.tr("dlg.invalid_box.size"))
             return
         if subject_box is not None and not (detector_config and detector_checkpoint):
-            messagebox.showwarning("Missing detector", "Subject tracking needs a detector config and checkpoint.")
+            messagebox.showwarning(
+                self.tr("dlg.missing_detector.title"), self.tr("dlg.missing_detector.msg")
+            )
             return
 
         def work():
@@ -814,28 +829,27 @@ class MotionToolApp:
             return len(poses.frames)
 
         def on_success(count: int):
-            self.pose_result_var.set(f"✓ Estimated pose for {count} frames -> {out}")
+            self.pose_result_var.set(self.tr("pose.result", count=count, out=out))
             self._log(f"[pose] estimated pose for {count} frames -> {out}")
             self.motion_pose_path.set(out)
             self.mapping_pose_path.set(out)
 
-        self._run_async(work, on_success, "Running pose estimation (this can take a while)...")
+        self._run_async(work, on_success, self.tr("busy.pose"))
 
     # ---- 3. parse-rig -----------------------------------------------------
 
     def _build_rig_tab(self) -> None:
         tab = ttk.Frame(self.notebook)
-        self.notebook.add(tab, text="3. Rig")
+        self.notebook.add(tab, text=self.tr("tab.rig"))
+        self._register_tab(tab, "tab.rig")
         tab.columnconfigure(1, weight=1)
 
         self.rig_path = self._path_row(
-            tab, 0, "Rig file (.fbx etc.):", "open_file", [("FBX", "*.fbx"), ("All", "*.*")]
+            tab, 0, "rig.file", "open_file", [("FBX", "*.fbx"), ("All", "*.*")]
         )
-        self.rig_out = self._path_row(
-            tab, 1, "Output rig_profile.json:", "save_file", [("JSON", "*.json")]
-        )
+        self.rig_out = self._path_row(tab, 1, "rig.out", "save_file", [("JSON", "*.json")])
 
-        ttk.Button(tab, text="Parse Rig", command=self._on_parse_rig).grid(
+        self._tr_button(tab, "btn.parse_rig", self._on_parse_rig).grid(
             row=2, column=1, sticky="w", pady=8
         )
         self.rig_result_var = tk.StringVar()
@@ -843,7 +857,9 @@ class MotionToolApp:
             row=3, column=0, columnspan=3, sticky="w", padx=4
         )
 
-        ttk.Label(tab, text="Parsed bones:").grid(row=4, column=0, sticky="nw", padx=4, pady=(10, 0))
+        self._tr_label(tab, "rig.parsed_bones").grid(
+            row=4, column=0, sticky="nw", padx=4, pady=(10, 0)
+        )
         self.rig_bone_list = tk.Listbox(tab, height=15)
         self.rig_bone_list.grid(row=5, column=0, columnspan=3, sticky="nsew", padx=4, pady=4)
         tab.rowconfigure(5, weight=1)
@@ -852,7 +868,7 @@ class MotionToolApp:
         rig = self.rig_path.get().strip()
         out = self.rig_out.get().strip()
         if not rig or not out:
-            messagebox.showwarning("Missing input", "Rig file and output path are required.")
+            messagebox.showwarning(self.tr("dlg.missing_input.title"), self.tr("dlg.rig_missing"))
             return
 
         def work():
@@ -866,7 +882,7 @@ class MotionToolApp:
         def on_success(profile):
             self.rig_profile = profile
             self.rig_result_var.set(
-                f"✓ Parsed {len(profile.bones)} bones (root={profile.root_bone!r}) -> {out}"
+                self.tr("rig.result", count=len(profile.bones), root=repr(profile.root_bone), out=out)
             )
             self._log(f"[rig] parsed {len(profile.bones)} bones from {rig} -> {out}")
             self.rig_bone_list.delete(0, "end")
@@ -878,29 +894,30 @@ class MotionToolApp:
             self._refresh_mapping_bone_list()
             self._refresh_ik_bone_options()
 
-        self._run_async(work, on_success, "Parsing rig...")
+        self._run_async(work, on_success, self.tr("busy.parsing"))
 
     # ---- 4. create-mapping (click-based) -----------------------------------
 
     def _build_mapping_tab(self) -> None:
         tab = ttk.Frame(self.notebook)
-        self.notebook.add(tab, text="4. Mapping")
+        self.notebook.add(tab, text=self.tr("tab.mapping"))
+        self._register_tab(tab, "tab.mapping")
         tab.columnconfigure(1, weight=1)
         tab.rowconfigure(3, weight=1)
 
         top = ttk.Frame(tab)
         top.grid(row=0, column=0, columnspan=3, sticky="ew")
         top.columnconfigure(1, weight=1)
-        self.mapping_rig_path = self._path_row(top, 0, "Rig file:", "open_file")
+        self.mapping_rig_path = self._path_row(top, 0, "mapping.rig_file", "open_file")
         self.mapping_frame_path = self._path_row(
-            top, 1, "Reference frame image:", "open_file", [("PNG", "*.png")]
+            top, 1, "mapping.ref_frame", "open_file", [("PNG", "*.png")]
         )
         self.mapping_pose_path = self._path_row(
-            top, 2, "Pose JSON (for landmark dots):", "open_file", [("JSON", "*.json")]
+            top, 2, "mapping.pose_json", "open_file", [("JSON", "*.json")]
         )
         btn_row = ttk.Frame(top)
         btn_row.grid(row=3, column=0, columnspan=3, sticky="w", pady=4)
-        ttk.Button(btn_row, text="Load Frame + Landmarks", command=self._on_load_mapping_frame).pack(
+        self._tr_button(btn_row, "btn.load_frame_landmarks", self._on_load_mapping_frame).pack(
             side="left"
         )
 
@@ -911,12 +928,13 @@ class MotionToolApp:
 
         left = ttk.Frame(body)
         left.grid(row=0, column=0, sticky="ns")
-        ttk.Label(left, text="Rig bones (click to select):").pack(anchor="w")
+        self._tr_label(left, "mapping.bones_hint").pack(anchor="w")
         self.mapping_bone_tree = ttk.Treeview(
             left, columns=("mapping",), show="tree headings", height=22
         )
-        self.mapping_bone_tree.heading("#0", text="Bone")
-        self.mapping_bone_tree.heading("mapping", text="Assigned mapping")
+        tree = self.mapping_bone_tree
+        self._register(lambda: tree.heading("#0", text=self.tr("mapping.col_bone")))
+        self._register(lambda: tree.heading("mapping", text=self.tr("mapping.col_mapping")))
         self.mapping_bone_tree.column("#0", width=140)
         self.mapping_bone_tree.column("mapping", width=220)
         self.mapping_bone_tree.pack(fill="y", expand=True)
@@ -928,16 +946,18 @@ class MotionToolApp:
 
         mode_row = ttk.Frame(right)
         mode_row.pack(anchor="w")
-        for value, label in [
-            ("landmark", "Landmark (click 1 point)"),
-            ("direction", "Direction (click 2 points)"),
-            ("custom_point", "Custom point (type id)"),
+        for value, key in [
+            ("landmark", "mapping.mode_landmark"),
+            ("direction", "mapping.mode_direction"),
+            ("custom_point", "mapping.mode_custom"),
         ]:
-            ttk.Radiobutton(
-                mode_row, text=label, value=value, variable=self.mapping_mode, command=self._reset_pending_click
-            ).pack(side="left", padx=4)
+            radio = ttk.Radiobutton(
+                mode_row, value=value, variable=self.mapping_mode, command=self._reset_pending_click
+            )
+            radio.pack(side="left", padx=4)
+            self._register(lambda r=radio, k=key: r.configure(text=self.tr(k)))
 
-        self.mapping_status_var = tk.StringVar(value="Parse a rig and select a bone to begin.")
+        self.mapping_status_var = tk.StringVar(value=self.tr("mapping.status.begin"))
         ttk.Label(right, textvariable=self.mapping_status_var, foreground="blue").pack(anchor="w", pady=4)
 
         self.mapping_canvas = tk.Canvas(right, background="#222222", width=480, height=360)
@@ -946,18 +966,17 @@ class MotionToolApp:
 
         custom_row = ttk.Frame(right)
         custom_row.pack(anchor="w", pady=4)
-        ttk.Label(custom_row, text="Custom point id:").pack(side="left")
+        self._tr_label(custom_row, "mapping.custom_id").pack(side="left")
         self.custom_point_var = tk.StringVar()
         ttk.Entry(custom_row, textvariable=self.custom_point_var, width=20).pack(side="left", padx=4)
-        ttk.Button(custom_row, text="Assign", command=self._on_assign_custom_point).pack(side="left")
+        self._tr_button(custom_row, "btn.assign", self._on_assign_custom_point).pack(side="left")
 
         clear_row = ttk.Frame(right)
         clear_row.pack(anchor="w")
-        ttk.Button(clear_row, text="Clear mapping for selected bone", command=self._on_clear_bone_mapping).pack(
-            side="left"
-        )
+        self._tr_button(clear_row, "btn.clear_mapping", self._on_clear_bone_mapping).pack(side="left")
 
-        ik_frame = ttk.LabelFrame(right, text="IK chains (optional, 2-bone: root -> mid -> end)")
+        ik_frame = ttk.LabelFrame(right)
+        self._register(lambda: ik_frame.configure(text=self.tr("mapping.ik_frame")))
         ik_frame.pack(fill="x", pady=8)
         self.ik_root_bone = tk.StringVar()
         self.ik_mid_bone = tk.StringVar()
@@ -965,42 +984,40 @@ class MotionToolApp:
         self.ik_root_source = tk.StringVar()
         self.ik_mid_source = tk.StringVar()
         self.ik_end_source = tk.StringVar()
-        for i, (label, var) in enumerate(
+        for i, (key, var) in enumerate(
             [
-                ("root bone", self.ik_root_bone),
-                ("mid bone", self.ik_mid_bone),
-                ("end bone", self.ik_end_bone),
+                ("mapping.ik.root_bone", self.ik_root_bone),
+                ("mapping.ik.mid_bone", self.ik_mid_bone),
+                ("mapping.ik.end_bone", self.ik_end_bone),
             ]
         ):
-            ttk.Label(ik_frame, text=label).grid(row=0, column=i * 2, padx=2)
+            self._tr_label(ik_frame, key).grid(row=0, column=i * 2, padx=2)
             cb = ttk.Combobox(ik_frame, textvariable=var, width=14, state="readonly")
             cb.grid(row=0, column=i * 2 + 1, padx=2)
             setattr(self, f"_ik_bone_combo_{i}", cb)
-        for i, (label, var) in enumerate(
+        for i, (key, var) in enumerate(
             [
-                ("root src", self.ik_root_source),
-                ("mid src", self.ik_mid_source),
-                ("end src", self.ik_end_source),
+                ("mapping.ik.root_src", self.ik_root_source),
+                ("mapping.ik.mid_src", self.ik_mid_source),
+                ("mapping.ik.end_src", self.ik_end_source),
             ]
         ):
-            ttk.Label(ik_frame, text=label).grid(row=1, column=i * 2, padx=2)
+            self._tr_label(ik_frame, key).grid(row=1, column=i * 2, padx=2)
             ttk.Entry(ik_frame, textvariable=var, width=14).grid(row=1, column=i * 2 + 1, padx=2)
-        ttk.Button(ik_frame, text="Add IK Chain", command=self._on_add_ik_chain).grid(
+        self._tr_button(ik_frame, "btn.add_ik", self._on_add_ik_chain).grid(
             row=2, column=0, columnspan=6, pady=4
         )
         self.ik_chain_list = tk.Listbox(ik_frame, height=4)
         self.ik_chain_list.grid(row=3, column=0, columnspan=6, sticky="ew", padx=2)
-        ttk.Button(ik_frame, text="Remove selected chain", command=self._on_remove_ik_chain).grid(
+        self._tr_button(ik_frame, "btn.remove_ik", self._on_remove_ik_chain).grid(
             row=4, column=0, columnspan=6, pady=2
         )
 
         save_row = ttk.Frame(tab)
         save_row.grid(row=4, column=0, columnspan=3, sticky="ew", pady=6)
         save_row.columnconfigure(0, weight=1)
-        self.mapping_out = self._path_row(
-            save_row, 0, "Save mapping to:", "save_file", [("JSON", "*.json")]
-        )
-        ttk.Button(save_row, text="Save Mapping", command=self._on_save_mapping).grid(
+        self.mapping_out = self._path_row(save_row, 0, "mapping.save_to", "save_file", [("JSON", "*.json")])
+        self._tr_button(save_row, "btn.save_mapping", self._on_save_mapping).grid(
             row=1, column=1, sticky="w", pady=4
         )
 
@@ -1036,25 +1053,35 @@ class MotionToolApp:
     def _reset_pending_click(self) -> None:
         self.pending_direction_first = None
         if self.selected_bone is None:
-            self.mapping_status_var.set("Select a bone from the list first.")
+            self.mapping_status_var.set(self.tr("mapping.status.select_first"))
         else:
             mode = self.mapping_mode.get()
             if mode == "direction":
-                self.mapping_status_var.set(f"'{self.selected_bone}': click the FIRST landmark point.")
+                self.mapping_status_var.set(
+                    self.tr("mapping.status.click_first", bone=self.selected_bone)
+                )
             elif mode == "landmark":
-                self.mapping_status_var.set(f"'{self.selected_bone}': click a landmark point.")
+                self.mapping_status_var.set(
+                    self.tr("mapping.status.click_one", bone=self.selected_bone)
+                )
             else:
-                self.mapping_status_var.set(f"'{self.selected_bone}': type a point id and click Assign.")
+                self.mapping_status_var.set(
+                    self.tr("mapping.status.type_id", bone=self.selected_bone)
+                )
 
     def _on_load_mapping_frame(self) -> None:
         frame_path = self.mapping_frame_path.get().strip()
         if not frame_path:
-            messagebox.showwarning("Missing input", "Choose a reference frame image first.")
+            messagebox.showwarning(
+                self.tr("dlg.missing_input.title"), self.tr("dlg.choose_ref_frame")
+            )
             return
         try:
             photo = tk.PhotoImage(file=frame_path)
         except tk.TclError as exc:
-            messagebox.showerror("Could not load image", f"Only PNG frames are supported: {exc}")
+            messagebox.showerror(
+                self.tr("dlg.load_image_fail.title"), self.tr("dlg.load_image_fail.msg", err=exc)
+            )
             return
 
         self._frame_photo = photo  # keep alive -- PhotoImage is gc'd otherwise
@@ -1092,7 +1119,7 @@ class MotionToolApp:
 
     def _on_mapping_canvas_click(self, event: tk.Event) -> None:
         if self.selected_bone is None:
-            messagebox.showinfo("No bone selected", "Select a bone from the list first.")
+            messagebox.showinfo(self.tr("dlg.no_bone.title"), self.tr("mapping.status.select_first"))
             return
         mode = self.mapping_mode.get()
         if mode == "custom_point":
@@ -1100,7 +1127,7 @@ class MotionToolApp:
 
         name = nearest_landmark(self.current_landmarks, event.x, event.y)
         if name is None:
-            self.mapping_status_var.set("No landmark near that click -- try closer to a dot.")
+            self.mapping_status_var.set(self.tr("mapping.status.no_landmark"))
             return
 
         if mode == "landmark":
@@ -1111,7 +1138,7 @@ class MotionToolApp:
         # direction: needs two clicks
         if self.pending_direction_first is None:
             self.pending_direction_first = name
-            self.mapping_status_var.set(f"First point: {name}. Now click the second point.")
+            self.mapping_status_var.set(self.tr("mapping.status.first_point", name=name))
         else:
             first = self.pending_direction_first
             self.pending_direction_first = None
@@ -1120,11 +1147,11 @@ class MotionToolApp:
 
     def _on_assign_custom_point(self) -> None:
         if self.selected_bone is None:
-            messagebox.showinfo("No bone selected", "Select a bone from the list first.")
+            messagebox.showinfo(self.tr("dlg.no_bone.title"), self.tr("mapping.status.select_first"))
             return
         point_id = self.custom_point_var.get().strip()
         if not point_id:
-            messagebox.showwarning("Missing input", "Type a point id first.")
+            messagebox.showwarning(self.tr("dlg.missing_input.title"), self.tr("dlg.type_id"))
             return
         self._set_mapping_entry(self.selected_bone, "custom_point", "point", [point_id])
         self.mapping_status_var.set(f"'{self.selected_bone}' -> custom_point {point_id}")
@@ -1150,7 +1177,7 @@ class MotionToolApp:
             return
         self.mapping_entries = [e for e in self.mapping_entries if e.target_bone != self.selected_bone]
         self._refresh_mapping_bone_list()
-        self.mapping_status_var.set(f"Cleared mapping for '{self.selected_bone}'.")
+        self.mapping_status_var.set(self.tr("mapping.status.cleared", bone=self.selected_bone))
 
     def _on_add_ik_chain(self) -> None:
         from rig.bone_mapping import IKChainEntry
@@ -1166,7 +1193,7 @@ class MotionToolApp:
             self.ik_end_source.get().strip(),
         )
         if not all([root_bone, mid_bone, end_bone, root_src, mid_src, end_src]):
-            messagebox.showwarning("Missing input", "All six IK chain fields are required.")
+            messagebox.showwarning(self.tr("dlg.missing_input.title"), self.tr("dlg.ik_missing"))
             return
         chain = IKChainEntry(
             name=f"ik_chain_{len(self.ik_chains) + 1}",
@@ -1192,11 +1219,13 @@ class MotionToolApp:
 
     def _on_save_mapping(self) -> None:
         if self.rig_profile is None:
-            messagebox.showwarning("No rig loaded", "Parse a rig first.")
+            messagebox.showwarning(self.tr("dlg.no_rig.title"), self.tr("dlg.no_rig.msg"))
             return
         out = self.mapping_out.get().strip()
         if not out:
-            messagebox.showwarning("Missing input", "Choose where to save the mapping profile.")
+            messagebox.showwarning(
+                self.tr("dlg.missing_input.title"), self.tr("dlg.choose_save_mapping")
+            )
             return
 
         from rig.bone_mapping import BoneMappingProfile, save_bone_mapping_profile
@@ -1215,14 +1244,13 @@ class MotionToolApp:
 
     def _build_motion_tab(self) -> None:
         tab = ttk.Frame(self.notebook)
-        self.notebook.add(tab, text="5. Motion")
+        self.notebook.add(tab, text=self.tr("tab.motion"))
+        self._register_tab(tab, "tab.motion")
         tab.columnconfigure(1, weight=1)
 
-        self.motion_pose_path = self._path_row(tab, 0, "Pose JSON:", "open_file", [("JSON", "*.json")])
-        self.motion_out = self._path_row(
-            tab, 1, "Output motion_graph.json:", "save_file", [("JSON", "*.json")]
-        )
-        ttk.Button(tab, text="Build Motion Graph", command=self._on_build_motion).grid(
+        self.motion_pose_path = self._path_row(tab, 0, "motion.pose_json", "open_file", [("JSON", "*.json")])
+        self.motion_out = self._path_row(tab, 1, "motion.out", "save_file", [("JSON", "*.json")])
+        self._tr_button(tab, "btn.build_motion", self._on_build_motion).grid(
             row=2, column=1, sticky="w", pady=8
         )
         self.motion_result_var = tk.StringVar()
@@ -1234,7 +1262,7 @@ class MotionToolApp:
         pose_path = self.motion_pose_path.get().strip()
         out = self.motion_out.get().strip()
         if not pose_path or not out:
-            messagebox.showwarning("Missing input", "Pose JSON and output path are required.")
+            messagebox.showwarning(self.tr("dlg.missing_input.title"), self.tr("dlg.motion_missing"))
             return
 
         def work():
@@ -1248,30 +1276,31 @@ class MotionToolApp:
             return len(graph.frames)
 
         def on_success(count: int):
-            self.motion_result_var.set(f"✓ Built motion graph with {count} frames -> {out}")
+            self.motion_result_var.set(self.tr("motion.result", count=count, out=out))
             self._log(f"[motion] built motion graph with {count} frames -> {out}")
             self.retarget_motion_path.set(out)
 
-        self._run_async(work, on_success, "Building motion graph...")
+        self._run_async(work, on_success, self.tr("busy.building_motion"))
 
     # ---- 6. retarget --------------------------------------------------------
 
     def _build_retarget_tab(self) -> None:
         tab = ttk.Frame(self.notebook)
-        self.notebook.add(tab, text="6. Retarget")
+        self.notebook.add(tab, text=self.tr("tab.retarget"))
+        self._register_tab(tab, "tab.retarget")
         tab.columnconfigure(1, weight=1)
 
         self.retarget_motion_path = self._path_row(
-            tab, 0, "Motion graph JSON:", "open_file", [("JSON", "*.json")]
+            tab, 0, "retarget.motion_json", "open_file", [("JSON", "*.json")]
         )
-        self.retarget_rig_path = self._path_row(tab, 1, "Rig file:", "open_file")
+        self.retarget_rig_path = self._path_row(tab, 1, "retarget.rig_file", "open_file")
         self.retarget_mapping_path = self._path_row(
-            tab, 2, "Mapping JSON:", "open_file", [("JSON", "*.json")]
+            tab, 2, "retarget.mapping_json", "open_file", [("JSON", "*.json")]
         )
         self.retarget_out = self._path_row(
-            tab, 3, "Output animation.json:", "save_file", [("JSON", "*.json")]
+            tab, 3, "retarget.out", "save_file", [("JSON", "*.json")]
         )
-        ttk.Button(tab, text="Retarget", command=self._on_retarget).grid(
+        self._tr_button(tab, "btn.retarget", self._on_retarget).grid(
             row=4, column=1, sticky="w", pady=8
         )
         self.retarget_result_var = tk.StringVar()
@@ -1285,7 +1314,7 @@ class MotionToolApp:
         mapping = self.retarget_mapping_path.get().strip()
         out = self.retarget_out.get().strip()
         if not all([motion, rig, mapping, out]):
-            messagebox.showwarning("Missing input", "All four fields are required.")
+            messagebox.showwarning(self.tr("dlg.missing_input.title"), self.tr("dlg.retarget_missing"))
             return
 
         def work():
@@ -1302,23 +1331,24 @@ class MotionToolApp:
             return len(clip.tracks)
 
         def on_success(count: int):
-            self.retarget_result_var.set(f"✓ Retargeted {count} bone tracks -> {out}")
+            self.retarget_result_var.set(self.tr("retarget.result", count=count, out=out))
             self._log(f"[retarget] retargeted {count} bone tracks -> {out}")
             self.optimize_animation_path.set(out)
 
-        self._run_async(work, on_success, "Retargeting...")
+        self._run_async(work, on_success, self.tr("busy.retargeting"))
 
     # ---- 7. optimize --------------------------------------------------------
 
     def _build_optimize_tab(self) -> None:
         tab = ttk.Frame(self.notebook)
-        self.notebook.add(tab, text="7. Optimize")
+        self.notebook.add(tab, text=self.tr("tab.optimize"))
+        self._register_tab(tab, "tab.optimize")
         tab.columnconfigure(1, weight=1)
 
         self.optimize_animation_path = self._path_row(
-            tab, 0, "Animation JSON:", "open_file", [("JSON", "*.json")]
+            tab, 0, "optimize.animation_json", "open_file", [("JSON", "*.json")]
         )
-        ttk.Label(tab, text="Collapse preset:").grid(row=1, column=0, sticky="w", padx=4)
+        self._tr_label(tab, "optimize.collapse_preset").grid(row=1, column=0, sticky="w", padx=4)
         self.optimize_collapse = tk.StringVar(value="medium")
         ttk.Combobox(
             tab,
@@ -1327,15 +1357,15 @@ class MotionToolApp:
             width=12,
             state="readonly",
         ).grid(row=1, column=1, sticky="w", padx=4)
-        ttk.Label(tab, text="Custom threshold:").grid(row=2, column=0, sticky="w", padx=4)
+        self._tr_label(tab, "optimize.custom_threshold").grid(row=2, column=0, sticky="w", padx=4)
         self.optimize_threshold = tk.StringVar()
         ttk.Entry(tab, textvariable=self.optimize_threshold, width=10).grid(
             row=2, column=1, sticky="w", padx=4
         )
         self.optimize_out = self._path_row(
-            tab, 3, "Output optimized animation.json:", "save_file", [("JSON", "*.json")]
+            tab, 3, "optimize.out", "save_file", [("JSON", "*.json")]
         )
-        ttk.Button(tab, text="Optimize", command=self._on_optimize).grid(
+        self._tr_button(tab, "btn.optimize", self._on_optimize).grid(
             row=4, column=1, sticky="w", pady=8
         )
         self.optimize_report = tk.Text(tab, height=10)
@@ -1346,13 +1376,13 @@ class MotionToolApp:
         animation = self.optimize_animation_path.get().strip()
         out = self.optimize_out.get().strip()
         if not animation or not out:
-            messagebox.showwarning("Missing input", "Animation JSON and output path are required.")
+            messagebox.showwarning(self.tr("dlg.missing_input.title"), self.tr("dlg.optimize_missing"))
             return
         preset = self.optimize_collapse.get()
         threshold_text = self.optimize_threshold.get().strip()
         threshold = float(threshold_text) if threshold_text else None
         if preset == "custom" and threshold is None:
-            messagebox.showwarning("Missing input", "'custom' preset needs a threshold value.")
+            messagebox.showwarning(self.tr("dlg.missing_input.title"), self.tr("dlg.optimize_custom"))
             return
 
         def work():
@@ -1379,29 +1409,28 @@ class MotionToolApp:
             self._log(f"[optimize] optimized {len(optimized_clip.tracks)} bone tracks -> {out}")
             self.export_animation_path.set(out)
 
-        self._run_async(work, on_success, "Optimizing...")
+        self._run_async(work, on_success, self.tr("busy.optimizing"))
 
     # ---- 8. export-blender ---------------------------------------------------
 
     def _build_export_tab(self) -> None:
         tab = ttk.Frame(self.notebook)
-        self.notebook.add(tab, text="8. Export")
+        self.notebook.add(tab, text=self.tr("tab.export"))
+        self._register_tab(tab, "tab.export")
         tab.columnconfigure(1, weight=1)
 
         self.export_animation_path = self._path_row(
-            tab, 0, "Optimized animation JSON:", "open_file", [("JSON", "*.json")]
+            tab, 0, "export.animation_json", "open_file", [("JSON", "*.json")]
         )
-        self.export_rig_path = self._path_row(tab, 1, "Rig file:", "open_file")
+        self.export_rig_path = self._path_row(tab, 1, "export.rig_file", "open_file")
         self.export_out = self._path_row(
-            tab, 2, "Output .blend:", "save_file", [("Blender file", "*.blend")]
+            tab, 2, "export.out", "save_file", [("Blender file", "*.blend")]
         )
         self.export_fbx_out = self._path_row(
-            tab, 3, "Output .fbx (optional):", "save_file", [("FBX", "*.fbx")]
+            tab, 3, "export.fbx_out", "save_file", [("FBX", "*.fbx")]
         )
-        self.export_blender_exe = self._path_row(
-            tab, 4, "Blender executable (optional override):", "open_file"
-        )
-        ttk.Button(tab, text="Export to Blender", command=self._on_export_blender).grid(
+        self.export_blender_exe = self._path_row(tab, 4, "export.blender_exe", "open_file")
+        self._tr_button(tab, "btn.export_blender", self._on_export_blender).grid(
             row=5, column=1, sticky="w", pady=8
         )
         self.export_result_var = tk.StringVar()
@@ -1414,7 +1443,7 @@ class MotionToolApp:
         rig = self.export_rig_path.get().strip()
         out = self.export_out.get().strip()
         if not all([animation, rig, out]):
-            messagebox.showwarning("Missing input", "Animation JSON, rig file, and output path are required.")
+            messagebox.showwarning(self.tr("dlg.missing_input.title"), self.tr("dlg.export_missing"))
             return
         fbx_out = self.export_fbx_out.get().strip() or None
         blender_executable = self.export_blender_exe.get().strip() or None
@@ -1428,10 +1457,42 @@ class MotionToolApp:
             return None
 
         def on_success(_result):
-            self.export_result_var.set(f"✓ Exported -> {out}")
+            self.export_result_var.set(self.tr("export.result", out=out))
             self._log(f"[export] exported Blender scene -> {out}")
 
-        self._run_async(work, on_success, "Exporting to Blender (this can take a moment)...")
+        self._run_async(work, on_success, self.tr("busy.exporting"))
+
+    # ---- Settings -----------------------------------------------------------
+
+    def _build_settings_tab(self) -> None:
+        tab = ttk.Frame(self.notebook)
+        self.notebook.add(tab, text=self.tr("tab.settings"))
+        self._register_tab(tab, "tab.settings")
+
+        self._tr_label(tab, "settings.language").grid(
+            row=0, column=0, sticky="w", padx=8, pady=(12, 2)
+        )
+        # Language names are shown in their own language (English / 한국어),
+        # so they are NOT translated. Map display label <-> code both ways.
+        self._language_display = tk.StringVar(value=LANGUAGE_LABELS[self.tr.language])
+        combo = ttk.Combobox(
+            tab,
+            textvariable=self._language_display,
+            values=[LANGUAGE_LABELS[code] for code in LANGUAGES],
+            state="readonly",
+            width=16,
+        )
+        combo.grid(row=0, column=1, sticky="w", padx=8, pady=(12, 2))
+        combo.bind("<<ComboboxSelected>>", self._on_language_selected)
+
+        self._tr_label(tab, "settings.language_hint").grid(
+            row=1, column=0, columnspan=2, sticky="w", padx=8, pady=(0, 8)
+        )
+
+    def _on_language_selected(self, _event=None) -> None:
+        display = self._language_display.get()
+        code = next((c for c, label in LANGUAGE_LABELS.items() if label == display), "en")
+        self._set_language(code)
 
 
 def main() -> None:

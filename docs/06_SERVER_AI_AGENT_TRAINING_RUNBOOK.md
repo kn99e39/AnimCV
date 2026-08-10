@@ -45,6 +45,25 @@ motion-tool combine-supervised-3d-datasets \
 Build holdout clips in separate files with `--split holdout`, combine them
 with `--expected-split holdout`, and never place them in the train command.
 
+### AMASS raw motion acquisition
+
+AMASS is a future synthetic-motion branch: its raw SMPL+H parameter files do
+not feed the temporal lifter until the AMASS projection adapter exists. The
+repository includes a restart-safe downloader for the public AMASS mirror. It
+uses only the Python standard library, keeps the canonical `raw/<subset>/...`
+layout, downloads only `.npz` motion parameters, and atomically verifies each
+file size. It does not download videos, renders, or SMPL-X variants.
+
+```bash
+python scripts/download_amass_hf.py \
+  --out /home/nd/animcv-data/amass/raw/amass_hf \
+  --subsets ACCAD,BMLmovi,BMLrub,CMU,EKUT,EyesJapanDataset,KIT,PosePrior,TCDHands,TotalCapture
+```
+
+Run it again with `HDM05,SFU,MoSh,HumanEva` for validation and
+`SSM,Transitions` for an AMASS-internal holdout. Re-running any command skips
+already verified files and resumes the remaining subset files.
+
 ## Verified Server Execution Chain
 
 ### Docker setup

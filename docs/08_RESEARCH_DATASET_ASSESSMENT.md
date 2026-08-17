@@ -20,9 +20,10 @@ PA-MPJPE 179.25 mm, root yaw MAE 112.32°로 목표를 통과하지 못했다.
 | MPI-INF-3DHP import | **[Confirmed]** 구현됨 | GT import와 `import-mpi3dhp-supervised-dataset`, raw 28→canonical 17 변환 |
 | MPI-INF-3DHP 2D/3D audit | **[Confirmed]** 구현됨 | `audit-mpi3dhp-2d`, `audit-mpi3dhp-3d`; MPJPE/PA-MPJPE/yaw report |
 | Small from-scratch temporal lifter | **[Confirmed]** 구현됨 | mask·clip-safe combine·build/train/evaluate/infer CLI와 smoke test |
-| Human3.6M adapter | **[Confirmed]** 없음 | 저장소 검색상 importer·CLI·test 없음 |
-| AMASS adapter/virtual camera projection | **[Confirmed]** 없음 | 저장소 검색상 SMPL/AMASS renderer·mapping 없음 |
-| 3DPW adapter/audit | **[Confirmed]** 없음 | 저장소 검색상 importer·CLI·test 없음 |
+| Human3.6M adapter | **[Confirmed]** 없음·비필수 | 관리자 승인 의존성을 피하기 위해 현재 실행 경로에서 제외 |
+| AMASS adapter/virtual camera projection | **[Confirmed]** 구현됨 | `amass_adapter.py`, `prepare_amass.py`; SMPL+H→canonical 17, virtual-camera GT 2D, split-safe bounded corpus |
+| 3DPW supervised adapter | **[Confirmed]** 구현됨 | `import-3dpw-supervised-dataset`, `prepare_3dpw.py`, 공식 paired 2D·SMPL-24·camera label 변환 및 synthetic test |
+| 3DPW quality audit | **[Confirmed]** 공통 adapter 기준 미구현 | prepared holdout을 lifter evaluator에 연결 가능하나 dataset-slice audit은 별도 필요 |
 
 **[Confirmed]** 기존 MPI importer는 dataset의 camera-space mm 좌표를 AnimCV camera axes
 `+X right,+Y forward,+Z up`의 root-relative metre로 바꾸며, pelvis 기준을 뺀다. 이 변환은
@@ -46,10 +47,10 @@ PA-MPJPE 179.25 mm, root yaw MAE 112.32°로 목표를 통과하지 못했다.
 
 | 역할 | 우선 source | 이유와 제한 |
 | --- | --- | --- |
-| Baseline supervised training | Human3.6M | **[Likely]** 2D/3D lifting의 표준 비교 축. indoor bias와 access 조건이 존재한다. |
-| 도메인 보강·평가 | MPI-INF-3DHP | **[Confirmed]** 이미 adapter/audit가 있어 회전·측면·가림 평가를 즉시 재사용 가능하다. training subset은 조건 확인 뒤 결정한다. |
-| motion 다양성 synthetic augmentation | AMASS | **[Likely]** 40시간 이상/300명 이상 mocap archive지만 RGB가 아니다. virtual camera·noise augmentation 구현이 선행된다. |
-| 외부 generalization holdout | 3DPW | **[Recommendation]** moving-camera outdoor RGB/2D/3D라서 final holdout에 적합하며, 공식 challenge도 training을 금지한다. |
+| 좌표·학습 anchor | MPI-INF-3DHP | **[Confirmed]** 이미 adapter/audit가 있어 sequence-disjoint baseline과 좌표·root contract 검증에 사용한다. |
+| 현실 도메인 학습 보강 | 3DPW train/validation | **[Confirmed]** paired 2D·3D·camera label을 adapter로 변환한다. MPI-only와 MPI+3DPW를 분리 비교한다. |
+| 외부 generalization holdout | 3DPW test | **[Recommendation]** moving-camera 조건의 최종 holdout으로 고정하며 checkpoint 선택과 training에서 제외한다. |
+| motion 다양성 synthetic pretraining | AMASS | **[Likely]** raw motion을 virtual camera·detector-like noise로 paired sample로 바꾼 뒤 pretrain/fine-tune ablation에만 사용한다. |
 | 실제 사용 visual regression | 소유자 video | **[Recommendation]** 정량 GT 없이 FBX visual acceptance만 수행한다. |
 
 # Skeleton and Coordinate Contracts
@@ -74,14 +75,16 @@ axis, units, `world_to_camera`/`camera_to_world`, root subtraction 시점을 man
 | --- | --- | --- |
 | A | MMPose 2D → pretrained VideoPose3D → current post-processing | 현재 실패 baseline |
 | B | dataset GT 2D → pretrained VideoPose3D | detector noise와 lifter 한계 분리 |
-| C | MMPose 2D → H36M-trained AnimCV lifter | source-trained baseline |
-| D | MMPose 2D → H36M + permitted 3DHP + AMASS synthetic lifter | domain/motion diversity ablation |
-| E | D + optional depth cue | depth ablation |
+| C | MPI-INF-3DHP GT 2D → MPI-trained AnimCV lifter | coordinate-safe supervised baseline |
+| D | MPI + 3DPW train/validation-trained lifter | 현실 이동 카메라 도메인 보강 ablation |
+| E | AMASS pretrain → MPI/3DPW fine-tune lifter | 모션 다양성 synthetic ablation |
+| F | E + optional depth cue | depth ablation |
 
 **[Confirmed]** `animcv_supervised_3d_lifter_dataset_v2`는 `target_valid` mask와 `sequences`
 목록을 보존한다. trainer/evaluator는 invalid joint를 loss·MPJPE에서 제외하고, combined
 dataset의 temporal window를 sequence 안에만 구성한다. MPI-INF-3DHP direct importer와
-dataset-neutral 3D evaluator가 있다. H36M/AMASS/3DPW adapter는 아직 없다.
+dataset-neutral 3D evaluator가 있다. 3DPW official-label adapter와 AMASS SMPL+H
+virtual-camera adapter가 구현됐고, Human3.6M adapter는 현재 실행 경로에 없다.
 
 **[Confirmed]** 현재 own-data `evaluate`는 MPJPE와 joint-error P95만 낸다. 반면
 MPI-specific audit에는 MPJPE, PA-MPJPE, root yaw MAE/P95가 있으나 representative gate를
@@ -104,22 +107,27 @@ occlusion/uncertainty, predicted 3D depth-order consistency에 한정해 Candida
 # Repository Gaps
 
 1. **[Confirmed]** dataset intake manifest와 source adapter 공통 contract가 없다.
-2. **[Confirmed]** Human3.6M/AMASS/3DPW adapter가 없다.
+2. **[Confirmed]** Human3.6M adapter는 없고 비필수다. 3DPW와 AMASS는 paired-label
+   supervised artifact 생성까지 구현됐으며 source-slice quality audit은 별도 보강이 필요하다.
 3. **[Confirmed]** invalid-joint mask와 sequence-aware multi-clip sampler는 temporal lifter v2에 구현됐다. source-level validity/provenance audit은 없다.
-4. **[Confirmed]** dataset-neutral PA-MPJPE/yaw/flip/per-slice evaluator가 없다.
-5. **[Likely]** AMASS virtual projection에는 SMPL→17 mapping, camera sampler, detector-like
-   noise/confidence/occlusion augmentation이 별도 필요하다.
+4. **[Confirmed]** dataset-neutral PA-MPJPE/yaw/flip/per-slice evaluator가 없다. 30-epoch
+   augmented direct-mix는 3DPW test MPJPE 137.54mm를 기록했으나, PA-MPJPE·yaw가 없어
+   마스터플랜의 최종 gate를 완결 판정하지 못한다.
+5. **[Confirmed]** AMASS의 SMPL+H→17 mapping과 deterministic virtual camera는 구현됐다.
+   세 개의 명시적 yaw/pitch/distance/focal view와 학습 시 2D jitter·dropout·confidence
+   augmentation도 구현됐다. 실제 MMPose 오차 분포로 calibration하는 작업과 연속 구간
+   occlusion model은 아직 필요하다.
 
 # Proposed Implementation Batches
 
 1. **Dataset intake and canonical adapter contract** — manifest, coordinate/skeleton provenance,
-   H36M adapter부터 test fixture로 검증한다.
+   MPI·3DPW adapter부터 test fixture로 검증한다.
 2. **Dataset-neutral evaluation** — PA-MPJPE, yaw, flip, per-sequence/action/view/occlusion 및
    latency/VRAM report를 구현하고 MPI audit를 공통 contract로 옮긴다.
-3. **Research-source adapters and baseline experiments** — H36M, MPI training subset(조건 확인 후),
-   3DPW evaluation adapter를 추가하고 A/B/C를 재현한다.
-4. **AMASS synthetic branch and depth ablation** — mapping 검증 후 virtual projection·augmentation을
-   추가하고 D/E를 비교한다.
+3. **Research-source adapters and baseline experiments** — MPI baseline, prepared 3DPW
+   train/validation augmentation, 3DPW test holdout evaluation을 추가하고 A/B/C/D를 재현한다.
+4. **AMASS synthetic branch and depth ablation** — mapping·virtual projection·split-safe corpus는
+   구현 완료됐다. augmentation을 추가하고 direct mix와 pretrain→fine-tune D/E를 비교한다.
 5. **Retarget acceptance** — 통과 후보만 실제 video와 Blender FBX visual regression에 연결한다.
 
 # Documentation Changes
@@ -132,10 +140,9 @@ occlusion/uncertainty, predicted 3D depth-order consistency에 한정해 Candida
 상용 estimator·제품화 표현은 research baseline comparison으로 교체한다. 이 보고서와
 `05`, `06` 문서는 web-dataset ingestion을 기본 경로로 삼는다.
 
-# Decisions Required From Owner
+# Confirmed Execution Decisions
 
-1. Human3.6M의 academic access 신청 가능 여부.
-2. MPI-INF-3DHP의 공식 terms 확인 또는 담당자 문의 진행 여부.
-3. AMASS/3DPW의 개인 사용 목적이 각 공식 비상업 연구 조건에 맞는지 소유자가 확인할지 여부.
-4. 첫 구현 범위를 Batch 1–3(공통 기반)까지만 승인할지, H36M adapter와 A/B/C 실험까지
-   포함할지 여부.
+1. Human3.6M은 관리자 승인과 무관하게 현재 3-source 경로에서 제외한다.
+2. 서버의 SMPL+H body-model cache를 AMASS 변환에 사용한다.
+3. MPI-INF-3DHP anchor, 3DPW 현실 도메인, AMASS synthetic branch까지 모두 유지하며
+   3DPW test와 AMASS internal holdout은 학습에서 분리한다.

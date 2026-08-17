@@ -9,6 +9,13 @@ from pose.mpi3dhp_adapter import load_mpi3dhp_ground_truth
 from training.temporal_lifter import build_dataset, save_dataset
 
 
+def import_3dpw_dataset(annotation: str | Path, out: str | Path, *, split: str) -> dict[str, Any]:
+    """Import one official 3DPW sequence without making callers know its pickle schema."""
+    from pose.three_dpw_adapter import import_3dpw_dataset as _import
+
+    return _import(annotation, out, split=split)
+
+
 def import_mpi3dhp_dataset(
     annotation: str | Path, camera_index: int, image_size: tuple[int, int], sequence_id: str,
     out: str | Path, start_frame: int = 0, end_frame: int | None = None, split: str = "train",

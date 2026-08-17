@@ -119,12 +119,20 @@ class TrainingConfig:
     distributed: bool = False
     seed: int = 1337
     inference_batch_size: int = 1024
+    input_jitter_std: float = 0.0
+    input_dropout_probability: float = 0.0
+    confidence_jitter_std: float = 0.0
+    init_checkpoint: str | None = None
 
     def __post_init__(self) -> None:
         if self.window < 3 or self.window % 2 == 0:
             raise ValueError("window must be an odd value of at least 3")
         if min(self.channels, self.epochs, self.batch_size, self.inference_batch_size) <= 0 or self.learning_rate <= 0:
             raise ValueError("training dimensions, epochs, batch size, and learning rate must be positive")
+        if min(self.input_jitter_std, self.confidence_jitter_std) < 0:
+            raise ValueError("input augmentation standard deviations must be non-negative")
+        if not 0.0 <= self.input_dropout_probability < 1.0:
+            raise ValueError("input_dropout_probability must be in [0, 1)")
 
 
 def train(dataset: dict[str, Any], checkpoint_path: str | Path, config: TrainingConfig) -> dict[str, Any]:
@@ -133,6 +141,7 @@ def train(dataset: dict[str, Any], checkpoint_path: str | Path, config: Training
     context = _distributed_context(torch, config)
     device = context["device"]
     model = _model(nn, config.channels).to(device)
+    initialization = _initialize_model(torch, model, config, device)
     if context["enabled"]:
         model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[context["local_rank"]])
     optimizer = torch.optim.AdamW(model.parameters(), lr=config.learning_rate)
@@ -145,17 +154,21 @@ def train(dataset: dict[str, Any], checkpoint_path: str | Path, config: Training
     amp_enabled = bool(config.mixed_precision and device.type == "cuda")
     if device.type == "cuda":
         torch.cuda.reset_peak_memory_stats(device)
-    scaler = torch.amp.GradScaler("cuda", enabled=amp_enabled)
+    if hasattr(torch.amp, "GradScaler"):
+        scaler = torch.amp.GradScaler("cuda", enabled=amp_enabled)
+    else:  # PyTorch 2.1 keeps GradScaler under torch.cuda.amp.
+        scaler = torch.cuda.amp.GradScaler(enabled=amp_enabled)
     started = perf_counter()
     local_samples_seen = 0
     for epoch in range(config.epochs):
         generator = torch.Generator(device=device).manual_seed(config.seed + epoch)
+        epoch_inputs = _augment_inputs(torch, x, config, generator)
         permutation = indices[torch.randperm(len(indices), generator=generator, device=device)]
         permutation = _rank_shard(torch, permutation, context["rank"], context["world_size"])
         local_samples_seen += len(permutation)
         for batch in permutation.split(config.batch_size):
             # Advanced indexing builds every temporal window in one GPU operation.
-            windows = x[offset_tensor[batch]]
+            windows = epoch_inputs[offset_tensor[batch]]
             optimizer.zero_grad()
             with torch.amp.autocast("cuda", enabled=amp_enabled):
                 prediction = model(windows)
@@ -197,7 +210,8 @@ def train(dataset: dict[str, Any], checkpoint_path: str | Path, config: Training
     return {"frame_count": len(inputs), "training_mpjpe_mm": mpjpe_mm,
             "valid_joint_count": int(valid.sum()), "config": config.__dict__,
             "parallelism": {"mode": "ddp" if config.distributed else "single_gpu", "world_size": context["world_size"],
-                            "device": str(device), "mixed_precision": amp_enabled}, "performance": performance,
+            "device": str(device), "mixed_precision": amp_enabled}, "performance": performance,
+            "initialization": initialization, "input_augmentation": _augmentation_report(config),
             "is_primary": context["primary"]}
 
 
@@ -214,11 +228,185 @@ def evaluate(dataset: dict[str, Any], checkpoint_path: str | Path, device: str =
     y = torch.as_tensor(targets, dtype=torch.float32, device=device)
     with torch.no_grad():
         prediction = _predict_batched(model, x, torch.as_tensor(offsets, dtype=torch.long, device=device), 1024, device.startswith("cuda"))
-    errors = torch.linalg.vector_norm(prediction - y, dim=-1)[torch.as_tensor(valid, dtype=torch.bool, device=device)] * 1000
-    return {"schema": "animcv_supervised_lifter_evaluation_v1", "frame_count": len(inputs),
-            "mpjpe_mm": float(errors.mean().item()), "p95_joint_error_mm": float(torch.quantile(errors, 0.95).item()),
-            "valid_joint_count": int(valid.sum()),
-            "passed": False, "verdict": "informational: evaluate on a held-out sequence before defining a gate"}
+    return _evaluation_report(prediction.cpu().numpy(), targets, valid, _frame_metadata(dataset))
+
+
+def _evaluation_report(prediction: np.ndarray, targets: np.ndarray, valid: np.ndarray,
+                       metadata: list[dict[str, str | None]]) -> dict[str, Any]:
+    """Compute holdout metrics without making assumptions about a source dataset.
+
+    The root-yaw and bend metrics deliberately use canonical joint names rather
+    than source-specific labels.  This makes a report comparable for 3DPW,
+    AMASS, and future detector-derived datasets, while retaining source/view/
+    action slices for diagnosing a domain gap.
+    """
+    if len(prediction) != len(metadata):
+        raise ValueError("evaluation metadata does not match predicted frame count")
+    all_metrics: list[dict[str, Any]] = []
+    for estimate, reference, frame_valid in zip(prediction, targets, valid):
+        indices = np.flatnonzero(frame_valid)
+        if not len(indices):
+            # Preserve alignment with provenance so a malformed frame cannot
+            # shift every later source/view/action slice.
+            all_metrics.append({"errors": np.asarray([]), "aligned_errors": None, "yaw": None, "hinges": []})
+            continue
+        errors = np.linalg.norm(estimate[indices] - reference[indices], axis=1) * 1000.0
+        aligned = None
+        if len(indices) >= 3:
+            aligned = np.linalg.norm(_similarity_align(estimate[indices], reference[indices]) - reference[indices], axis=1) * 1000.0
+        yaw = _root_yaw_error_degrees(estimate, reference, frame_valid)
+        hinges = _hinge_errors(estimate, reference, frame_valid)
+        all_metrics.append({"errors": errors, "aligned_errors": aligned, "yaw": yaw, "hinges": hinges})
+
+    report = _aggregate_metrics(all_metrics)
+    slices = {
+        dimension: _slice_metrics(all_metrics, metadata, dimension)
+        for dimension in ("source", "view", "action")
+    }
+    criteria = {
+        "pa_mpjpe_mm": {"operator": "<=", "threshold": 80.0},
+        "root_yaw_mae_degrees": {"operator": "<=", "threshold": 15.0},
+        "root_yaw_p95_degrees": {"operator": "<=", "threshold": 30.0},
+        "hinge_flip_rate": {"operator": "<=", "threshold": 0.0},
+    }
+    gate_values = {key: report.get(key) for key in criteria}
+    missing = [key for key, value in gate_values.items() if value is None]
+    failed = [key for key, value in gate_values.items() if value is not None and value > criteria[key]["threshold"]]
+    report.update({
+        "schema": "animcv_supervised_lifter_evaluation_v2",
+        "frame_count": len(prediction),
+        "valid_joint_count": int(valid.sum()),
+        "criteria": criteria,
+        "slices": slices,
+        "passed": not missing and not failed,
+        "verdict": ("passed" if not missing and not failed else
+                    f"failed: {', '.join(failed)}" if failed else
+                    f"incomplete: unavailable metrics ({', '.join(missing)})"),
+    })
+    return report
+
+
+def _aggregate_metrics(frames: list[dict[str, Any]]) -> dict[str, Any]:
+    errors = [item["errors"] for item in frames if len(item["errors"])]
+    aligned = [item["aligned_errors"] for item in frames if item["aligned_errors"] is not None]
+    yaws = [item["yaw"] for item in frames if item["yaw"] is not None]
+    hinges = [hinge for item in frames for hinge in item["hinges"]]
+    if not errors:
+        raise ValueError("evaluation dataset contains no valid target joints")
+    raw = np.concatenate(errors)
+    pa = np.concatenate(aligned) if aligned else np.asarray([])
+    hinge_errors = np.asarray([item["error_degrees"] for item in hinges])
+    flip_count = sum(item["flipped"] for item in hinges)
+    return {
+        "evaluated_frame_count": len(frames),
+        "mpjpe_mm": float(raw.mean()), "p95_joint_error_mm": float(np.quantile(raw, .95)),
+        "pa_mpjpe_mm": float(pa.mean()) if len(pa) else None,
+        "pa_valid_frame_count": len(aligned),
+        "root_yaw_mae_degrees": float(np.mean(yaws)) if yaws else None,
+        "root_yaw_p95_degrees": float(np.quantile(yaws, .95)) if yaws else None,
+        "root_yaw_valid_frame_count": len(yaws),
+        "hinge_direction_mae_degrees": float(hinge_errors.mean()) if len(hinge_errors) else None,
+        "hinge_direction_p95_degrees": float(np.quantile(hinge_errors, .95)) if len(hinge_errors) else None,
+        "hinge_flip_rate": float(flip_count / len(hinges)) if hinges else None,
+        "hinge_sample_count": len(hinges),
+    }
+
+
+def _slice_metrics(frames: list[dict[str, Any]], metadata: list[dict[str, str | None]], dimension: str) -> dict[str, dict[str, Any]]:
+    buckets: dict[str, list[dict[str, Any]]] = {}
+    for frame, meta in zip(frames, metadata):
+        if not len(frame["errors"]):
+            continue
+        buckets.setdefault(meta.get(dimension) or "unknown", []).append(frame)
+    return {name: _aggregate_metrics(items) for name, items in sorted(buckets.items())}
+
+
+def _frame_metadata(dataset: dict[str, Any]) -> list[dict[str, str | None]]:
+    """Flatten per-sequence provenance alongside the same ordering as _arrays."""
+    default_source = dataset.get("source", {})
+    output = []
+    for sequence in dataset.get("sequences", [{"frames": dataset["frames"]}]):
+        source = {**default_source, **sequence.get("source", {})}
+        identifier = str(sequence.get("sequence_id", ""))
+        action = source.get("action") or source.get("sequence") or source.get("motion")
+        # Source IDs are the least surprising fallback when an adapter has no
+        # semantic action annotation; they still isolate problematic clips.
+        output.extend({
+            "source": str(source.get("dataset")) if source.get("dataset") else None,
+            "view": _view_label(source),
+            "action": str(action) if action else (identifier or None),
+        } for _ in sequence["frames"])
+    return output
+
+
+def _view_label(source: dict[str, Any]) -> str | None:
+    if "camera_yaw_degrees" in source:
+        return "yaw=" + f"{float(source['camera_yaw_degrees']):g}"
+    if "camera" in source:
+        return str(source["camera"])
+    return None
+
+
+def _similarity_align(estimate: np.ndarray, reference: np.ndarray) -> np.ndarray:
+    mean_estimate, mean_reference = estimate.mean(0), reference.mean(0)
+    centered_estimate, centered_reference = estimate - mean_estimate, reference - mean_reference
+    estimate_norm, reference_norm = np.linalg.norm(centered_estimate), np.linalg.norm(centered_reference)
+    if estimate_norm <= 1e-12 or reference_norm <= 1e-12:
+        return estimate
+    source, destination = centered_estimate / estimate_norm, centered_reference / reference_norm
+    u, _, vt = np.linalg.svd(source.T @ destination)
+    rotation = u @ vt
+    if np.linalg.det(rotation) < 0:
+        vt[-1] *= -1
+        rotation = u @ vt
+    return (source @ rotation) * reference_norm + mean_reference
+
+
+def _root_yaw_error_degrees(estimate: np.ndarray, reference: np.ndarray, valid: np.ndarray) -> float | None:
+    pairs = (("left_shoulder", "right_shoulder"), ("left_hip", "right_hip"))
+    angles = []
+    for left, right in pairs:
+        left_index, right_index = H36M_NAMES.index(left), H36M_NAMES.index(right)
+        if not (valid[left_index] and valid[right_index]):
+            continue
+        predicted_axis = estimate[right_index, :2] - estimate[left_index, :2]
+        target_axis = reference[right_index, :2] - reference[left_index, :2]
+        if min(np.linalg.norm(predicted_axis), np.linalg.norm(target_axis)) <= 1e-6:
+            continue
+        angles.append(abs(_angle_delta(np.arctan2(predicted_axis[1], predicted_axis[0]),
+                                       np.arctan2(target_axis[1], target_axis[0]))) * 180.0 / np.pi)
+    return float(np.mean(angles)) if angles else None
+
+
+def _hinge_errors(estimate: np.ndarray, reference: np.ndarray, valid: np.ndarray) -> list[dict[str, Any]]:
+    chains = (("left_elbow", "left_shoulder", "left_wrist"), ("right_elbow", "right_shoulder", "right_wrist"),
+              ("left_knee", "left_hip", "left_ankle"), ("right_knee", "right_hip", "right_ankle"))
+    output = []
+    for joint, proximal, distal in chains:
+        indexes = [H36M_NAMES.index(name) for name in (joint, proximal, distal)]
+        if not valid[indexes].all():
+            continue
+        predicted = _bend_direction(estimate[indexes[0]], estimate[indexes[1]], estimate[indexes[2]])
+        target = _bend_direction(reference[indexes[0]], reference[indexes[1]], reference[indexes[2]])
+        if predicted is None or target is None:
+            continue
+        cosine = float(np.clip(np.dot(predicted, target), -1.0, 1.0))
+        output.append({"joint": joint, "error_degrees": float(np.degrees(np.arccos(cosine))), "flipped": cosine < 0})
+    return output
+
+
+def _bend_direction(joint: np.ndarray, proximal: np.ndarray, distal: np.ndarray) -> np.ndarray | None:
+    axis = distal - proximal
+    axis_squared = float(np.dot(axis, axis))
+    if axis_squared <= 1e-12:
+        return None
+    bend = joint - (proximal + axis * (np.dot(joint - proximal, axis) / axis_squared))
+    magnitude = float(np.linalg.norm(bend))
+    return bend / magnitude if magnitude > 1e-6 else None
+
+
+def _angle_delta(a: float, b: float) -> float:
+    return (a - b + np.pi) % (2 * np.pi) - np.pi
 
 
 def infer(pose: PoseSequence, checkpoint_path: str | Path, image_size: tuple[int, int], device: str = "cpu") -> LiftedPoseSequence:
@@ -286,6 +474,56 @@ def _predict_batched(model, x, offsets, batch_size: int, amp_enabled: bool):
         with torch.amp.autocast("cuda", enabled=amp_enabled):
             predictions.append(model(x[batch_offsets]))
     return torch.cat(predictions, dim=0)
+
+
+def _initialize_model(torch, model, config: TrainingConfig, device):
+    """Load a compatible baseline for pretrain→fine-tune without optimizer state."""
+    if config.init_checkpoint is None:
+        return {"mode": "random"}
+    checkpoint = torch.load(config.init_checkpoint, map_location=device, weights_only=True)
+    if checkpoint.get("schema") not in ("animcv_temporal_lifter_checkpoint_v1", "animcv_temporal_lifter_checkpoint_v2"):
+        raise ValueError("unsupported initialization checkpoint")
+    if checkpoint.get("joint_names") != list(H36M_NAMES):
+        raise ValueError("initialization checkpoint joint schema mismatch")
+    if checkpoint.get("channels") != config.channels or checkpoint.get("window") != config.window:
+        raise ValueError("initialization checkpoint architecture does not match training configuration")
+    model.load_state_dict(checkpoint["state_dict"])
+    return {"mode": "checkpoint", "checkpoint": str(config.init_checkpoint)}
+
+
+def _augment_inputs(torch, inputs, config: TrainingConfig, generator):
+    """Apply deterministic per-epoch detector-like noise to normalized 2D inputs.
+
+    Coordinates remain zero for dropped observations, matching the production
+    missing-landmark representation. Supervision is intentionally unchanged:
+    the model must recover valid 3D targets from imperfect 2D evidence.
+    """
+    if (config.input_jitter_std == 0 and config.input_dropout_probability == 0
+            and config.confidence_jitter_std == 0):
+        return inputs
+    result = inputs.clone()
+    observed = result[..., 2] > 0
+    if config.input_jitter_std:
+        jitter = torch.randn(result[..., :2].shape, generator=generator, device=result.device, dtype=result.dtype)
+        result[..., :2] = result[..., :2] + jitter * config.input_jitter_std * observed.unsqueeze(-1)
+    if config.confidence_jitter_std:
+        confidence_noise = torch.randn(result[..., 2].shape, generator=generator, device=result.device, dtype=result.dtype)
+        result[..., 2] = (result[..., 2] + confidence_noise * config.confidence_jitter_std).clamp(0.0, 1.0)
+    if config.input_dropout_probability:
+        dropped = (torch.rand(result[..., 2].shape, generator=generator, device=result.device)
+                   < config.input_dropout_probability) & observed
+        result[..., :2] = result[..., :2].masked_fill(dropped.unsqueeze(-1), 0.0)
+        result[..., 2] = result[..., 2].masked_fill(dropped, 0.0)
+    return result
+
+
+def _augmentation_report(config: TrainingConfig) -> dict[str, float | bool]:
+    return {
+        "enabled": any((config.input_jitter_std, config.input_dropout_probability, config.confidence_jitter_std)),
+        "input_jitter_std": config.input_jitter_std,
+        "input_dropout_probability": config.input_dropout_probability,
+        "confidence_jitter_std": config.confidence_jitter_std,
+    }
 
 
 def _rank_shard(torch, indices, rank: int, world_size: int):

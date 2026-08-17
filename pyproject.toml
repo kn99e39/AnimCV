@@ -27,7 +27,7 @@ pose = [
     "opencv-python<4.10",
 ]
 depth = ["torch", "opencv-python", "matplotlib"]
-training = ["torch", "scipy"]
+training = ["torch", "scipy", "smplx"]
 dev = ["pytest"]
 
 [project.scripts]

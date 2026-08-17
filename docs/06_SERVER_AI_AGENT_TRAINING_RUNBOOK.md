@@ -24,9 +24,10 @@ Read [08_RESEARCH_DATASET_ASSESSMENT](08_RESEARCH_DATASET_ASSESSMENT.md), then
 The current code has an executable MPI-INF-3DHP ingestion path, invalid-joint
 loss/metric masking, clip-safe temporal windows, GPU-resident vectorized
 batching, CUDA AMP, two-GPU DDP training, train/holdout split checks, and
-source-neutral MPJPE/PA-MPJPE/yaw evaluation. Human3.6M, AMASS, and 3DPW
-adapters remain future extensions; they are not required for the first server
-training run.
+source-neutral MPJPE/PA-MPJPE/yaw evaluation. 3DPW has an executable
+official-label importer and AMASS has an executable SMPL+H virtual-camera
+adapter plus a restartable bounded-corpus preparer. Human3.6M is intentionally
+outside this execution path.
 
 The current executable research-source ingestion path is MPI-INF-3DHP. It
 imports official paired 2D/3D annotations directly into a supervised clip:
@@ -47,9 +48,10 @@ with `--expected-split holdout`, and never place them in the train command.
 
 ### AMASS raw motion acquisition
 
-AMASS is a future synthetic-motion branch: its raw SMPL+H parameter files do
-not feed the temporal lifter until the AMASS projection adapter exists. The
-repository includes a restart-safe downloader for the public AMASS mirror. It
+AMASS is the synthetic-motion branch. `src/pose/amass_adapter.py` evaluates
+raw SMPL+H parameters, converts the first 24 SMPL joints to AnimCV's canonical
+17-joint contract, and projects deterministic GT 2D through a virtual camera.
+The repository includes a restart-safe downloader for the public AMASS mirror. It
 uses only the Python standard library, keeps the canonical `raw/<subset>/...`
 layout, downloads only `.npz` motion parameters, and atomically verifies each
 file size. It does not download videos, renders, or SMPL-X variants.
@@ -57,12 +59,115 @@ file size. It does not download videos, renders, or SMPL-X variants.
 ```bash
 python scripts/download_amass_hf.py \
   --out /home/nd/animcv-data/amass/raw/amass_hf \
-  --subsets ACCAD,BMLmovi,BMLrub,CMU,EKUT,EyesJapanDataset,KIT,PosePrior,TCDHands,TotalCapture
+  --workers 24 --retries 3 \
+  --subsets ACCAD,BMLmovi,BMLhandball,CMU,EKUT,Eyes_Japan_Dataset,KIT,TCD_handMocap,TotalCapture
 ```
 
-Run it again with `HDM05,SFU,MoSh,HumanEva` for validation and
-`SSM,Transitions` for an AMASS-internal holdout. Re-running any command skips
+Run it again with `MPI_HDM05,SFU,MPI_mosh,HumanEva` for validation and
+`SSM_synced,Transitions_mocap` for an AMASS-internal holdout. The public
+mirror currently has no `BMLrub` or `PosePrior` directory; do not pass those
+names to the downloader. Re-running any command skips
 already verified files and resumes the remaining subset files.
+
+Raw AMASS NPZ files alone are not trainable samples: producing paired 2D/3D
+supervision also requires a compatible SMPL+H body-model file. The server body-model cache uses
+`/data/body_models/smplh/SMPLH_{MALE,FEMALE,NEUTRAL}.pkl`; keep the raw files under
+`/data/amass/raw/amass_hf` and write any generated samples only under
+`/data/amass/prepared`; do not mix them with MPI or 3DPW splits.
+
+After raw acquisition completes, create a bounded initial synthetic corpus:
+
+```bash
+docker run --rm --gpus all --entrypoint python3 -w /workspace -e PYTHONPATH=/workspace/src \
+  -v /home/nd/AnimCV:/workspace:ro -v /home/nd/animcv-data:/data \
+  animcv-train:cuda118 scripts/prepare_amass.py \
+  --raw /data/amass/raw/amass_hf --out /data/amass/prepared --body-model-root /data/body_models \
+  --max-frames-per-clip 120 --train-clips 1000 --validation-clips 100 --holdout-clips 100 \
+  --camera-views '0,0,4.5,1500;-45,10,5.0,1300;45,-8,4.0,1750' \
+  --device cuda
+```
+
+This emits up to 144,000 synthetic 30-FPS frames in separate sequence-safe
+artifacts. AMASS uses `HumanEva`/`SFU` for validation and
+`SSM_synced`/`Transitions_mocap` for holdout; all other installed subsets feed
+the initial synthetic training split. The preparer rejects auxiliary archives
+such as per-subject `shape.npz`, records exclusion counts, uses root-relative
+source paths for collision-free sequence IDs, and repairs IDs in older cached
+clips without recomputing SMPL+H joints.
+
+`--camera-views` is an explicit semicolon-separated list of
+`yaw_degrees,pitch_degrees,distance_meters,focal_length` records. It is not a
+Cartesian product: every selected source gets exactly one clip per listed
+view, preserving the source-motion split while varying camera geometry.
+
+### Reproducible source-mixing experiment matrix
+
+`scripts/run_lifter_experiments.py` materializes each combined dataset and
+then evaluates five candidates on the same validation and independent
+holdouts: MPI-only, MPI+3DPW, direct mix, AMASS-only pretraining, and
+AMASS-pretrain→MPI+3DPW fine-tuning. Its input augmentation is on-the-fly,
+deterministic per epoch, and affects only 2D input observations: normalized
+coordinate jitter, observed-joint dropout, and confidence jitter. 3D targets
+and holdout inputs are never augmented.
+
+```bash
+docker run --rm --gpus all --entrypoint python3 -w /workspace -e PYTHONPATH=/workspace/src \
+  -v /home/nd/AnimCV:/workspace:ro -v /home/nd/animcv-data:/data:ro \
+  -v /home/nd/animcv-output:/output animcv-train:cuda118 \
+  scripts/run_lifter_experiments.py \
+  --mpi-train /output/data/animcv/train_combined.json \
+  --three-dpw-train /data/3dpw/prepared/train.json \
+  --amass-train /data/amass/prepared_aug_v1/train.json \
+  --validation /data/3dpw/prepared/validation.json,/data/amass/prepared_aug_v1/validation.json \
+  --three-dpw-holdout /data/3dpw/prepared/holdout.json \
+  --amass-holdout /data/amass/prepared_aug_v1/holdout.json \
+  --out /output/experiments/lifter_matrix_aug_v1 --epochs 30 \
+  --input-jitter-std 0.015 --input-dropout-probability 0.05 --confidence-jitter-std 0.08
+```
+
+### 3DPW official-label preparation
+
+3DPW supplies synchronized 2D detections, SMPL-24 joint positions, camera
+extrinsics, and per-frame camera validity. The importer converts those labels
+to AnimCV's canonical 17 joints, applies world-to-camera extrinsics, converts
+OpenCV camera axes to AnimCV axes, and root-relativizes in metres. It is a
+paired-label source, so no SMPL body model is required for this conversion.
+
+Prepare every official split without changing the raw archive:
+
+```bash
+docker run --rm --entrypoint python3 -w /workspace -e PYTHONPATH=/workspace/src \
+  -v /home/nd/AnimCV:/workspace:ro -v /home/nd/animcv-data:/data \
+  animcv-train:cuda118 scripts/prepare_3dpw.py \
+  --raw /data/3dpw/raw/DATASET_Motion --out /data/3dpw/prepared
+```
+
+The script writes restartable per-source JSON files plus `train.json`,
+`validation.json`, and `holdout.json`. The official 3DPW `test` split maps to
+AnimCV's `holdout` split and must not be combined into training data.
+
+### Verified three-source server corpus (2026-08-16)
+
+The LabServer63 run completed and fully loaded these artifacts:
+
+| Artifact | Sequences | Frames | Integrity |
+| --- | ---: | ---: | --- |
+| MPI-INF-3DHP train | 12 | 106,512 | schema v2 |
+| 3DPW train | 34 | 22,646 | official train split |
+| AMASS train | 1,000 | 112,898 | 0 duplicate IDs, 0 non-finite frames |
+| Three-source train | 1,046 | 242,056 | 0 duplicate IDs |
+| 3DPW + AMASS validation | 88 | 18,612 | 0 duplicate IDs |
+| 3DPW test holdout | 37 | 35,310 | never used for training |
+| AMASS internal holdout | 100 | 10,792 | never used for training |
+
+AMASS raw intake contained 10,820 NPZ files across 15 subsets. Exactly 10,718
+were motion archives and 102 were auxiliary `shape.npz` files. The preparation
+report records this distinction. CUDA preflight passed on an RTX 3080 Ti with
+PyTorch 2.1.2+cu118. A full-corpus one-epoch execution with window 81, channels
+256, batch 128, and AMP processed 242,056 samples in 17.58 seconds at 13,766
+samples/s with 638.9 MiB peak allocated VRAM. These numbers prove operational
+readiness, not final model quality; run the planned multi-epoch ablations and
+independent holdout gates before selecting a checkpoint.
 
 ## Verified Server Execution Chain
 

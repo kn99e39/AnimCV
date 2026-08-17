@@ -4,7 +4,7 @@ pytest.importorskip("torch", reason="supervised temporal lifter tests require th
 
 from pose.pose_lifter import LiftedPoseFrame, LiftedPosePoint, LiftedPoseSequence, H36M_NAMES
 from pose.pose_types import PoseFrame, PoseLandmark, PoseSequence
-from training.temporal_lifter import TrainingConfig, _rank_shard, build_dataset, combine_datasets, evaluate, infer, load_dataset, preflight, save_dataset, train
+from training.temporal_lifter import TrainingConfig, _augment_inputs, _rank_shard, build_dataset, combine_datasets, evaluate, infer, load_dataset, preflight, save_dataset, train
 
 
 def _pose(index):
@@ -67,3 +67,30 @@ def test_training_preflight_reports_cpu_runtime():
     report = preflight("cpu")
     assert report["passed"]
     assert report["requested_device"] == "cpu"
+
+
+def test_input_augmentation_drops_observations_but_keeps_tensor_shape():
+    import torch
+
+    values = torch.ones((2, 17, 3), dtype=torch.float32)
+    config = TrainingConfig(window=3, channels=8, epochs=1, batch_size=2, input_dropout_probability=0.999)
+
+    augmented = _augment_inputs(torch, values, config, torch.Generator().manual_seed(7))
+
+    assert augmented.shape == values.shape
+    assert (augmented[..., 2] == 0).any()
+    assert (augmented[..., :2][augmented[..., 2] == 0] == 0).all()
+
+
+def test_training_can_initialize_from_compatible_checkpoint(tmp_path):
+    pose = PoseSequence([_pose(i) for i in range(4)], 25)
+    target = LiftedPoseSequence([_target(i) for i in range(4)], 25)
+    dataset = build_dataset(pose, target, (100, 100), "init-smoke")
+    first, second = tmp_path / "first.pth", tmp_path / "second.pth"
+    train(dataset, first, TrainingConfig(window=3, channels=8, epochs=1, batch_size=2))
+
+    report = train(dataset, second, TrainingConfig(
+        window=3, channels=8, epochs=1, batch_size=2, init_checkpoint=str(first),
+    ))
+
+    assert report["initialization"] == {"mode": "checkpoint", "checkpoint": str(first)}

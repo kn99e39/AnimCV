@@ -1,5 +1,6 @@
 .git
 .venv
+.venv_*
 __pycache__
 .pytest_cache
 *.pyc
@@ -7,3 +8,6 @@ examples
 quality_demo
 e2e_demo
 docs
+datasets
+data
+outputs

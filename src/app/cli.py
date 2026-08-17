@@ -134,6 +134,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--start-frame", type=int, default=0)
     p.add_argument("--end-frame", type=int, default=None)
 
+    p = sub.add_parser("import-3dpw-supervised-dataset", help="Build a trainable supervised dataset from one official 3DPW sequence")
+    p.add_argument("--sequence", required=True, help="Official 3DPW sequenceFiles/*/*.pkl path")
+    p.add_argument("--split", choices=["train", "validation", "holdout"], required=True)
+    p.add_argument("--out", required=True)
+
     p = sub.add_parser("audit-mpi3dhp-2d", help="Evaluate estimated 2D pose against imported MPI-INF-3DHP GT")
     p.add_argument("--pose", required=True, help="Estimated canonical 2D pose JSON")
     p.add_argument("--ground-truth", required=True, help="Canonical GT 2D pose JSON from import-mpi3dhp-ground-truth")
@@ -176,6 +181,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-mixed-precision", action="store_true", help="Disable CUDA AMP")
     p.add_argument("--seed", type=int, default=1337)
     p.add_argument("--inference-batch-size", type=int, default=1024)
+    p.add_argument("--input-jitter-std", type=float, default=0.0,
+                   help="Per-epoch normalized 2D coordinate noise for detector-domain augmentation")
+    p.add_argument("--input-dropout-probability", type=float, default=0.0,
+                   help="Per-observed-joint dropout probability for detector-domain augmentation")
+    p.add_argument("--confidence-jitter-std", type=float, default=0.0,
+                   help="Per-epoch confidence noise standard deviation")
+    p.add_argument("--init-checkpoint", default=None,
+                   help="Compatible checkpoint to initialize a pretrain→fine-tune run; optimizer is reset")
     p.add_argument("--report-out", required=True)
 
     p = sub.add_parser("preflight-training", help="Verify PyTorch and the requested training device before a server run")
@@ -538,6 +551,14 @@ def _import_mpi3dhp_supervised_dataset(args: argparse.Namespace) -> None:
     print(f"[motion-tool] imported {report['frame_count']} MPI-INF-3DHP {report['split']} frames -> {args.out}")
 
 
+def _import_3dpw_supervised_dataset(args: argparse.Namespace) -> None:
+    from training.research_sources import import_3dpw_dataset
+
+    report = import_3dpw_dataset(args.sequence, args.out, split=args.split)
+    print(f"[motion-tool] imported {report['sequence_count']} 3DPW actor sequences / "
+          f"{report['frame_count']} {report['split']} frames -> {args.out}")
+
+
 def _audit_mpi3dhp_2d(args: argparse.Namespace) -> None:
     from common.serialization import read_json, write_json
     from pose.mpi3dhp_audit import audit_mpi3dhp_2d
@@ -608,7 +629,9 @@ def _train_supervised_3d_lifter(args: argparse.Namespace) -> None:
         window=args.window, channels=args.channels, epochs=args.epochs, batch_size=args.batch_size,
         learning_rate=args.learning_rate, device=args.device, distributed=args.distributed,
         mixed_precision=not args.no_mixed_precision, seed=args.seed,
-        inference_batch_size=args.inference_batch_size,
+        inference_batch_size=args.inference_batch_size, input_jitter_std=args.input_jitter_std,
+        input_dropout_probability=args.input_dropout_probability,
+        confidence_jitter_std=args.confidence_jitter_std, init_checkpoint=args.init_checkpoint,
     ))
     if report["is_primary"]:
         write_json(args.report_out, report)
@@ -1080,6 +1103,8 @@ def main(argv: list[str] | None = None) -> int:
             _import_mpi3dhp_ground_truth(args)
         elif args.command == "import-mpi3dhp-supervised-dataset":
             _import_mpi3dhp_supervised_dataset(args)
+        elif args.command == "import-3dpw-supervised-dataset":
+            _import_3dpw_supervised_dataset(args)
         elif args.command == "audit-mpi3dhp-2d":
             _audit_mpi3dhp_2d(args)
         elif args.command == "audit-mpi3dhp-3d":

@@ -16,10 +16,12 @@ Example:
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import json
 import re
 import shutil
 import sys
+import time
 from pathlib import Path
 from urllib.parse import quote
 from urllib.request import Request, urlopen
@@ -49,30 +51,46 @@ def _entries(subset: str) -> list[dict]:
     return [entry for entry in entries if entry.get("type") == "file" and entry["path"].endswith(".npz")]
 
 
-def _download(path: str, expected_size: int | None, output_root: Path) -> str:
+def _download(path: str, expected_size: int | None, output_root: Path, retries: int) -> str:
     destination = output_root / path
     if destination.exists() and (expected_size is None or destination.stat().st_size == expected_size):
         return "skipped"
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary = destination.with_suffix(destination.suffix + ".part")
     url = f"https://huggingface.co/datasets/{REPOSITORY}/resolve/{REVISION}/{quote(path)}"
-    with _request(url) as response, temporary.open("wb") as out:
-        shutil.copyfileobj(response, out, length=1024 * 1024)
-    if expected_size is not None and temporary.stat().st_size != expected_size:
+    for attempt in range(1, retries + 1):
         temporary.unlink(missing_ok=True)
-        raise RuntimeError(f"size mismatch for {path}")
-    temporary.replace(destination)
-    return "downloaded"
+        try:
+            with _request(url) as response, temporary.open("wb") as out:
+                shutil.copyfileobj(response, out, length=1024 * 1024)
+            if expected_size is None or temporary.stat().st_size == expected_size:
+                temporary.replace(destination)
+                return "downloaded"
+            actual = temporary.stat().st_size
+            temporary.unlink(missing_ok=True)
+            if attempt == retries:
+                raise RuntimeError(f"size mismatch for {path}: expected {expected_size}, got {actual}")
+            time.sleep(min(2 ** (attempt - 1), 8))
+        except Exception:
+            temporary.unlink(missing_ok=True)
+            if attempt == retries:
+                raise
+            time.sleep(min(2 ** (attempt - 1), 8))
+    raise AssertionError("unreachable")
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Download selected original AMASS NPZ subsets")
     parser.add_argument("--out", required=True, type=Path, help="Root that will contain raw/<subset>/...")
     parser.add_argument("--subsets", required=True, help="Comma-separated AMASS subset names")
+    parser.add_argument("--retries", type=int, default=3, help="Attempts per file for transient transfer failures")
+    parser.add_argument("--workers", type=int, default=4, help="Parallel file downloads per subset")
     args = parser.parse_args()
     subsets = [name.strip() for name in args.subsets.split(",") if name.strip()]
     if not subsets:
         raise ValueError("--subsets must name at least one subset")
+    if args.retries < 1 or args.workers < 1:
+        raise ValueError("--retries and --workers must be at least one")
 
     downloaded = skipped = 0
     for subset in subsets:
@@ -80,10 +98,14 @@ def main() -> int:
         if not files:
             raise RuntimeError(f"no NPZ files found for AMASS subset {subset!r}")
         print(f"[amass] {subset}: {len(files)} files", flush=True)
-        for entry in files:
-            status = _download(entry["path"], entry.get("size"), args.out)
-            downloaded += status == "downloaded"
-            skipped += status == "skipped"
+        def download(entry: dict) -> str:
+            return _download(entry["path"], entry.get("size"), args.out, args.retries)
+
+        with ThreadPoolExecutor(max_workers=args.workers) as pool:
+            statuses = pool.map(download, files)
+            for status in statuses:
+                downloaded += status == "downloaded"
+                skipped += status == "skipped"
     print(json.dumps({"repository": REPOSITORY, "subsets": subsets,
                       "downloaded_files": downloaded, "skipped_files": skipped}, sort_keys=True))
     return 0

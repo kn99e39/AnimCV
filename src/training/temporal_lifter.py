@@ -24,6 +24,20 @@ from pose.pose_types import PoseSequence
 SCHEMA = "animcv_supervised_3d_lifter_dataset_v2"
 LEGACY_SCHEMA = "animcv_supervised_3d_lifter_dataset_v1"
 
+# Parent-to-child segments in the canonical 17-joint contract.  These losses
+# constrain shape and orientation without tying the lifter to an FBX rig.
+BONES = (
+    ("pelvis", "left_hip"), ("left_hip", "left_knee"), ("left_knee", "left_ankle"),
+    ("pelvis", "right_hip"), ("right_hip", "right_knee"), ("right_knee", "right_ankle"),
+    ("pelvis", "spine"), ("spine", "thorax"), ("thorax", "neck"), ("neck", "head"),
+    ("thorax", "left_shoulder"), ("left_shoulder", "left_elbow"), ("left_elbow", "left_wrist"),
+    ("thorax", "right_shoulder"), ("right_shoulder", "right_elbow"), ("right_elbow", "right_wrist"),
+)
+HINGE_CHAINS = (
+    ("left_shoulder", "left_elbow", "left_wrist"), ("right_shoulder", "right_elbow", "right_wrist"),
+    ("left_hip", "left_knee", "left_ankle"), ("right_hip", "right_knee", "right_ankle"),
+)
+
 
 def build_dataset(
     pose: PoseSequence, target: LiftedPoseSequence, image_size: tuple[int, int], sequence_id: str,
@@ -122,6 +136,16 @@ class TrainingConfig:
     input_jitter_std: float = 0.0
     input_dropout_probability: float = 0.0
     confidence_jitter_std: float = 0.0
+    input_global_scale_std: float = 0.0
+    input_translation_std: float = 0.0
+    input_rotation_degrees: float = 0.0
+    temporal_occlusion_probability: float = 0.0
+    temporal_occlusion_frames: int = 9
+    source_balanced_sampling: bool = False
+    architecture: str = "dilated_tcn_v1"
+    bone_loss_weight: float = 0.0
+    torso_loss_weight: float = 0.0
+    hinge_loss_weight: float = 0.0
     init_checkpoint: str | None = None
 
     def __post_init__(self) -> None:
@@ -129,18 +153,24 @@ class TrainingConfig:
             raise ValueError("window must be an odd value of at least 3")
         if min(self.channels, self.epochs, self.batch_size, self.inference_batch_size) <= 0 or self.learning_rate <= 0:
             raise ValueError("training dimensions, epochs, batch size, and learning rate must be positive")
-        if min(self.input_jitter_std, self.confidence_jitter_std) < 0:
+        if min(self.input_jitter_std, self.confidence_jitter_std, self.input_global_scale_std,
+               self.input_translation_std, self.input_rotation_degrees, self.bone_loss_weight,
+               self.torso_loss_weight, self.hinge_loss_weight) < 0:
             raise ValueError("input augmentation standard deviations must be non-negative")
-        if not 0.0 <= self.input_dropout_probability < 1.0:
-            raise ValueError("input_dropout_probability must be in [0, 1)")
+        if not 0.0 <= self.input_dropout_probability < 1.0 or not 0.0 <= self.temporal_occlusion_probability < 1.0:
+            raise ValueError("dropout and temporal occlusion probabilities must be in [0, 1)")
+        if self.temporal_occlusion_frames < 1 or self.temporal_occlusion_frames % 2 == 0:
+            raise ValueError("temporal_occlusion_frames must be a positive odd value")
+        if self.architecture not in ("legacy_tcn_v1", "dilated_tcn_v1"):
+            raise ValueError("architecture must be legacy_tcn_v1 or dilated_tcn_v1")
 
 
 def train(dataset: dict[str, Any], checkpoint_path: str | Path, config: TrainingConfig) -> dict[str, Any]:
     torch, nn = _torch()
-    inputs, targets, valid, offsets = _arrays(dataset, config.window)
+    inputs, targets, valid, offsets, source_ids, sequence_ranges = _arrays(dataset, config.window, include_metadata=True)
     context = _distributed_context(torch, config)
     device = context["device"]
-    model = _model(nn, config.channels).to(device)
+    model = _model(nn, config.channels, config.architecture).to(device)
     initialization = _initialize_model(torch, model, config, device)
     if context["enabled"]:
         model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[context["local_rank"]])
@@ -150,6 +180,7 @@ def train(dataset: dict[str, Any], checkpoint_path: str | Path, config: Training
     y = torch.as_tensor(targets, dtype=torch.float32, device=device)
     valid_tensor = torch.as_tensor(valid, dtype=torch.float32, device=device).unsqueeze(-1)
     offset_tensor = torch.as_tensor(offsets, dtype=torch.long, device=device)
+    source_tensor = torch.as_tensor(source_ids, dtype=torch.long, device=device)
     indices = torch.arange(len(inputs), device=device)
     amp_enabled = bool(config.mixed_precision and device.type == "cuda")
     if device.type == "cuda":
@@ -162,8 +193,10 @@ def train(dataset: dict[str, Any], checkpoint_path: str | Path, config: Training
     local_samples_seen = 0
     for epoch in range(config.epochs):
         generator = torch.Generator(device=device).manual_seed(config.seed + epoch)
-        epoch_inputs = _augment_inputs(torch, x, config, generator)
-        permutation = indices[torch.randperm(len(indices), generator=generator, device=device)]
+        epoch_inputs = _augment_inputs(torch, x, config, generator, sequence_ranges)
+        permutation = (_source_balanced_permutation(torch, indices, source_tensor, generator)
+                       if config.source_balanced_sampling else
+                       indices[torch.randperm(len(indices), generator=generator, device=device)])
         permutation = _rank_shard(torch, permutation, context["rank"], context["world_size"])
         local_samples_seen += len(permutation)
         for batch in permutation.split(config.batch_size):
@@ -173,7 +206,7 @@ def train(dataset: dict[str, Any], checkpoint_path: str | Path, config: Training
             with torch.amp.autocast("cuda", enabled=amp_enabled):
                 prediction = model(windows)
                 mask = valid_tensor[batch]
-                loss = (torch.nn.functional.smooth_l1_loss(prediction, y[batch], reduction="none") * mask).sum() / mask.sum().clamp_min(1.0)
+                loss = _supervision_loss(torch, prediction, y[batch], mask, config)
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
@@ -192,7 +225,8 @@ def train(dataset: dict[str, Any], checkpoint_path: str | Path, config: Training
         mpjpe_mm = float((metric_sum / metric_count.clamp_min(1.0)).item() * 1000)
     if context["primary"]:
         payload = {"schema": "animcv_temporal_lifter_checkpoint_v2", "joint_names": list(H36M_NAMES),
-                   "channels": config.channels, "window": config.window,
+                   "channels": config.channels, "window": config.window, "architecture": config.architecture,
+                   "receptive_field": (model.module if context["enabled"] else model).receptive_field,
                    "state_dict": (model.module if context["enabled"] else model).state_dict()}
         Path(checkpoint_path).parent.mkdir(parents=True, exist_ok=True)
         torch.save(payload, checkpoint_path)
@@ -212,6 +246,11 @@ def train(dataset: dict[str, Any], checkpoint_path: str | Path, config: Training
             "parallelism": {"mode": "ddp" if config.distributed else "single_gpu", "world_size": context["world_size"],
             "device": str(device), "mixed_precision": amp_enabled}, "performance": performance,
             "initialization": initialization, "input_augmentation": _augmentation_report(config),
+            "sampling": {"source_balanced": config.source_balanced_sampling,
+                         "source_frame_counts": _source_frame_counts(dataset)},
+            "architecture": {"name": config.architecture,
+                             "receptive_field": (model.module if context["enabled"] else model).receptive_field},
+            "structural_losses": _structural_loss_report(config),
             "is_primary": context["primary"]}
 
 
@@ -221,7 +260,7 @@ def evaluate(dataset: dict[str, Any], checkpoint_path: str | Path, device: str =
     if checkpoint.get("schema") not in ("animcv_temporal_lifter_checkpoint_v1", "animcv_temporal_lifter_checkpoint_v2"):
         raise ValueError("unsupported temporal lifter checkpoint")
     inputs, targets, valid, offsets = _arrays(dataset, int(checkpoint["window"]))
-    model = _model(nn, int(checkpoint["channels"])).to(device)
+    model = _model(nn, int(checkpoint["channels"]), checkpoint.get("architecture", "legacy_tcn_v1")).to(device)
     model.load_state_dict(checkpoint["state_dict"])
     model.eval()
     x = torch.as_tensor(inputs, dtype=torch.float32, device=device)
@@ -418,7 +457,7 @@ def infer(pose: PoseSequence, checkpoint_path: str | Path, image_size: tuple[int
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
     if checkpoint.get("schema") not in ("animcv_temporal_lifter_checkpoint_v1", "animcv_temporal_lifter_checkpoint_v2"):
         raise ValueError("unsupported temporal lifter checkpoint")
-    model = _model(nn, int(checkpoint["channels"])).to(device)
+    model = _model(nn, int(checkpoint["channels"]), checkpoint.get("architecture", "legacy_tcn_v1")).to(device)
     model.load_state_dict(checkpoint["state_dict"])
     model.eval()
     inputs = []
@@ -447,18 +486,25 @@ def infer(pose: PoseSequence, checkpoint_path: str | Path, image_size: tuple[int
     )
 
 
-def _arrays(dataset: dict[str, Any], window: int) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+def _arrays(dataset: dict[str, Any], window: int, *, include_metadata: bool = False):
     sequences = dataset.get("sequences", [{"frames": dataset["frames"]}])
     frames = [frame for sequence in sequences for frame in sequence["frames"]]
     inputs = np.asarray([frame["input_2d"] for frame in frames], dtype=np.float32)
     targets = np.asarray([frame["target_3d"] for frame in frames], dtype=np.float32)
     valid = np.asarray([frame.get("target_valid", [True] * len(H36M_NAMES)) for frame in frames], dtype=bool)
-    offset_groups, cursor = [], 0
+    offset_groups, cursor, source_ids, sequence_ranges = [], 0, [], []
+    source_names: dict[str, int] = {}
+    default_source = dataset.get("source", {})
     for sequence in sequences:
         length = len(sequence["frames"])
         offset_groups.append(_window_offsets(length, window) + cursor)
+        source = {**default_source, **sequence.get("source", {})}
+        label = str(source.get("dataset", "unknown"))
+        source_ids.extend([source_names.setdefault(label, len(source_names))] * length)
+        sequence_ranges.append((cursor, cursor + length))
         cursor += length
-    return inputs, targets, valid, np.concatenate(offset_groups)
+    result = (inputs, targets, valid, np.concatenate(offset_groups))
+    return (*result, np.asarray(source_ids, dtype=np.int64), sequence_ranges) if include_metadata else result
 
 
 def _window_offsets(length: int, window: int) -> np.ndarray:
@@ -476,6 +522,60 @@ def _predict_batched(model, x, offsets, batch_size: int, amp_enabled: bool):
     return torch.cat(predictions, dim=0)
 
 
+def _supervision_loss(torch, prediction, target, mask, config: TrainingConfig):
+    """Coordinate loss plus canonical, rig-independent structural terms."""
+    coordinate = (torch.nn.functional.smooth_l1_loss(prediction, target, reduction="none") * mask).sum() / mask.sum().clamp_min(1.0)
+    total = coordinate
+    valid = mask.squeeze(-1).bool()
+    if config.bone_loss_weight:
+        total = total + config.bone_loss_weight * _vector_loss(
+            torch, prediction, target, valid, BONES,
+            lambda first, second: first - second,
+        )
+    if config.torso_loss_weight:
+        total = total + config.torso_loss_weight * _vector_loss(
+            torch, prediction, target, valid,
+            (("left_shoulder", "right_shoulder"), ("left_hip", "right_hip")),
+            lambda first, second: second - first,
+        )
+    if config.hinge_loss_weight:
+        total = total + config.hinge_loss_weight * _hinge_loss(torch, prediction, target, valid)
+    return total
+
+
+def _vector_loss(torch, prediction, target, valid, pairs, vector):
+    values = []
+    for first, second in pairs:
+        first_index, second_index = H36M_NAMES.index(first), H36M_NAMES.index(second)
+        pair_valid = valid[:, first_index] & valid[:, second_index]
+        if pair_valid.any():
+            values.append(torch.nn.functional.smooth_l1_loss(
+                vector(prediction[pair_valid, first_index], prediction[pair_valid, second_index]),
+                vector(target[pair_valid, first_index], target[pair_valid, second_index]), reduction="mean",
+            ))
+    return torch.stack(values).mean() if values else prediction.new_zeros(())
+
+
+def _hinge_loss(torch, prediction, target, valid):
+    values = []
+    for proximal, joint, distal in HINGE_CHAINS:
+        proximal_index, joint_index, distal_index = (H36M_NAMES.index(name) for name in (proximal, joint, distal))
+        chain_valid = valid[:, proximal_index] & valid[:, joint_index] & valid[:, distal_index]
+        if chain_valid.any():
+            values.append(torch.nn.functional.smooth_l1_loss(
+                _bend_vectors(prediction[chain_valid, proximal_index], prediction[chain_valid, joint_index], prediction[chain_valid, distal_index]),
+                _bend_vectors(target[chain_valid, proximal_index], target[chain_valid, joint_index], target[chain_valid, distal_index]),
+                reduction="mean",
+            ))
+    return torch.stack(values).mean() if values else prediction.new_zeros(())
+
+
+def _bend_vectors(proximal, joint, distal):
+    axis = distal - proximal
+    projection = (joint - proximal).mul(axis).sum(-1, keepdim=True) / axis.square().sum(-1, keepdim=True).clamp_min(1e-8)
+    return joint - (proximal + projection * axis)
+
+
 def _initialize_model(torch, model, config: TrainingConfig, device):
     """Load a compatible baseline for pretrain→fine-tune without optimizer state."""
     if config.init_checkpoint is None:
@@ -485,13 +585,15 @@ def _initialize_model(torch, model, config: TrainingConfig, device):
         raise ValueError("unsupported initialization checkpoint")
     if checkpoint.get("joint_names") != list(H36M_NAMES):
         raise ValueError("initialization checkpoint joint schema mismatch")
-    if checkpoint.get("channels") != config.channels or checkpoint.get("window") != config.window:
+    checkpoint_architecture = checkpoint.get("architecture", "legacy_tcn_v1")
+    if (checkpoint.get("channels") != config.channels or checkpoint.get("window") != config.window
+            or checkpoint_architecture != config.architecture):
         raise ValueError("initialization checkpoint architecture does not match training configuration")
     model.load_state_dict(checkpoint["state_dict"])
     return {"mode": "checkpoint", "checkpoint": str(config.init_checkpoint)}
 
 
-def _augment_inputs(torch, inputs, config: TrainingConfig, generator):
+def _augment_inputs(torch, inputs, config: TrainingConfig, generator, sequence_ranges: list[tuple[int, int]] | None = None):
     """Apply deterministic per-epoch detector-like noise to normalized 2D inputs.
 
     Coordinates remain zero for dropped observations, matching the production
@@ -499,7 +601,9 @@ def _augment_inputs(torch, inputs, config: TrainingConfig, generator):
     the model must recover valid 3D targets from imperfect 2D evidence.
     """
     if (config.input_jitter_std == 0 and config.input_dropout_probability == 0
-            and config.confidence_jitter_std == 0):
+            and config.confidence_jitter_std == 0 and config.input_global_scale_std == 0
+            and config.input_translation_std == 0 and config.input_rotation_degrees == 0
+            and config.temporal_occlusion_probability == 0):
         return inputs
     result = inputs.clone()
     observed = result[..., 2] > 0
@@ -509,21 +613,85 @@ def _augment_inputs(torch, inputs, config: TrainingConfig, generator):
     if config.confidence_jitter_std:
         confidence_noise = torch.randn(result[..., 2].shape, generator=generator, device=result.device, dtype=result.dtype)
         result[..., 2] = (result[..., 2] + confidence_noise * config.confidence_jitter_std).clamp(0.0, 1.0)
+    if config.input_global_scale_std or config.input_translation_std or config.input_rotation_degrees:
+        count = len(result)
+        scale = (1.0 + torch.randn((count, 1), generator=generator, device=result.device, dtype=result.dtype)
+                 * config.input_global_scale_std).clamp(0.5, 1.5)
+        translation = torch.randn((count, 1, 2), generator=generator, device=result.device, dtype=result.dtype) * config.input_translation_std
+        angles = ((torch.rand((count, 1), generator=generator, device=result.device, dtype=result.dtype) * 2.0 - 1.0)
+                  * config.input_rotation_degrees * torch.pi / 180.0)
+        cosine, sine = torch.cos(angles), torch.sin(angles)
+        rotation = torch.stack((torch.cat((cosine, -sine), dim=1), torch.cat((sine, cosine), dim=1)), dim=1)
+        centered = (result[..., :2] - 0.5) * scale.unsqueeze(-1)
+        transformed = torch.matmul(centered, rotation.transpose(1, 2)) + 0.5 + translation
+        result[..., :2] = torch.where(observed.unsqueeze(-1), transformed, result[..., :2])
     if config.input_dropout_probability:
         dropped = (torch.rand(result[..., 2].shape, generator=generator, device=result.device)
                    < config.input_dropout_probability) & observed
         result[..., :2] = result[..., :2].masked_fill(dropped.unsqueeze(-1), 0.0)
         result[..., 2] = result[..., 2].masked_fill(dropped, 0.0)
+    if config.temporal_occlusion_probability:
+        import torch.nn.functional as functional
+        ranges = sequence_ranges or [(0, len(result))]
+        for begin, end in ranges:
+            length = end - begin
+            if not length:
+                continue
+            starts = (torch.rand((length, result.shape[1]), generator=generator, device=result.device)
+                      < config.temporal_occlusion_probability / config.temporal_occlusion_frames)
+            spans = functional.max_pool1d(
+                starts.transpose(0, 1).unsqueeze(0).float(), config.temporal_occlusion_frames,
+                stride=1, padding=config.temporal_occlusion_frames // 2,
+            ).squeeze(0).transpose(0, 1).bool()
+            dropped = spans & (result[begin:end, ..., 2] > 0)
+            result[begin:end, ..., :2] = result[begin:end, ..., :2].masked_fill(dropped.unsqueeze(-1), 0.0)
+            result[begin:end, ..., 2] = result[begin:end, ..., 2].masked_fill(dropped, 0.0)
     return result
 
 
-def _augmentation_report(config: TrainingConfig) -> dict[str, float | bool]:
+def _augmentation_report(config: TrainingConfig) -> dict[str, float | bool | int]:
     return {
-        "enabled": any((config.input_jitter_std, config.input_dropout_probability, config.confidence_jitter_std)),
+        "enabled": any((config.input_jitter_std, config.input_dropout_probability, config.confidence_jitter_std,
+                        config.input_global_scale_std, config.input_translation_std,
+                        config.input_rotation_degrees, config.temporal_occlusion_probability)),
         "input_jitter_std": config.input_jitter_std,
         "input_dropout_probability": config.input_dropout_probability,
         "confidence_jitter_std": config.confidence_jitter_std,
+        "input_global_scale_std": config.input_global_scale_std,
+        "input_translation_std": config.input_translation_std,
+        "input_rotation_degrees": config.input_rotation_degrees,
+        "temporal_occlusion_probability": config.temporal_occlusion_probability,
+        "temporal_occlusion_frames": config.temporal_occlusion_frames,
     }
+
+
+def _structural_loss_report(config: TrainingConfig) -> dict[str, float]:
+    return {"bone_loss_weight": config.bone_loss_weight, "torso_loss_weight": config.torso_loss_weight,
+            "hinge_loss_weight": config.hinge_loss_weight}
+
+
+def _source_frame_counts(dataset: dict[str, Any]) -> dict[str, int]:
+    default_source = dataset.get("source", {})
+    counts: dict[str, int] = {}
+    for sequence in dataset.get("sequences", [{"frames": dataset["frames"]}]):
+        source = {**default_source, **sequence.get("source", {})}
+        label = str(source.get("dataset", "unknown"))
+        counts[label] = counts.get(label, 0) + len(sequence["frames"])
+    return counts
+
+
+def _source_balanced_permutation(torch, indices, source_ids, generator):
+    """Sample an epoch with equal source mass without crossing clip windows."""
+    unique = torch.unique(source_ids, sorted=True)
+    if len(unique) <= 1:
+        return indices[torch.randperm(len(indices), generator=generator, device=indices.device)]
+    per_source = (len(indices) + len(unique) - 1) // len(unique)
+    selected = []
+    for source in unique:
+        available = indices[source_ids == source]
+        selected.append(available[torch.randint(len(available), (per_source,), generator=generator, device=indices.device)])
+    combined = torch.cat(selected)[:len(indices)]
+    return combined[torch.randperm(len(combined), generator=generator, device=indices.device)]
 
 
 def _rank_shard(torch, indices, rank: int, world_size: int):
@@ -562,19 +730,54 @@ def _distributed_context(torch, config: TrainingConfig) -> dict[str, Any]:
             "primary": rank == 0, "device": torch.device(f"cuda:{local_rank}")}
 
 
-def _model(nn, channels: int):
-    class TemporalLifter(nn.Module):
+def _model(nn, channels: int, architecture: str = "dilated_tcn_v1"):
+    if architecture == "legacy_tcn_v1":
+        class LegacyTemporalLifter(nn.Module):
+            receptive_field = 5
+
+            def __init__(self):
+                super().__init__()
+                self.network = nn.Sequential(nn.Conv1d(17 * 3, channels, 3, padding=1), nn.ReLU(),
+                                             nn.Conv1d(channels, channels, 3, padding=1), nn.ReLU())
+                self.head = nn.Linear(channels, 17 * 3)
+
+            def forward(self, values):
+                batch, frames, joints, features = values.shape
+                encoded = self.network(values.reshape(batch, frames, joints * features).transpose(1, 2))
+                return self.head(encoded[:, :, frames // 2]).reshape(batch, 17, 3)
+        return LegacyTemporalLifter()
+
+    if architecture != "dilated_tcn_v1":
+        raise ValueError(f"unsupported temporal lifter architecture: {architecture}")
+
+    class ResidualDilatedBlock(nn.Module):
+        def __init__(self, dilation: int):
+            super().__init__()
+            self.first = nn.Conv1d(channels, channels, 3, padding=dilation, dilation=dilation)
+            self.second = nn.Conv1d(channels, channels, 3, padding=dilation, dilation=dilation)
+            self.activation = nn.ReLU()
+
+        def forward(self, values):
+            encoded = self.activation(self.first(values))
+            return self.activation(values + self.second(encoded))
+
+    class DilatedTemporalLifter(nn.Module):
+        # stem RF=3; five two-convolution residual blocks add 4*(1+2+4+8+16)=124.
+        receptive_field = 127
+
         def __init__(self):
             super().__init__()
-            self.network = nn.Sequential(nn.Conv1d(17 * 3, channels, 3, padding=1), nn.ReLU(),
-                                         nn.Conv1d(channels, channels, 3, padding=1), nn.ReLU())
+            self.stem = nn.Sequential(nn.Conv1d(17 * 3, channels, 3, padding=1), nn.ReLU())
+            self.blocks = nn.ModuleList(ResidualDilatedBlock(dilation) for dilation in (1, 2, 4, 8, 16))
             self.head = nn.Linear(channels, 17 * 3)
 
         def forward(self, values):
             batch, frames, joints, features = values.shape
-            encoded = self.network(values.reshape(batch, frames, joints * features).transpose(1, 2))
+            encoded = self.stem(values.reshape(batch, frames, joints * features).transpose(1, 2))
+            for block in self.blocks:
+                encoded = block(encoded)
             return self.head(encoded[:, :, frames // 2]).reshape(batch, 17, 3)
-    return TemporalLifter()
+    return DilatedTemporalLifter()
 
 
 def _torch():

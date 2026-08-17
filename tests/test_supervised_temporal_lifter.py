@@ -4,7 +4,7 @@ pytest.importorskip("torch", reason="supervised temporal lifter tests require th
 
 from pose.pose_lifter import LiftedPoseFrame, LiftedPosePoint, LiftedPoseSequence, H36M_NAMES
 from pose.pose_types import PoseFrame, PoseLandmark, PoseSequence
-from training.temporal_lifter import TrainingConfig, _augment_inputs, _rank_shard, build_dataset, combine_datasets, evaluate, infer, load_dataset, preflight, save_dataset, train
+from training.temporal_lifter import TrainingConfig, _augment_inputs, _model, _rank_shard, _source_balanced_permutation, _supervision_loss, build_dataset, combine_datasets, evaluate, infer, load_dataset, preflight, save_dataset, train
 
 
 def _pose(index):
@@ -94,3 +94,61 @@ def test_training_can_initialize_from_compatible_checkpoint(tmp_path):
     ))
 
     assert report["initialization"] == {"mode": "checkpoint", "checkpoint": str(first)}
+
+
+def test_dilated_model_has_full_window_receptive_field():
+    import torch
+    from torch import nn
+
+    model = _model(nn, 8, "dilated_tcn_v1")
+
+    assert model.receptive_field >= 81
+    assert model(torch.zeros((2, 81, 17, 3))).shape == (2, 17, 3)
+
+
+def test_source_balanced_sampling_upsamples_small_source():
+    import torch
+
+    indices = torch.arange(102)
+    source_ids = torch.tensor([0] * 100 + [1] * 2)
+    sampled = _source_balanced_permutation(torch, indices, source_ids, torch.Generator().manual_seed(4))
+
+    assert len(sampled) == len(indices)
+    assert (source_ids[sampled] == 0).sum() == 51
+    assert (source_ids[sampled] == 1).sum() == 51
+
+
+def test_camera_and_temporal_augmentations_preserve_missing_joint_contract():
+    import torch
+
+    values = torch.ones((15, 17, 3), dtype=torch.float32)
+    values[:, 0] = 0
+    config = TrainingConfig(
+        window=3, channels=8, epochs=1, batch_size=2, input_global_scale_std=.1,
+        input_translation_std=.1, input_rotation_degrees=10, temporal_occlusion_probability=.8,
+        temporal_occlusion_frames=3,
+    )
+    augmented = _augment_inputs(torch, values, config, torch.Generator().manual_seed(9), [(0, 7), (7, 15)])
+
+    assert augmented.shape == values.shape
+    assert (augmented[:, 0] == 0).all()
+    assert (augmented[..., 2] == 0).any()
+    assert (augmented[..., :2][augmented[..., 2] == 0] == 0).all()
+
+
+def test_structural_loss_is_zero_for_matching_pose_and_positive_for_wrong_hinge():
+    import torch
+
+    target = torch.zeros((1, 17, 3))
+    for name, point in {"left_shoulder": (-1, 0, 0), "left_elbow": (0, 1, 0), "left_wrist": (1, 0, 0)}.items():
+        target[0, H36M_NAMES.index(name)] = torch.tensor(point)
+    valid = torch.zeros((1, 17, 1))
+    valid[0, [H36M_NAMES.index(name) for name in ("left_shoulder", "left_elbow", "left_wrist")]] = 1
+    config = TrainingConfig(window=3, channels=8, epochs=1, batch_size=1, hinge_loss_weight=1.0)
+
+    matching = _supervision_loss(torch, target, target, valid, config)
+    wrong = target.clone()
+    wrong[0, H36M_NAMES.index("left_elbow"), 1] = -1
+
+    assert matching == pytest.approx(0)
+    assert _supervision_loss(torch, wrong, target, valid, config) > matching

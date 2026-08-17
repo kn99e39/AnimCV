@@ -39,7 +39,15 @@ def _config(args: argparse.Namespace, *, epochs: int, init_checkpoint: Path | No
         learning_rate=args.learning_rate, device=args.device, mixed_precision=not args.no_mixed_precision,
         seed=args.seed, inference_batch_size=args.inference_batch_size,
         input_jitter_std=args.input_jitter_std, input_dropout_probability=args.input_dropout_probability,
-        confidence_jitter_std=args.confidence_jitter_std,
+        confidence_jitter_std=args.confidence_jitter_std, architecture=args.architecture,
+        source_balanced_sampling=args.source_balanced_sampling,
+        input_global_scale_std=args.input_global_scale_std,
+        input_translation_std=args.input_translation_std,
+        input_rotation_degrees=args.input_rotation_degrees,
+        temporal_occlusion_probability=args.temporal_occlusion_probability,
+        temporal_occlusion_frames=args.temporal_occlusion_frames,
+        bone_loss_weight=args.bone_loss_weight, torso_loss_weight=args.torso_loss_weight,
+        hinge_loss_weight=args.hinge_loss_weight,
         init_checkpoint=str(init_checkpoint) if init_checkpoint else None,
     )
 
@@ -88,9 +96,28 @@ def main() -> int:
     parser.add_argument("--input-jitter-std", type=float, default=0.015)
     parser.add_argument("--input-dropout-probability", type=float, default=0.05)
     parser.add_argument("--confidence-jitter-std", type=float, default=0.08)
+    parser.add_argument("--input-global-scale-std", type=float, default=0.04)
+    parser.add_argument("--input-translation-std", type=float, default=0.03)
+    parser.add_argument("--input-rotation-degrees", type=float, default=12.0)
+    parser.add_argument("--temporal-occlusion-probability", type=float, default=0.10)
+    parser.add_argument("--temporal-occlusion-frames", type=int, default=9)
+    parser.add_argument("--source-balanced-sampling", action="store_true")
+    parser.add_argument("--architecture", choices=["legacy_tcn_v1", "dilated_tcn_v1"], default="dilated_tcn_v1")
+    parser.add_argument("--bone-loss-weight", type=float, default=0.25)
+    parser.add_argument("--torso-loss-weight", type=float, default=0.15)
+    parser.add_argument("--hinge-loss-weight", type=float, default=0.15)
+    parser.add_argument("--candidates", default="mpi_only,mpi_3dpw,direct_mix,amass_pretrain,amass_pretrain_mpi_3dpw_finetune",
+                        help="comma-separated subset of the reproducible candidate matrix")
     args = parser.parse_args()
     if args.pretrain_epochs is not None and args.pretrain_epochs <= 0:
         raise ValueError("--pretrain-epochs must be positive")
+    candidates = {item for item in args.candidates.split(",") if item}
+    valid_candidates = {"mpi_only", "mpi_3dpw", "direct_mix", "amass_pretrain", "amass_pretrain_mpi_3dpw_finetune"}
+    unknown_candidates = candidates.difference(valid_candidates)
+    if not candidates or unknown_candidates:
+        raise ValueError(f"--candidates contains unsupported values: {sorted(unknown_candidates)}")
+    if "amass_pretrain_mpi_3dpw_finetune" in candidates:
+        candidates.add("amass_pretrain")
 
     output = args.out
     datasets_dir, reports_dir = output / "datasets", output / "reports"
@@ -121,17 +148,22 @@ def main() -> int:
         },
         "candidates": {},
     }
-    results["candidates"]["mpi_only"] = _run_candidate("mpi_only", mpi_only, args, reports_dir, validation, holdouts)
-    results["candidates"]["mpi_3dpw"] = _run_candidate("mpi_3dpw", mpi_three_dpw, args, reports_dir, validation, holdouts)
-    results["candidates"]["direct_mix"] = _run_candidate("direct_mix", direct_mix, args, reports_dir, validation, holdouts)
+    if "mpi_only" in candidates:
+        results["candidates"]["mpi_only"] = _run_candidate("mpi_only", mpi_only, args, reports_dir, validation, holdouts)
+    if "mpi_3dpw" in candidates:
+        results["candidates"]["mpi_3dpw"] = _run_candidate("mpi_3dpw", mpi_three_dpw, args, reports_dir, validation, holdouts)
+    if "direct_mix" in candidates:
+        results["candidates"]["direct_mix"] = _run_candidate("direct_mix", direct_mix, args, reports_dir, validation, holdouts)
     pretrain_epochs = args.pretrain_epochs or args.epochs
-    pretrain = _run_candidate("amass_pretrain", amass_only, args, reports_dir, validation, holdouts, epochs=pretrain_epochs)
-    fine_tune = _run_candidate(
-        "amass_pretrain_mpi_3dpw_finetune", mpi_three_dpw, args, reports_dir, validation, holdouts,
-        init_checkpoint=Path(pretrain["checkpoint"]),
-    )
-    results["candidates"]["amass_pretrain"] = pretrain
-    results["candidates"]["amass_pretrain_mpi_3dpw_finetune"] = fine_tune
+    pretrain = None
+    if "amass_pretrain" in candidates:
+        pretrain = _run_candidate("amass_pretrain", amass_only, args, reports_dir, validation, holdouts, epochs=pretrain_epochs)
+        results["candidates"]["amass_pretrain"] = pretrain
+    if "amass_pretrain_mpi_3dpw_finetune" in candidates:
+        results["candidates"]["amass_pretrain_mpi_3dpw_finetune"] = _run_candidate(
+            "amass_pretrain_mpi_3dpw_finetune", mpi_three_dpw, args, reports_dir, validation, holdouts,
+            init_checkpoint=Path(pretrain["checkpoint"]),
+        )
     (output / "experiment_matrix.json").write_text(json.dumps(results, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps({
         "out": str(output),

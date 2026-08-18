@@ -197,6 +197,9 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Per-observed-joint dropout probability for detector-domain augmentation")
     p.add_argument("--confidence-jitter-std", type=float, default=0.0,
                    help="Per-epoch confidence noise standard deviation")
+    p.add_argument("--input-coordinate-normalization", choices=["image_v1", "pelvis_torso_v1"],
+                   default="image_v1",
+                   help="2D coordinate contract; pelvis_torso_v1 removes per-frame crop translation and scale")
     p.add_argument("--input-global-scale-std", type=float, default=0.0,
                    help="Per-frame global 2D scale noise around the normalized image center")
     p.add_argument("--input-translation-std", type=float, default=0.0,
@@ -690,6 +693,7 @@ def _train_supervised_3d_lifter(args: argparse.Namespace) -> None:
         inference_batch_size=args.inference_batch_size, input_jitter_std=args.input_jitter_std,
         input_dropout_probability=args.input_dropout_probability,
         confidence_jitter_std=args.confidence_jitter_std,
+        input_coordinate_normalization=args.input_coordinate_normalization,
         input_global_scale_std=args.input_global_scale_std, input_translation_std=args.input_translation_std,
         input_rotation_degrees=args.input_rotation_degrees,
         temporal_occlusion_probability=args.temporal_occlusion_probability,

@@ -39,7 +39,8 @@ def _config(args: argparse.Namespace, *, epochs: int, init_checkpoint: Path | No
         learning_rate=args.learning_rate, device=args.device, mixed_precision=not args.no_mixed_precision,
         seed=args.seed, inference_batch_size=args.inference_batch_size,
         input_jitter_std=args.input_jitter_std, input_dropout_probability=args.input_dropout_probability,
-        confidence_jitter_std=args.confidence_jitter_std, architecture=args.architecture,
+        confidence_jitter_std=args.confidence_jitter_std,
+        input_coordinate_normalization=args.input_coordinate_normalization, architecture=args.architecture,
         source_balanced_sampling=args.source_balanced_sampling,
         input_global_scale_std=args.input_global_scale_std,
         input_translation_std=args.input_translation_std,
@@ -96,6 +97,8 @@ def main() -> int:
     parser.add_argument("--input-jitter-std", type=float, default=0.015)
     parser.add_argument("--input-dropout-probability", type=float, default=0.05)
     parser.add_argument("--confidence-jitter-std", type=float, default=0.08)
+    parser.add_argument("--input-coordinate-normalization", choices=["image_v1", "pelvis_torso_v1"],
+                        default="image_v1")
     parser.add_argument("--input-global-scale-std", type=float, default=0.04)
     parser.add_argument("--input-translation-std", type=float, default=0.03)
     parser.add_argument("--input-rotation-degrees", type=float, default=12.0)

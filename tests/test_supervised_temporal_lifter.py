@@ -1,10 +1,11 @@
+import numpy as np
 import pytest
 
 pytest.importorskip("torch", reason="supervised temporal lifter tests require the optional training extra")
 
 from pose.pose_lifter import LiftedPoseFrame, LiftedPosePoint, LiftedPoseSequence, H36M_NAMES
 from pose.pose_types import PoseFrame, PoseLandmark, PoseSequence
-from training.temporal_lifter import TrainingConfig, _augment_inputs, _model, _rank_shard, _source_balanced_permutation, _supervision_loss, build_dataset, combine_datasets, evaluate, infer, load_dataset, preflight, save_dataset, train
+from training.temporal_lifter import TrainingConfig, _augment_inputs, _model, _normalize_inputs, _rank_shard, _source_balanced_permutation, _supervision_loss, build_dataset, combine_datasets, evaluate, infer, load_dataset, preflight, save_dataset, train
 
 
 def _pose(index):
@@ -80,6 +81,20 @@ def test_input_augmentation_drops_observations_but_keeps_tensor_shape():
     assert augmented.shape == values.shape
     assert (augmented[..., 2] == 0).any()
     assert (augmented[..., :2][augmented[..., 2] == 0] == 0).all()
+
+
+def test_pelvis_torso_coordinate_contract_removes_translation_and_scale():
+    values = np.array([[[100.0, 200.0, 1.0]] * 17], dtype="float32")
+    values[0, H36M_NAMES.index("thorax"), :2] = (100.0, 300.0)
+    values[0, H36M_NAMES.index("left_wrist"), :2] = (150.0, 250.0)
+    values[0, H36M_NAMES.index("right_wrist")] = 0.0
+
+    normalized = _normalize_inputs(values, "pelvis_torso_v1")
+
+    assert normalized[0, 0, :2].tolist() == [0.0, 0.0]
+    assert normalized[0, H36M_NAMES.index("thorax"), :2].tolist() == [0.0, 1.0]
+    assert normalized[0, H36M_NAMES.index("left_wrist"), :2].tolist() == [0.5, 0.5]
+    assert normalized[0, H36M_NAMES.index("right_wrist")].tolist() == [0.0, 0.0, 0.0]
 
 
 def test_training_can_initialize_from_compatible_checkpoint(tmp_path):

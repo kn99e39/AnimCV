@@ -136,6 +136,7 @@ class TrainingConfig:
     input_jitter_std: float = 0.0
     input_dropout_probability: float = 0.0
     confidence_jitter_std: float = 0.0
+    input_coordinate_normalization: str = "image_v1"
     input_global_scale_std: float = 0.0
     input_translation_std: float = 0.0
     input_rotation_degrees: float = 0.0
@@ -163,11 +164,16 @@ class TrainingConfig:
             raise ValueError("temporal_occlusion_frames must be a positive odd value")
         if self.architecture not in ("legacy_tcn_v1", "dilated_tcn_v1"):
             raise ValueError("architecture must be legacy_tcn_v1 or dilated_tcn_v1")
+        if self.input_coordinate_normalization not in ("image_v1", "pelvis_torso_v1"):
+            raise ValueError("input_coordinate_normalization must be image_v1 or pelvis_torso_v1")
 
 
 def train(dataset: dict[str, Any], checkpoint_path: str | Path, config: TrainingConfig) -> dict[str, Any]:
     torch, nn = _torch()
-    inputs, targets, valid, offsets, source_ids, sequence_ranges = _arrays(dataset, config.window, include_metadata=True)
+    inputs, targets, valid, offsets, source_ids, sequence_ranges = _arrays(
+        dataset, config.window, include_metadata=True,
+        coordinate_normalization=config.input_coordinate_normalization,
+    )
     context = _distributed_context(torch, config)
     device = context["device"]
     model = _model(nn, config.channels, config.architecture).to(device)
@@ -226,6 +232,7 @@ def train(dataset: dict[str, Any], checkpoint_path: str | Path, config: Training
     if context["primary"]:
         payload = {"schema": "animcv_temporal_lifter_checkpoint_v2", "joint_names": list(H36M_NAMES),
                    "channels": config.channels, "window": config.window, "architecture": config.architecture,
+                   "input_coordinate_normalization": config.input_coordinate_normalization,
                    "receptive_field": (model.module if context["enabled"] else model).receptive_field,
                    "state_dict": (model.module if context["enabled"] else model).state_dict()}
         Path(checkpoint_path).parent.mkdir(parents=True, exist_ok=True)
@@ -259,7 +266,10 @@ def evaluate(dataset: dict[str, Any], checkpoint_path: str | Path, device: str =
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
     if checkpoint.get("schema") not in ("animcv_temporal_lifter_checkpoint_v1", "animcv_temporal_lifter_checkpoint_v2"):
         raise ValueError("unsupported temporal lifter checkpoint")
-    inputs, targets, valid, offsets = _arrays(dataset, int(checkpoint["window"]))
+    inputs, targets, valid, offsets = _arrays(
+        dataset, int(checkpoint["window"]),
+        coordinate_normalization=checkpoint.get("input_coordinate_normalization", "image_v1"),
+    )
     model = _model(nn, int(checkpoint["channels"]), checkpoint.get("architecture", "legacy_tcn_v1")).to(device)
     model.load_state_dict(checkpoint["state_dict"])
     model.eval()
@@ -469,7 +479,9 @@ def infer(pose: PoseSequence, checkpoint_path: str | Path, image_size: tuple[int
                 raise ValueError(f"frame {frame.frame_index} lacks {name} required by the supervised lifter")
             joints.append([landmark.x / width, landmark.y / height, landmark.confidence])
         inputs.append(joints)
-    x = torch.as_tensor(np.asarray(inputs), dtype=torch.float32, device=device)
+    x = torch.as_tensor(_normalize_inputs(
+        np.asarray(inputs), checkpoint.get("input_coordinate_normalization", "image_v1")
+    ), dtype=torch.float32, device=device)
     offsets = _window_offsets(len(inputs), int(checkpoint["window"]))
     with torch.no_grad():
         prediction = _predict_batched(model, x, torch.as_tensor(offsets, dtype=torch.long, device=device), 1024, device.startswith("cuda")).cpu().numpy()
@@ -486,10 +498,15 @@ def infer(pose: PoseSequence, checkpoint_path: str | Path, image_size: tuple[int
     )
 
 
-def _arrays(dataset: dict[str, Any], window: int, *, include_metadata: bool = False):
+def _arrays(
+    dataset: dict[str, Any], window: int, *, include_metadata: bool = False,
+    coordinate_normalization: str = "image_v1",
+):
     sequences = dataset.get("sequences", [{"frames": dataset["frames"]}])
     frames = [frame for sequence in sequences for frame in sequence["frames"]]
-    inputs = np.asarray([frame["input_2d"] for frame in frames], dtype=np.float32)
+    inputs = _normalize_inputs(
+        np.asarray([frame["input_2d"] for frame in frames], dtype=np.float32), coordinate_normalization,
+    )
     targets = np.asarray([frame["target_3d"] for frame in frames], dtype=np.float32)
     valid = np.asarray([frame.get("target_valid", [True] * len(H36M_NAMES)) for frame in frames], dtype=bool)
     offset_groups, cursor, source_ids, sequence_ranges = [], 0, [], []
@@ -505,6 +522,32 @@ def _arrays(dataset: dict[str, Any], window: int, *, include_metadata: bool = Fa
         cursor += length
     result = (inputs, targets, valid, np.concatenate(offset_groups))
     return (*result, np.asarray(source_ids, dtype=np.int64), sequence_ranges) if include_metadata else result
+
+
+def _normalize_inputs(inputs: np.ndarray, mode: str) -> np.ndarray:
+    """Apply the checkpointed 2D coordinate contract before windowing.
+
+    ``pelvis_torso_v1`` makes valid observations translation and scale
+    invariant using pelvis→thorax distance. This isolates the temporal lifter
+    from detector crop placement while retaining confidence and exact-zero
+    missing-landmark representation.
+    """
+    if mode == "image_v1":
+        return inputs
+    if mode != "pelvis_torso_v1":
+        raise ValueError(f"unsupported input coordinate normalization: {mode}")
+    if inputs.ndim != 3 or inputs.shape[1:] != (len(H36M_NAMES), 3):
+        raise ValueError("2D inputs must have shape (frames, 17, 3)")
+    result = inputs.copy()
+    observed = result[..., 2] > 0
+    pelvis = result[:, 0, :2]
+    thorax = result[:, H36M_NAMES.index("thorax"), :2]
+    torso_observed = observed[:, 0] & observed[:, H36M_NAMES.index("thorax")]
+    scale = np.linalg.norm(thorax - pelvis, axis=1)
+    scale = np.where(torso_observed & (scale > 1e-4), scale, 1.0).astype(result.dtype)
+    normalized = (result[..., :2] - pelvis[:, None, :]) / scale[:, None, None]
+    result[..., :2] = np.where(observed[..., None], normalized, 0.0)
+    return result
 
 
 def _window_offsets(length: int, window: int) -> np.ndarray:
@@ -587,7 +630,8 @@ def _initialize_model(torch, model, config: TrainingConfig, device):
         raise ValueError("initialization checkpoint joint schema mismatch")
     checkpoint_architecture = checkpoint.get("architecture", "legacy_tcn_v1")
     if (checkpoint.get("channels") != config.channels or checkpoint.get("window") != config.window
-            or checkpoint_architecture != config.architecture):
+            or checkpoint_architecture != config.architecture
+            or checkpoint.get("input_coordinate_normalization", "image_v1") != config.input_coordinate_normalization):
         raise ValueError("initialization checkpoint architecture does not match training configuration")
     model.load_state_dict(checkpoint["state_dict"])
     return {"mode": "checkpoint", "checkpoint": str(config.init_checkpoint)}

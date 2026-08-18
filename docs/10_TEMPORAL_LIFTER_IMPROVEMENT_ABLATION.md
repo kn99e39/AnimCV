@@ -42,10 +42,29 @@ augmentation, structural loss의 영향을 분리한다.
 5. **A4 detector-crop invariance** — A1에 `--input-coordinate-normalization pelvis_torso_v1`만
    더한다. A2처럼 이미지를 임의 이동·확대하지 않고, 실제 detector가 만드는 crop/subject
    위치 차이에 불변인 2D 계약을 검증한다.
+6. **A6 mean yaw supervision (rejected)** — A5 조건에 shoulder/hip XY-axis 평균 cosine
+   loss 0.15를 추가했다. 3DPW test에서 PA-MPJPE 83.48 mm, yaw P95 35.70°, hinge
+   flip 5.11%로 A5(71.88 mm, 32.43°, 2.07%)보다 모두 악화됐다. 평균 yaw loss는
+   tail gate를 개선하지 못하고 pose geometry를 훼손했으므로 재사용하지 않는다.
+7. **A7 tail-directional constraints (next)** — A5 조건에 평균 yaw loss 대신 bilateral
+   yaw error 상위 5%만의 CVaR loss와, target bend와 90° 이상 반대가 된 hinge에만
+   작동하는 anti-flip cosine loss를 작은 weight로 분리해 검증한다. 목표는 평균
+   PA-MPJPE를 희생하지 않고 yaw P95와 flip tail을 줄이는 것이다.
 
 각 run의 3DPW PA-MPJPE를 우선 정렬하고, yaw MAE/P95와 hinge flip이 동시에 악화되지
 않는 상위 두 후보만 30 epoch로 재실행한다. 결과가 3DPW holdout을 통과하기 전에는
 retarget/FBX 단계로 넘기지 않는다.
+
+### A6 결과 (2026-08-18, GT 2D holdout)
+
+| Holdout | PA-MPJPE mm | yaw MAE ° | yaw P95 ° | hinge flip | 판정 |
+| --- | ---: | ---: | ---: | ---: | --- |
+| 3DPW test | 83.48 | 14.72 | 35.70 | 5.11% | 실패 |
+| AMASS internal | 73.85 | 7.73 | 22.31 | 3.00% | 실패 |
+
+3DPW 기준으로 PA-MPJPE, yaw P95, hinge flip gate를 모두 놓쳤다. 따라서 실제
+detector 입력 평가는 아직 실행하지 않는다. detector 오차가 없는 GT 2D 조건에서도
+통과하지 못한 checkpoint를 제품 입력으로 평가해도 승격 근거가 되지 않는다.
 
 ## 서버 명령 예시 (A4, 10 epochs)
 

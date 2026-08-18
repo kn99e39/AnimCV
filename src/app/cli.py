@@ -218,6 +218,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--hinge-loss-weight", type=float, default=0.0)
     p.add_argument("--yaw-loss-weight", type=float, default=0.0,
                    help="XY bilateral-axis angular loss matching the root-yaw evaluation metric")
+    p.add_argument("--yaw-tail-loss-weight", type=float, default=0.0,
+                   help="CVaR loss over the worst 5% bilateral yaw axes, targeting yaw P95")
+    p.add_argument("--hinge-flip-loss-weight", type=float, default=0.0,
+                   help="Only penalize canonical bend vectors whose direction is reversed")
     p.add_argument("--init-checkpoint", default=None,
                    help="Compatible checkpoint to initialize a pretrain→fine-tune run; optimizer is reset")
     p.add_argument("--report-out", required=True)
@@ -703,6 +707,7 @@ def _train_supervised_3d_lifter(args: argparse.Namespace) -> None:
         source_balanced_sampling=args.source_balanced_sampling, architecture=args.architecture,
         bone_loss_weight=args.bone_loss_weight, torso_loss_weight=args.torso_loss_weight,
         hinge_loss_weight=args.hinge_loss_weight, yaw_loss_weight=args.yaw_loss_weight,
+        yaw_tail_loss_weight=args.yaw_tail_loss_weight, hinge_flip_loss_weight=args.hinge_flip_loss_weight,
         init_checkpoint=args.init_checkpoint,
     ))
     if report["is_primary"]:

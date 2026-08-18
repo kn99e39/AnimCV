@@ -148,6 +148,8 @@ class TrainingConfig:
     torso_loss_weight: float = 0.0
     hinge_loss_weight: float = 0.0
     yaw_loss_weight: float = 0.0
+    yaw_tail_loss_weight: float = 0.0
+    hinge_flip_loss_weight: float = 0.0
     init_checkpoint: str | None = None
 
     def __post_init__(self) -> None:
@@ -157,7 +159,8 @@ class TrainingConfig:
             raise ValueError("training dimensions, epochs, batch size, and learning rate must be positive")
         if min(self.input_jitter_std, self.confidence_jitter_std, self.input_global_scale_std,
                self.input_translation_std, self.input_rotation_degrees, self.bone_loss_weight,
-               self.torso_loss_weight, self.hinge_loss_weight, self.yaw_loss_weight) < 0:
+               self.torso_loss_weight, self.hinge_loss_weight, self.yaw_loss_weight,
+               self.yaw_tail_loss_weight, self.hinge_flip_loss_weight) < 0:
             raise ValueError("input augmentation standard deviations must be non-negative")
         if not 0.0 <= self.input_dropout_probability < 1.0 or not 0.0 <= self.temporal_occlusion_probability < 1.0:
             raise ValueError("dropout and temporal occlusion probabilities must be in [0, 1)")
@@ -586,6 +589,10 @@ def _supervision_loss(torch, prediction, target, mask, config: TrainingConfig):
         total = total + config.hinge_loss_weight * _hinge_loss(torch, prediction, target, valid)
     if config.yaw_loss_weight:
         total = total + config.yaw_loss_weight * _yaw_axis_loss(torch, prediction, target, valid)
+    if config.yaw_tail_loss_weight:
+        total = total + config.yaw_tail_loss_weight * _yaw_tail_loss(torch, prediction, target, valid)
+    if config.hinge_flip_loss_weight:
+        total = total + config.hinge_flip_loss_weight * _hinge_flip_loss(torch, prediction, target, valid)
     return total
 
 
@@ -623,6 +630,25 @@ def _yaw_axis_loss(torch, prediction, target, valid):
     it directly optimizes orientation in the camera horizontal plane, including
     the 180-degree reversals counted by the holdout yaw metric.
     """
+    errors = _yaw_axis_errors(torch, prediction, target, valid)
+    return errors.mean() if len(errors) else prediction.new_zeros(())
+
+
+def _yaw_tail_loss(torch, prediction, target, valid):
+    """CVaR-style loss for the worst 5% bilateral yaw observations.
+
+    The acceptance criterion is yaw P95, while the ordinary yaw loss averages
+    every frame. Restricting this auxiliary term to the upper tail targets the
+    gate without forcing already-correct axes to move.
+    """
+    errors = _yaw_axis_errors(torch, prediction, target, valid)
+    if not len(errors):
+        return prediction.new_zeros(())
+    tail_count = max(1, (len(errors) + 19) // 20)
+    return torch.topk(errors, tail_count, largest=True).values.mean()
+
+
+def _yaw_axis_errors(torch, prediction, target, valid):
     values = []
     for left, right in (("left_shoulder", "right_shoulder"), ("left_hip", "right_hip")):
         left_index, right_index = H36M_NAMES.index(left), H36M_NAMES.index(right)
@@ -638,8 +664,35 @@ def _yaw_axis_loss(torch, prediction, target, valid):
             cosine = (predicted_axis[stable] * target_axis[stable]).sum(-1) / (
                 predicted_length[stable] * target_length[stable]
             )
-            values.append((1.0 - cosine.clamp(-1.0, 1.0)).mean())
-    return torch.stack(values).mean() if values else prediction.new_zeros(())
+            values.append(1.0 - cosine.clamp(-1.0, 1.0))
+    return torch.cat(values) if values else prediction.new_zeros((0,))
+
+
+def _hinge_flip_loss(torch, prediction, target, valid):
+    """Penalize only bend vectors whose direction has crossed 90 degrees.
+
+    Smooth-L1 hinge supervision improves average bend position, but its
+    gradients are diluted by correct joints. This margin term directly targets
+    the sign reversal used by the hinge-flip audit and leaves same-direction
+    bends unpenalized.
+    """
+    values = []
+    for proximal, joint, distal in HINGE_CHAINS:
+        indices = tuple(H36M_NAMES.index(name) for name in (proximal, joint, distal))
+        chain_valid = valid[:, indices[0]] & valid[:, indices[1]] & valid[:, indices[2]]
+        if not chain_valid.any():
+            continue
+        predicted_bend = _bend_vectors(*(prediction[chain_valid, index] for index in indices))
+        target_bend = _bend_vectors(*(target[chain_valid, index] for index in indices))
+        predicted_length = torch.linalg.vector_norm(predicted_bend, dim=-1)
+        target_length = torch.linalg.vector_norm(target_bend, dim=-1)
+        stable = (predicted_length > 1e-6) & (target_length > 1e-6)
+        if stable.any():
+            cosine = (predicted_bend[stable] * target_bend[stable]).sum(-1) / (
+                predicted_length[stable] * target_length[stable]
+            )
+            values.append(torch.relu(-cosine.clamp(-1.0, 1.0)))
+    return torch.cat(values).mean() if values else prediction.new_zeros(())
 
 
 def _bend_vectors(proximal, joint, distal):
@@ -740,7 +793,9 @@ def _augmentation_report(config: TrainingConfig) -> dict[str, float | bool | int
 
 def _structural_loss_report(config: TrainingConfig) -> dict[str, float]:
     return {"bone_loss_weight": config.bone_loss_weight, "torso_loss_weight": config.torso_loss_weight,
-            "hinge_loss_weight": config.hinge_loss_weight, "yaw_loss_weight": config.yaw_loss_weight}
+            "hinge_loss_weight": config.hinge_loss_weight, "yaw_loss_weight": config.yaw_loss_weight,
+            "yaw_tail_loss_weight": config.yaw_tail_loss_weight,
+            "hinge_flip_loss_weight": config.hinge_flip_loss_weight}
 
 
 def _source_frame_counts(dataset: dict[str, Any]) -> dict[str, int]:

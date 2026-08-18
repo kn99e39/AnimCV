@@ -5,7 +5,7 @@ pytest.importorskip("torch", reason="supervised temporal lifter tests require th
 
 from pose.pose_lifter import LiftedPoseFrame, LiftedPosePoint, LiftedPoseSequence, H36M_NAMES
 from pose.pose_types import PoseFrame, PoseLandmark, PoseSequence
-from training.temporal_lifter import TrainingConfig, _augment_inputs, _model, _normalize_inputs, _rank_shard, _source_balanced_permutation, _supervision_loss, _yaw_axis_loss, build_dataset, combine_datasets, evaluate, infer, load_dataset, preflight, save_dataset, train
+from training.temporal_lifter import TrainingConfig, _augment_inputs, _hinge_flip_loss, _model, _normalize_inputs, _rank_shard, _source_balanced_permutation, _supervision_loss, _yaw_axis_loss, _yaw_tail_loss, build_dataset, combine_datasets, evaluate, infer, load_dataset, preflight, save_dataset, train
 
 
 def _pose(index):
@@ -187,3 +187,21 @@ def test_yaw_axis_loss_matches_bilateral_xy_orientation_not_torso_size():
 
     assert _yaw_axis_loss(torch, same_heading_different_width, target, valid) == pytest.approx(0)
     assert _yaw_axis_loss(torch, reversed_heading, target, valid) == pytest.approx(2.0)
+    assert _yaw_tail_loss(torch, same_heading_different_width, target, valid) == pytest.approx(0)
+    assert _yaw_tail_loss(torch, reversed_heading, target, valid) == pytest.approx(2.0)
+
+
+def test_hinge_flip_loss_only_penalizes_reversed_bend_direction():
+    import torch
+
+    target = torch.zeros((1, 17, 3))
+    names = ("left_shoulder", "left_elbow", "left_wrist")
+    for name, point in zip(names, ((-1, 0, 0), (0, 1, 0), (1, 0, 0))):
+        target[0, H36M_NAMES.index(name)] = torch.tensor(point)
+    valid = torch.zeros((1, 17), dtype=torch.bool)
+    valid[0, [H36M_NAMES.index(name) for name in names]] = True
+    reversed_bend = target.clone()
+    reversed_bend[0, H36M_NAMES.index("left_elbow"), 1] = -1
+
+    assert _hinge_flip_loss(torch, target, target, valid) == pytest.approx(0)
+    assert _hinge_flip_loss(torch, reversed_bend, target, valid) == pytest.approx(1.0)

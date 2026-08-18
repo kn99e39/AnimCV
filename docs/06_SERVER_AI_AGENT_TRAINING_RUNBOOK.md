@@ -146,6 +146,29 @@ The script writes restartable per-source JSON files plus `train.json`,
 `validation.json`, and `holdout.json`. The official 3DPW `test` split maps to
 AnimCV's `holdout` split and must not be combined into training data.
 
+### Detector-input evaluation runtime
+
+The training image intentionally excludes MMPose/MMDetection. Build the
+separate `Dockerfile.pose` image before evaluating real 3DPW RGB frames; it
+pins the prebuilt CUDA 11.8 / PyTorch 2.1-compatible MMCV wheel together with
+MMPose 1.3.2 and MMDetection 3.3.0. This keeps detector dependencies out of
+the training image and makes the detector-input gate reproducible.
+
+```bash
+docker build -f Dockerfile.pose -t animcv-pose:cuda118 .
+docker run --rm --gpus all --entrypoint python3 -w /workspace \
+  -e PYTHONPATH=/workspace/src \
+  -v /home/nd/AnimCV:/workspace:ro -v /home/nd/animcv-data:/data:ro \
+  -v /home/nd/animcv-output:/output animcv-pose:cuda118 \
+  -m app.cli estimate-pose --frames /data/3dpw/imageFiles/<sequence> \
+  --out /output/detector_eval/<sequence>_pose.json --device cuda
+```
+
+The first command retrieves package wheels; the first inference retrieves the
+official RTMDet-tiny and RTMPose-tiny checkpoints into the container user's
+model cache. Do not pass `--evaluation-ground-truth` to this production-input
+gate: that option supplies official-label boxes and is diagnostic only.
+
 ### Verified three-source server corpus (2026-08-16)
 
 The LabServer63 run completed and fully loaded these artifacts:

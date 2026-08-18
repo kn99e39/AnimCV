@@ -5,7 +5,7 @@ pytest.importorskip("torch", reason="supervised temporal lifter tests require th
 
 from pose.pose_lifter import LiftedPoseFrame, LiftedPosePoint, LiftedPoseSequence, H36M_NAMES
 from pose.pose_types import PoseFrame, PoseLandmark, PoseSequence
-from training.temporal_lifter import TrainingConfig, _augment_inputs, _model, _normalize_inputs, _rank_shard, _source_balanced_permutation, _supervision_loss, build_dataset, combine_datasets, evaluate, infer, load_dataset, preflight, save_dataset, train
+from training.temporal_lifter import TrainingConfig, _augment_inputs, _model, _normalize_inputs, _rank_shard, _source_balanced_permutation, _supervision_loss, _yaw_axis_loss, build_dataset, combine_datasets, evaluate, infer, load_dataset, preflight, save_dataset, train
 
 
 def _pose(index):
@@ -167,3 +167,23 @@ def test_structural_loss_is_zero_for_matching_pose_and_positive_for_wrong_hinge(
 
     assert matching == pytest.approx(0)
     assert _supervision_loss(torch, wrong, target, valid, config) > matching
+
+
+def test_yaw_axis_loss_matches_bilateral_xy_orientation_not_torso_size():
+    import torch
+
+    target = torch.zeros((1, 17, 3))
+    left, right = (H36M_NAMES.index(name) for name in ("left_shoulder", "right_shoulder"))
+    target[0, left, :2] = torch.tensor((-1.0, 0.0))
+    target[0, right, :2] = torch.tensor((1.0, 0.0))
+    valid = torch.zeros((1, 17), dtype=torch.bool)
+    valid[0, [left, right]] = True
+
+    same_heading_different_width = target.clone()
+    same_heading_different_width[0, left, 0] = -3.0
+    same_heading_different_width[0, right, 0] = 3.0
+    reversed_heading = target.clone()
+    reversed_heading[0, left, 0], reversed_heading[0, right, 0] = 1.0, -1.0
+
+    assert _yaw_axis_loss(torch, same_heading_different_width, target, valid) == pytest.approx(0)
+    assert _yaw_axis_loss(torch, reversed_heading, target, valid) == pytest.approx(2.0)

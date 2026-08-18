@@ -147,6 +147,7 @@ class TrainingConfig:
     bone_loss_weight: float = 0.0
     torso_loss_weight: float = 0.0
     hinge_loss_weight: float = 0.0
+    yaw_loss_weight: float = 0.0
     init_checkpoint: str | None = None
 
     def __post_init__(self) -> None:
@@ -156,7 +157,7 @@ class TrainingConfig:
             raise ValueError("training dimensions, epochs, batch size, and learning rate must be positive")
         if min(self.input_jitter_std, self.confidence_jitter_std, self.input_global_scale_std,
                self.input_translation_std, self.input_rotation_degrees, self.bone_loss_weight,
-               self.torso_loss_weight, self.hinge_loss_weight) < 0:
+               self.torso_loss_weight, self.hinge_loss_weight, self.yaw_loss_weight) < 0:
             raise ValueError("input augmentation standard deviations must be non-negative")
         if not 0.0 <= self.input_dropout_probability < 1.0 or not 0.0 <= self.temporal_occlusion_probability < 1.0:
             raise ValueError("dropout and temporal occlusion probabilities must be in [0, 1)")
@@ -583,6 +584,8 @@ def _supervision_loss(torch, prediction, target, mask, config: TrainingConfig):
         )
     if config.hinge_loss_weight:
         total = total + config.hinge_loss_weight * _hinge_loss(torch, prediction, target, valid)
+    if config.yaw_loss_weight:
+        total = total + config.yaw_loss_weight * _yaw_axis_loss(torch, prediction, target, valid)
     return total
 
 
@@ -610,6 +613,32 @@ def _hinge_loss(torch, prediction, target, valid):
                 _bend_vectors(target[chain_valid, proximal_index], target[chain_valid, joint_index], target[chain_valid, distal_index]),
                 reduction="mean",
             ))
+    return torch.stack(values).mean() if values else prediction.new_zeros(())
+
+
+def _yaw_axis_loss(torch, prediction, target, valid):
+    """Penalize bilateral XY-axis angle, matching the root-yaw evaluator.
+
+    Unlike ``torso_loss_weight``, this ignores torso width and vertical depth:
+    it directly optimizes orientation in the camera horizontal plane, including
+    the 180-degree reversals counted by the holdout yaw metric.
+    """
+    values = []
+    for left, right in (("left_shoulder", "right_shoulder"), ("left_hip", "right_hip")):
+        left_index, right_index = H36M_NAMES.index(left), H36M_NAMES.index(right)
+        pair_valid = valid[:, left_index] & valid[:, right_index]
+        if not pair_valid.any():
+            continue
+        predicted_axis = prediction[pair_valid, right_index, :2] - prediction[pair_valid, left_index, :2]
+        target_axis = target[pair_valid, right_index, :2] - target[pair_valid, left_index, :2]
+        predicted_length = torch.linalg.vector_norm(predicted_axis, dim=-1)
+        target_length = torch.linalg.vector_norm(target_axis, dim=-1)
+        stable = (predicted_length > 1e-6) & (target_length > 1e-6)
+        if stable.any():
+            cosine = (predicted_axis[stable] * target_axis[stable]).sum(-1) / (
+                predicted_length[stable] * target_length[stable]
+            )
+            values.append((1.0 - cosine.clamp(-1.0, 1.0)).mean())
     return torch.stack(values).mean() if values else prediction.new_zeros(())
 
 
@@ -711,7 +740,7 @@ def _augmentation_report(config: TrainingConfig) -> dict[str, float | bool | int
 
 def _structural_loss_report(config: TrainingConfig) -> dict[str, float]:
     return {"bone_loss_weight": config.bone_loss_weight, "torso_loss_weight": config.torso_loss_weight,
-            "hinge_loss_weight": config.hinge_loss_weight}
+            "hinge_loss_weight": config.hinge_loss_weight, "yaw_loss_weight": config.yaw_loss_weight}
 
 
 def _source_frame_counts(dataset: dict[str, Any]) -> dict[str, int]:

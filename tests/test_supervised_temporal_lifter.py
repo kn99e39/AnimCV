@@ -5,7 +5,7 @@ pytest.importorskip("torch", reason="supervised temporal lifter tests require th
 
 from pose.pose_lifter import LiftedPoseFrame, LiftedPosePoint, LiftedPoseSequence, H36M_NAMES
 from pose.pose_types import PoseFrame, PoseLandmark, PoseSequence
-from training.temporal_lifter import TrainingConfig, _augment_inputs, _hinge_flip_loss, _model, _normalize_inputs, _rank_shard, _source_balanced_permutation, _supervision_loss, _yaw_axis_loss, _yaw_tail_loss, build_dataset, combine_datasets, evaluate, infer, load_dataset, preflight, save_dataset, train
+from training.temporal_lifter import BONES, H36M_NAMES, HINGE_CHAINS, TrainingConfig, _augment_inputs, _hinge_flip_loss, _hinge_loss, _model, _normalize_inputs, _rank_shard, _source_balanced_permutation, _supervision_loss, _vector_loss, _yaw_axis_loss, _yaw_tail_loss, build_dataset, combine_datasets, evaluate, infer, load_dataset, preflight, save_dataset, train
 
 
 def _pose(index):
@@ -205,3 +205,46 @@ def test_hinge_flip_loss_only_penalizes_reversed_bend_direction():
 
     assert _hinge_flip_loss(torch, target, target, valid) == pytest.approx(0)
     assert _hinge_flip_loss(torch, reversed_bend, target, valid) == pytest.approx(1.0)
+
+
+def test_vectorized_structural_losses_match_per_chain_reference_reduction():
+    import torch
+
+    torch.manual_seed(7)
+    prediction, target = torch.randn((9, 17, 3)), torch.randn((9, 17, 3))
+    valid = torch.rand((9, 17)) > 0.3
+
+    def reference_vector(pairs, transform):
+        values = []
+        for first, second in pairs:
+            first_index, second_index = H36M_NAMES.index(first), H36M_NAMES.index(second)
+            pair_valid = valid[:, first_index] & valid[:, second_index]
+            if pair_valid.any():
+                values.append(torch.nn.functional.smooth_l1_loss(
+                    transform(prediction[pair_valid, first_index], prediction[pair_valid, second_index]),
+                    transform(target[pair_valid, first_index], target[pair_valid, second_index]), reduction="mean",
+                ))
+        return torch.stack(values).mean() if values else prediction.new_zeros(())
+
+    def reference_hinge():
+        values = []
+        for proximal, joint, distal in HINGE_CHAINS:
+            indices = [H36M_NAMES.index(name) for name in (proximal, joint, distal)]
+            chain_valid = valid[:, indices[0]] & valid[:, indices[1]] & valid[:, indices[2]]
+            if chain_valid.any():
+                values.append(torch.nn.functional.smooth_l1_loss(
+                    _bend(prediction[chain_valid, indices[0]], prediction[chain_valid, indices[1]], prediction[chain_valid, indices[2]]),
+                    _bend(target[chain_valid, indices[0]], target[chain_valid, indices[1]], target[chain_valid, indices[2]]),
+                    reduction="mean",
+                ))
+        return torch.stack(values).mean() if values else prediction.new_zeros(())
+
+    def _bend(proximal, joint, distal):
+        axis = distal - proximal
+        projection = (joint - proximal).mul(axis).sum(-1, keepdim=True) / axis.square().sum(-1, keepdim=True).clamp_min(1e-8)
+        return joint - (proximal + projection * axis)
+
+    assert _vector_loss(torch, prediction, target, valid, BONES, lambda first, second: first - second) == pytest.approx(
+        reference_vector(BONES, lambda first, second: first - second)
+    )
+    assert _hinge_loss(torch, prediction, target, valid) == pytest.approx(reference_hinge())

@@ -38,6 +38,18 @@ HINGE_CHAINS = (
     ("left_hip", "left_knee", "left_ankle"), ("right_hip", "right_knee", "right_ankle"),
 )
 
+# Resolve the immutable skeleton schema once. These helpers run on every CUDA
+# batch, so repeated string lookups and scalar-controlled Python loops are an
+# avoidable throughput cost.
+BONE_INDICES = tuple((H36M_NAMES.index(first), H36M_NAMES.index(second)) for first, second in BONES)
+TORSO_INDICES = tuple((H36M_NAMES.index(first), H36M_NAMES.index(second)) for first, second in (
+    ("left_shoulder", "right_shoulder"), ("left_hip", "right_hip"),
+))
+HINGE_INDICES = tuple(tuple(H36M_NAMES.index(name) for name in chain) for chain in HINGE_CHAINS)
+YAW_INDICES = tuple((H36M_NAMES.index(left), H36M_NAMES.index(right)) for left, right in (
+    ("left_shoulder", "right_shoulder"), ("left_hip", "right_hip"),
+))
+
 
 def build_dataset(
     pose: PoseSequence, target: LiftedPoseSequence, image_size: tuple[int, int], sequence_id: str,
@@ -576,13 +588,13 @@ def _supervision_loss(torch, prediction, target, mask, config: TrainingConfig):
     valid = mask.squeeze(-1).bool()
     if config.bone_loss_weight:
         total = total + config.bone_loss_weight * _vector_loss(
-            torch, prediction, target, valid, BONES,
+            torch, prediction, target, valid, BONE_INDICES,
             lambda first, second: first - second,
         )
     if config.torso_loss_weight:
         total = total + config.torso_loss_weight * _vector_loss(
             torch, prediction, target, valid,
-            (("left_shoulder", "right_shoulder"), ("left_hip", "right_hip")),
+            TORSO_INDICES,
             lambda first, second: second - first,
         )
     if config.hinge_loss_weight:
@@ -597,30 +609,22 @@ def _supervision_loss(torch, prediction, target, mask, config: TrainingConfig):
 
 
 def _vector_loss(torch, prediction, target, valid, pairs, vector):
-    values = []
-    for first, second in pairs:
-        first_index, second_index = H36M_NAMES.index(first), H36M_NAMES.index(second)
-        pair_valid = valid[:, first_index] & valid[:, second_index]
-        if pair_valid.any():
-            values.append(torch.nn.functional.smooth_l1_loss(
-                vector(prediction[pair_valid, first_index], prediction[pair_valid, second_index]),
-                vector(target[pair_valid, first_index], target[pair_valid, second_index]), reduction="mean",
-            ))
-    return torch.stack(values).mean() if values else prediction.new_zeros(())
+    """Average each segment equally without CUDA scalar control flow."""
+    first, second = zip(*pairs)
+    pair_valid = valid[:, first] & valid[:, second]
+    predicted_vectors = vector(prediction[:, first], prediction[:, second])
+    target_vectors = vector(target[:, first], target[:, second])
+    errors = torch.nn.functional.smooth_l1_loss(predicted_vectors, target_vectors, reduction="none").mean(dim=-1)
+    return _masked_chain_mean(torch, errors, pair_valid)
 
 
 def _hinge_loss(torch, prediction, target, valid):
-    values = []
-    for proximal, joint, distal in HINGE_CHAINS:
-        proximal_index, joint_index, distal_index = (H36M_NAMES.index(name) for name in (proximal, joint, distal))
-        chain_valid = valid[:, proximal_index] & valid[:, joint_index] & valid[:, distal_index]
-        if chain_valid.any():
-            values.append(torch.nn.functional.smooth_l1_loss(
-                _bend_vectors(prediction[chain_valid, proximal_index], prediction[chain_valid, joint_index], prediction[chain_valid, distal_index]),
-                _bend_vectors(target[chain_valid, proximal_index], target[chain_valid, joint_index], target[chain_valid, distal_index]),
-                reduction="mean",
-            ))
-    return torch.stack(values).mean() if values else prediction.new_zeros(())
+    proximal, joint, distal = zip(*HINGE_INDICES)
+    chain_valid = valid[:, proximal] & valid[:, joint] & valid[:, distal]
+    predicted_bends = _bend_vectors(prediction[:, proximal], prediction[:, joint], prediction[:, distal])
+    target_bends = _bend_vectors(target[:, proximal], target[:, joint], target[:, distal])
+    errors = torch.nn.functional.smooth_l1_loss(predicted_bends, target_bends, reduction="none").mean(dim=-1)
+    return _masked_chain_mean(torch, errors, chain_valid)
 
 
 def _yaw_axis_loss(torch, prediction, target, valid):
@@ -630,8 +634,8 @@ def _yaw_axis_loss(torch, prediction, target, valid):
     it directly optimizes orientation in the camera horizontal plane, including
     the 180-degree reversals counted by the holdout yaw metric.
     """
-    errors = _yaw_axis_errors(torch, prediction, target, valid)
-    return errors.mean() if len(errors) else prediction.new_zeros(())
+    errors, stable = _yaw_axis_error_grid(torch, prediction, target, valid)
+    return _masked_mean(torch, errors, stable)
 
 
 def _yaw_tail_loss(torch, prediction, target, valid):
@@ -641,31 +645,33 @@ def _yaw_tail_loss(torch, prediction, target, valid):
     every frame. Restricting this auxiliary term to the upper tail targets the
     gate without forcing already-correct axes to move.
     """
-    errors = _yaw_axis_errors(torch, prediction, target, valid)
-    if not len(errors):
-        return prediction.new_zeros(())
-    tail_count = max(1, (len(errors) + 19) // 20)
-    return torch.topk(errors, tail_count, largest=True).values.mean()
+    errors, stable = _yaw_axis_error_grid(torch, prediction, target, valid)
+    flattened_errors, flattened_stable = errors.flatten(), stable.flatten()
+    # Keep the former CVaR upper 5% definition while keeping ``tail_count`` on
+    # the device. Invalid entries are zero; yaw errors are non-negative, so they
+    # can only tie with a correct observation and cannot change the loss value.
+    tail_count = ((flattened_stable.sum() + 19) // 20).clamp_min(1)
+    maximum_tail = max(1, (flattened_errors.numel() + 19) // 20)
+    selected = torch.topk(flattened_errors.masked_fill(~flattened_stable, 0.0), maximum_tail).values
+    chosen = torch.arange(maximum_tail, device=prediction.device) < tail_count
+    return selected.masked_select(chosen).mean()
 
 
 def _yaw_axis_errors(torch, prediction, target, valid):
-    values = []
-    for left, right in (("left_shoulder", "right_shoulder"), ("left_hip", "right_hip")):
-        left_index, right_index = H36M_NAMES.index(left), H36M_NAMES.index(right)
-        pair_valid = valid[:, left_index] & valid[:, right_index]
-        if not pair_valid.any():
-            continue
-        predicted_axis = prediction[pair_valid, right_index, :2] - prediction[pair_valid, left_index, :2]
-        target_axis = target[pair_valid, right_index, :2] - target[pair_valid, left_index, :2]
-        predicted_length = torch.linalg.vector_norm(predicted_axis, dim=-1)
-        target_length = torch.linalg.vector_norm(target_axis, dim=-1)
-        stable = (predicted_length > 1e-6) & (target_length > 1e-6)
-        if stable.any():
-            cosine = (predicted_axis[stable] * target_axis[stable]).sum(-1) / (
-                predicted_length[stable] * target_length[stable]
-            )
-            values.append(1.0 - cosine.clamp(-1.0, 1.0))
-    return torch.cat(values) if values else prediction.new_zeros((0,))
+    errors, stable = _yaw_axis_error_grid(torch, prediction, target, valid)
+    return errors.masked_select(stable)
+
+
+def _yaw_axis_error_grid(torch, prediction, target, valid):
+    left, right = zip(*YAW_INDICES)
+    pair_valid = valid[:, left] & valid[:, right]
+    predicted_axis = prediction[:, right, :2] - prediction[:, left, :2]
+    target_axis = target[:, right, :2] - target[:, left, :2]
+    predicted_length = torch.linalg.vector_norm(predicted_axis, dim=-1)
+    target_length = torch.linalg.vector_norm(target_axis, dim=-1)
+    stable = pair_valid & (predicted_length > 1e-6) & (target_length > 1e-6)
+    cosine = (predicted_axis * target_axis).sum(-1) / (predicted_length * target_length).clamp_min(1e-6)
+    return 1.0 - cosine.clamp(-1.0, 1.0), stable
 
 
 def _hinge_flip_loss(torch, prediction, target, valid):
@@ -676,23 +682,26 @@ def _hinge_flip_loss(torch, prediction, target, valid):
     the sign reversal used by the hinge-flip audit and leaves same-direction
     bends unpenalized.
     """
-    values = []
-    for proximal, joint, distal in HINGE_CHAINS:
-        indices = tuple(H36M_NAMES.index(name) for name in (proximal, joint, distal))
-        chain_valid = valid[:, indices[0]] & valid[:, indices[1]] & valid[:, indices[2]]
-        if not chain_valid.any():
-            continue
-        predicted_bend = _bend_vectors(*(prediction[chain_valid, index] for index in indices))
-        target_bend = _bend_vectors(*(target[chain_valid, index] for index in indices))
-        predicted_length = torch.linalg.vector_norm(predicted_bend, dim=-1)
-        target_length = torch.linalg.vector_norm(target_bend, dim=-1)
-        stable = (predicted_length > 1e-6) & (target_length > 1e-6)
-        if stable.any():
-            cosine = (predicted_bend[stable] * target_bend[stable]).sum(-1) / (
-                predicted_length[stable] * target_length[stable]
-            )
-            values.append(torch.relu(-cosine.clamp(-1.0, 1.0)))
-    return torch.cat(values).mean() if values else prediction.new_zeros(())
+    proximal, joint, distal = zip(*HINGE_INDICES)
+    chain_valid = valid[:, proximal] & valid[:, joint] & valid[:, distal]
+    predicted_bend = _bend_vectors(prediction[:, proximal], prediction[:, joint], prediction[:, distal])
+    target_bend = _bend_vectors(target[:, proximal], target[:, joint], target[:, distal])
+    predicted_length = torch.linalg.vector_norm(predicted_bend, dim=-1)
+    target_length = torch.linalg.vector_norm(target_bend, dim=-1)
+    stable = chain_valid & (predicted_length > 1e-6) & (target_length > 1e-6)
+    cosine = (predicted_bend * target_bend).sum(-1) / (predicted_length * target_length).clamp_min(1e-6)
+    return _masked_mean(torch, torch.relu(-cosine.clamp(-1.0, 1.0)), stable)
+
+
+def _masked_chain_mean(torch, errors, valid):
+    """Match equal-per-chain reduction without synchronizing on CUDA scalars."""
+    counts = valid.sum(dim=0)
+    per_chain = (errors * valid).sum(dim=0) / counts.clamp_min(1)
+    return _masked_mean(torch, per_chain, counts > 0)
+
+
+def _masked_mean(torch, values, valid):
+    return (values * valid).sum() / valid.sum().clamp_min(1)
 
 
 def _bend_vectors(proximal, joint, distal):

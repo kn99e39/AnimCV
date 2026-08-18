@@ -139,6 +139,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--split", choices=["train", "validation", "holdout"], required=True)
     p.add_argument("--out", required=True)
 
+    p = sub.add_parser(
+        "export-3dpw-ground-truth",
+        help="Export one 3DPW actor's paired 2D/3D ground truth for detector-to-lifter evaluation",
+    )
+    p.add_argument("--sequence", required=True, help="Official 3DPW sequenceFiles/*/*.pkl path")
+    p.add_argument("--actor", required=True, type=int, help="Actor index within the 3DPW sequence")
+    p.add_argument("--pose-out", required=True, help="Canonical 2D ground-truth pose JSON (diagnostic boxes only)")
+    p.add_argument("--lifted-out", required=True, help="Canonical camera-root-relative 3D ground-truth JSON")
+    p.add_argument("--metadata-out", required=True, help="Evaluation manifest containing sequence ID and image dimensions")
+
     p = sub.add_parser("audit-mpi3dhp-2d", help="Evaluate estimated 2D pose against imported MPI-INF-3DHP GT")
     p.add_argument("--pose", required=True, help="Estimated canonical 2D pose JSON")
     p.add_argument("--ground-truth", required=True, help="Canonical GT 2D pose JSON from import-mpi3dhp-ground-truth")
@@ -573,6 +583,38 @@ def _import_3dpw_supervised_dataset(args: argparse.Namespace) -> None:
     report = import_3dpw_dataset(args.sequence, args.out, split=args.split)
     print(f"[motion-tool] imported {report['sequence_count']} 3DPW actor sequences / "
           f"{report['frame_count']} {report['split']} frames -> {args.out}")
+
+
+def _export_3dpw_ground_truth(args: argparse.Namespace) -> None:
+    """Export an actor-specific 3DPW evaluation contract.
+
+    ``pose-out`` is intentionally labelled diagnostic-only: it can supply
+    benchmark boxes to isolate keypoint regression, but production-grade
+    metrics must use a detector-generated pose file instead.
+    """
+    from common.serialization import write_json
+    from pose.pose_lifter import save_lifted_pose_sequence
+    from pose.three_dpw_adapter import load_3dpw_ground_truth
+
+    actors = load_3dpw_ground_truth(args.sequence)
+    if not 0 <= args.actor < len(actors):
+        raise ValueError(f"actor index {args.actor} is out of range; sequence has {len(actors)} actors")
+    sequence_id, pose, lifted, image_size = actors[args.actor]
+    write_json(args.pose_out, pose.to_dict())
+    save_lifted_pose_sequence(lifted, args.lifted_out)
+    write_json(args.metadata_out, {
+        "schema": "animcv_3dpw_detector_lifter_evaluation_v1",
+        "sequence_id": sequence_id,
+        "source_annotation": str(args.sequence),
+        "actor": args.actor,
+        "image_size": list(image_size),
+        "source_fps": pose.source_fps,
+        "ground_truth_pose": str(args.pose_out),
+        "ground_truth_lifted": str(args.lifted_out),
+        "ground_truth_pose_usage": "diagnostic_boxes_only",
+        "required_production_input": "detector_generated_canonical_pose_json",
+    })
+    print(f"[motion-tool] exported {sequence_id} ({len(pose.frames)} frames) -> {args.metadata_out}")
 
 
 def _audit_mpi3dhp_2d(args: argparse.Namespace) -> None:
@@ -1128,6 +1170,8 @@ def main(argv: list[str] | None = None) -> int:
             _import_mpi3dhp_supervised_dataset(args)
         elif args.command == "import-3dpw-supervised-dataset":
             _import_3dpw_supervised_dataset(args)
+        elif args.command == "export-3dpw-ground-truth":
+            _export_3dpw_ground_truth(args)
         elif args.command == "audit-mpi3dhp-2d":
             _audit_mpi3dhp_2d(args)
         elif args.command == "audit-mpi3dhp-3d":

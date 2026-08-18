@@ -2,6 +2,9 @@ import pickle
 
 import numpy as np
 
+from app.cli import main
+from common.serialization import read_json
+from pose.pose_lifter import load_lifted_pose_sequence
 from pose.three_dpw_adapter import import_3dpw_dataset, load_3dpw_ground_truth
 from training.temporal_lifter import load_dataset
 
@@ -41,3 +44,24 @@ def test_3dpw_camera_conversion_and_invalid_frame_filtering(tmp_path):
     assert report["frame_count"] == 1
     assert len(dataset["sequences"]) == 1
     assert dataset["source"]["dataset"] == "3DPW"
+
+
+def test_export_3dpw_ground_truth_writes_actor_evaluation_contract(tmp_path):
+    annotation = tmp_path / "sequence.pkl"
+    with annotation.open("wb") as handle:
+        pickle.dump(_sequence_payload(), handle)
+    pose_out = tmp_path / "gt_pose.json"
+    lifted_out = tmp_path / "gt_lifted.json"
+    metadata_out = tmp_path / "metadata.json"
+
+    assert main([
+        "export-3dpw-ground-truth", "--sequence", str(annotation), "--actor", "0",
+        "--pose-out", str(pose_out), "--lifted-out", str(lifted_out), "--metadata-out", str(metadata_out),
+    ]) == 0
+
+    metadata = read_json(metadata_out)
+    assert metadata["sequence_id"] == "3dpw:synthetic:actor0"
+    assert metadata["image_size"] == [1920, 1080]
+    assert metadata["ground_truth_pose_usage"] == "diagnostic_boxes_only"
+    assert len(read_json(pose_out)["frames"]) == 2
+    assert len(load_lifted_pose_sequence(lifted_out).frames) == 2

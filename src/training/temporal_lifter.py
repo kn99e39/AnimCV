@@ -610,6 +610,11 @@ def _supervision_loss(torch, prediction, target, mask, config: TrainingConfig):
 
 def _vector_loss(torch, prediction, target, valid, pairs, vector):
     """Average each segment equally without CUDA scalar control flow."""
+    # Retain the helper's former name-pair contract for callers/tests. The
+    # training path supplies pre-resolved integer pairs, so this compatibility
+    # conversion never occurs inside the performance-critical A8 loop.
+    if isinstance(pairs[0][0], str):
+        pairs = tuple((H36M_NAMES.index(first), H36M_NAMES.index(second)) for first, second in pairs)
     first, second = zip(*pairs)
     pair_valid = valid[:, first] & valid[:, second]
     predicted_vectors = vector(prediction[:, first], prediction[:, second])

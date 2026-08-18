@@ -186,6 +186,11 @@ class TrainingConfig:
 
 def train(dataset: dict[str, Any], checkpoint_path: str | Path, config: TrainingConfig) -> dict[str, Any]:
     torch, nn = _torch()
+    # The epoch generators below already seed augmentation and sampling, but
+    # model construction used to consume the process-global RNG unchecked.
+    # Seed before the model is created so an identical config is a meaningful
+    # ablation comparison rather than a different random initialization.
+    torch.manual_seed(config.seed)
     inputs, targets, valid, offsets, source_ids, sequence_ranges = _arrays(
         dataset, config.window, include_metadata=True,
         coordinate_normalization=config.input_coordinate_normalization,
@@ -249,6 +254,7 @@ def train(dataset: dict[str, Any], checkpoint_path: str | Path, config: Training
         payload = {"schema": "animcv_temporal_lifter_checkpoint_v2", "joint_names": list(H36M_NAMES),
                    "channels": config.channels, "window": config.window, "architecture": config.architecture,
                    "input_coordinate_normalization": config.input_coordinate_normalization,
+                   "training_seed": config.seed,
                    "receptive_field": (model.module if context["enabled"] else model).receptive_field,
                    "state_dict": (model.module if context["enabled"] else model).state_dict()}
         Path(checkpoint_path).parent.mkdir(parents=True, exist_ok=True)
@@ -271,6 +277,7 @@ def train(dataset: dict[str, Any], checkpoint_path: str | Path, config: Training
             "initialization": initialization, "input_augmentation": _augmentation_report(config),
             "sampling": {"source_balanced": config.source_balanced_sampling,
                          "source_frame_counts": _source_frame_counts(dataset)},
+            "reproducibility": {"training_seed": config.seed, "model_initialization": "torch.manual_seed"},
             "architecture": {"name": config.architecture,
                              "receptive_field": (model.module if context["enabled"] else model).receptive_field},
             "structural_losses": _structural_loss_report(config),

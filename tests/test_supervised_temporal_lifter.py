@@ -32,6 +32,24 @@ def test_supervised_dataset_and_training_smoke(tmp_path):
     assert report["parallelism"]["mode"] == "single_gpu"
 
 
+def test_training_seed_reproduces_model_initialization_and_report(tmp_path):
+    import torch
+
+    pose = PoseSequence([_pose(i) for i in range(4)], 25)
+    target = LiftedPoseSequence([_target(i) for i in range(4)], 25)
+    dataset = build_dataset(pose, target, (100, 100), "seed-smoke")
+    config = TrainingConfig(window=3, channels=8, epochs=1, batch_size=2, seed=29)
+    first, second = tmp_path / "first.pth", tmp_path / "second.pth"
+    first_report, second_report = train(dataset, first, config), train(dataset, second, config)
+    first_state = torch.load(first, weights_only=True)["state_dict"]
+    second_state = torch.load(second, weights_only=True)["state_dict"]
+
+    assert first_report["reproducibility"] == {"training_seed": 29, "model_initialization": "torch.manual_seed"}
+    assert first_report["training_mpjpe_mm"] == pytest.approx(second_report["training_mpjpe_mm"])
+    assert first_state.keys() == second_state.keys()
+    assert all(torch.equal(first_state[key], second_state[key]) for key in first_state)
+
+
 def test_rank_shards_pad_only_to_equalize_ddp_steps():
     import torch
     indices = torch.arange(5)

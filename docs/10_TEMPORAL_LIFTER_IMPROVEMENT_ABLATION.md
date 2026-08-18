@@ -95,6 +95,19 @@ per-chain 평균 규칙을 유지하면서 CUDA scalar를 Python 분기로 읽�
    optimizer update 수를 바꾸므로, 품질 비교에서 batch 128 기준선과 동일 모델로 취급하지 않는다.
 4. 품질 승격은 3DPW/AMASS holdout gate와 A5 대비 PA-MPJPE 비열화를 모두 확인한 경우에만 한다.
 
+#### A8 첫 처리량 결과와 재현성 수정
+
+벡터화 batch 128 run은 4,647.6 samples/s, 997.4초로 완료됐다. A7의 1,948.3 samples/s,
+2,379.3초 대비 약 2.39배 빠르며, 학습 중 GPU 사용률도 약 99%까지 상승했다. 다만 이 run의
+3DPW/AMASS PA-MPJPE는 각각 78.64/69.36 mm로 A5보다 낮았다. 이 차이를 벡터화 품질 회귀로
+판정하지 않는다. 당시 학습 코드는 `TrainingConfig.seed`를 augmentation/sampling에만 적용하고,
+모델 초기화 전 전역 PyTorch RNG를 seed하지 않았다. 따라서 A5/A7/A8은 서로 다른 초기 가중치로
+시작했다.
+
+후속 run부터 `torch.manual_seed(config.seed)`를 모델 생성 전에 실행하고 checkpoint/report에
+`training_seed`를 기록한다. A8 품질 판정은 이 수정 후 동일 seed로 재실행한 batch 128 결과를
+기준으로 한다.
+
 ## 서버 명령 예시 (A4, 10 epochs)
 
 ```bash

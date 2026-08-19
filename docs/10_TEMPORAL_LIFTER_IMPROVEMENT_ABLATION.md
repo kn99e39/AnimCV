@@ -126,6 +126,10 @@ samples/s 대비 2.27배 빠르며, checkpoint/report에 seed 계약이 기록�
 따라서 AMASS의 절대 수치를 이전 run과 직접 비교하지 않는다. 이후 품질 비교는 현재 holdout의
 콘텐츠 digest/frame count를 run metadata로 고정한 뒤 진행한다.
 
+`run_lifter_experiments.py`는 `experiment_matrix.json`의 `dataset_fingerprints`에 각 train,
+validation, holdout JSON의 SHA-256·byte size·frame/sequence count를 기록한다. 후보 간 정량 또는
+정성 비교 전 이 값이 일치하는지 확인한다. 다르면 동일 조건 실험으로 취급하지 않는다.
+
 ## 사용자 정성 평가: 리그 애니메이션 review video
 
 수치 gate가 통과하더라도 관절의 순간적인 반전, foot sliding, 루트의 회전 흔들림은 사람이 보는

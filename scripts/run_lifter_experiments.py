@@ -10,6 +10,7 @@ matrix manually.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from dataclasses import asdict
 from pathlib import Path
@@ -31,6 +32,28 @@ def _combined(paths: list[Path], destination: Path) -> dict:
     dataset = combine_datasets([load_dataset(path) for path in paths])
     save_dataset(dataset, destination)
     return dataset
+
+
+def _dataset_fingerprint(path: Path, dataset: dict | None = None) -> dict:
+    """Return immutable input provenance needed to compare two experiments.
+
+    Dataset paths alone are insufficient: prepared JSON files can be replaced
+    in place as the source intake evolves.  Hash the exact bytes consumed by
+    the run and retain the logical frame/sequence counts as a quick human
+    sanity check.
+    """
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    dataset = dataset if dataset is not None else load_dataset(path)
+    return {
+        "path": str(path),
+        "sha256": digest.hexdigest(),
+        "byte_size": path.stat().st_size,
+        "frame_count": len(dataset["frames"]),
+        "sequence_count": len(dataset.get("sequences", [dataset])),
+    }
 
 
 def _config(args: argparse.Namespace, *, epochs: int, init_checkpoint: Path | None = None) -> TrainingConfig:
@@ -146,12 +169,20 @@ def main() -> int:
     amass_only = load_dataset(amass)
 
     results = {
-        "schema": "animcv_lifter_experiment_matrix_v1",
+        "schema": "animcv_lifter_experiment_matrix_v2",
         "config": asdict(_config(args, epochs=args.epochs)),
         "datasets": {
             "mpi_train": str(mpi), "three_dpw_train": str(three_dpw), "amass_train": str(amass),
             "validation": [str(path) for path in _paths(args.validation)],
             "three_dpw_holdout": args.three_dpw_holdout, "amass_holdout": args.amass_holdout,
+        },
+        "dataset_fingerprints": {
+            "mpi_train": _dataset_fingerprint(mpi, mpi_only),
+            "three_dpw_train": _dataset_fingerprint(three_dpw),
+            "amass_train": _dataset_fingerprint(amass, amass_only),
+            "validation": _dataset_fingerprint(datasets_dir / "validation.json", validation),
+            "three_dpw_holdout": _dataset_fingerprint(Path(args.three_dpw_holdout), holdouts["3dpw_test"]),
+            "amass_holdout": _dataset_fingerprint(Path(args.amass_holdout), holdouts["amass_internal"]),
         },
         "candidates": {},
     }

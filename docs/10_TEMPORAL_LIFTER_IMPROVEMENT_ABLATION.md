@@ -108,6 +108,24 @@ per-chain 평균 규칙을 유지하면서 CUDA scalar를 Python 분기로 읽�
 `training_seed`를 기록한다. A8 품질 판정은 이 수정 후 동일 seed로 재실행한 batch 128 결과를
 기준으로 한다.
 
+#### A8 고정-seed batch 128 결과 (2026-08-19)
+
+고정 seed 1337 run은 4,418.6 samples/s, 1,049.1초로 완료됐다. 이전 A7의 1,948.3
+samples/s 대비 2.27배 빠르며, checkpoint/report에 seed 계약이 기록됐다.
+
+| Holdout | PA-MPJPE mm | yaw MAE ° | yaw P95 ° | hinge flip | 판정 |
+| --- | ---: | ---: | ---: | ---: | --- |
+| 3DPW test | 75.31 | 14.90 | 34.77 | 2.36% | yaw P95, flip 실패 |
+| AMASS internal | 69.19 | 8.77 | 22.37 | 2.32% | flip 실패 |
+
+3DPW에서는 PA-MPJPE와 yaw MAE gate를 통과했지만 yaw P95와 hinge flip gate를 통과하지
+못했다. AMASS PA-MPJPE/yaw gate도 통과했지만 flip은 실패했다. 따라서 A8은 **성능 최적화는
+채택**, checkpoint 품질 승격은 보류한다.
+
+주의: 이 run의 AMASS holdout은 10,792 frames이며 A5/A7 당시 보고된 31,910 frames와 다르다.
+따라서 AMASS의 절대 수치를 이전 run과 직접 비교하지 않는다. 이후 품질 비교는 현재 holdout의
+콘텐츠 digest/frame count를 run metadata로 고정한 뒤 진행한다.
+
 ## 서버 명령 예시 (A4, 10 epochs)
 
 ```bash

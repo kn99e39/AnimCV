@@ -126,6 +126,32 @@ samples/s 대비 2.27배 빠르며, checkpoint/report에 seed 계약이 기록�
 따라서 AMASS의 절대 수치를 이전 run과 직접 비교하지 않는다. 이후 품질 비교는 현재 holdout의
 콘텐츠 digest/frame count를 run metadata로 고정한 뒤 진행한다.
 
+## 사용자 정성 평가: 리그 애니메이션 review video
+
+수치 gate가 통과하더라도 관절의 순간적인 반전, foot sliding, 루트의 회전 흔들림은 사람이 보는
+영상에서 더 빨리 발견될 수 있다. 각 품질 후보에는 정량 report와 함께 **동일한 고정 holdout clip,
+동일한 rig/mapping, 동일한 camera** 조건의 MP4 review video를 남긴다.
+
+`animation_optimized.json`을 Blender에 적용해 `.blend`를 만든 후 다음을 실행한다.
+
+```bash
+blender --background --python scripts/render_blender_animation_video.py -- \
+  --blend artifacts/a8_candidate.blend \
+  --out artifacts/review/a8_candidate_three_quarter.mp4 \
+  --camera three_quarter
+```
+
+이 영상은 실제 리그 메시와 함께 녹색 본/주황 관절 프록시를 렌더한다. 따라서 스킨/재질 문제와
+리타게팅 문제를 분리해서 볼 수 있으며, 메시를 배제하고 관절 운동만 보려면 `--hide-original-mesh`를
+쓴다. 프레임 수가 긴 clip은 `--start-frame`, `--end-frame`으로 대표 구간(보행 시작·방향 전환·팔
+스윙)을 고정한다. 후보 간 공정한 비교를 위해 출력 해상도, camera, 프레임 구간은 모두 동일하게
+기록한다.
+
+리뷰자는 각 clip에 대해 다음 네 항목을 1~5점으로 기록한다: (1) 발 고정/미끄러짐, (2) 무릎·팔꿈치
+굽힘 방향의 연속성, (3) 골반·루트 yaw의 안정성, (4) 전반적인 동작 자연스러움. 어느 항목이든 2점
+이하면 정량 gate 통과 여부와 관계없이 해당 후보는 승격하지 않고, 문제 프레임 범위와 관찰 내용을
+report에 남긴다.
+
 ## 서버 명령 예시 (A4, 10 epochs)
 
 ```bash

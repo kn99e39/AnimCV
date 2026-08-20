@@ -117,6 +117,10 @@ def _configure_scene(args, centre: Vector, span: float, frame_count: int, fps: f
     scene.render.engine = "BLENDER_WORKBENCH"
     scene.render.resolution_x, scene.render.resolution_y = args.width, args.height
     scene.render.resolution_percentage = 100
+    # Blender 5.x gates image_settings.file_format's valid enum values on
+    # media_type; FFMPEG is only selectable once media_type is "VIDEO".
+    if hasattr(scene.render.image_settings, "media_type"):
+        scene.render.image_settings.media_type = "VIDEO"
     scene.render.image_settings.file_format = "FFMPEG"
     scene.render.ffmpeg.format = "MPEG4"
     scene.render.ffmpeg.codec = "H264"

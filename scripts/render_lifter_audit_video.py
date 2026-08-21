@@ -38,6 +38,16 @@ _SKELETONS = {
     "reference": {"label": "reference", "bone_color": (0.31, 0.72, 0.86, 1.0), "joint_color": (0.31, 0.72, 0.86, 1.0)},
     "estimate": {"label": "estimate", "bone_color": (0.85, 0.64, 0.25, 1.0), "joint_color": (0.85, 0.64, 0.25, 1.0)},
 }
+_FLIP_ALERT_COLOR = (0.95, 0.12, 0.12, 1.0)
+# The two bone segments that meet at each hinge joint -- these, plus the
+# joint sphere itself, turn flip-alert red for whichever frames
+# export_lifter_audit_sequence.py flagged that joint as flipped.
+_HINGE_JOINT_SEGMENTS = {
+    "left_elbow": (("left_shoulder", "left_elbow"), ("left_elbow", "left_wrist")),
+    "right_elbow": (("right_shoulder", "right_elbow"), ("right_elbow", "right_wrist")),
+    "left_knee": (("left_hip", "left_knee"), ("left_knee", "left_ankle")),
+    "right_knee": (("right_hip", "right_knee"), ("right_knee", "right_ankle")),
+}
 
 
 def _args() -> argparse.Namespace:
@@ -85,6 +95,9 @@ def _make_proxy(kind: str, radius: float):
     style = _SKELETONS[kind]
     bone_material = _material(f"AnimCV audit bones ({kind})", style["bone_color"])
     joint_material = _material(f"AnimCV audit joints ({kind})", style["joint_color"])
+    # Shared by both skeletons (same name each call), so a flipped joint or
+    # segment reads as the same alert red regardless of which one it's on.
+    flip_material = _material("AnimCV audit flip alert", _FLIP_ALERT_COLOR)
     segments = {}
     for start, end in _BONES:
         bpy.ops.mesh.primitive_cylinder_add(vertices=10, radius=radius, depth=1.0)
@@ -109,10 +122,14 @@ def _make_proxy(kind: str, radius: float):
     arrow = bpy.context.object
     arrow.name = f"__animcv_{kind}_forward_arrow__"
     arrow.data.materials.append(joint_material)
-    return segments, joints, arrow
+    return segments, joints, arrow, bone_material, joint_material, flip_material
 
 
-def _update_proxy(points: dict[str, list[float]], segments, joints, arrow) -> None:
+def _update_proxy(
+    points: dict[str, list[float]], segments, joints, arrow, bone_material, joint_material, flip_material,
+    flipped_joints: list[str] = (),
+) -> None:
+    flipped_segments = {segment_key for joint in flipped_joints for segment_key in _HINGE_JOINT_SEGMENTS.get(joint, ())}
     for (start, end), segment in segments.items():
         a, b = Vector(points[start]), Vector(points[end])
         direction = b - a
@@ -121,8 +138,10 @@ def _update_proxy(points: dict[str, list[float]], segments, joints, arrow) -> No
         segment.rotation_mode = "QUATERNION"
         segment.rotation_quaternion = direction.to_track_quat("Z", "Y") if direction.length > 1e-6 else (1, 0, 0, 0)
         segment.scale = (1.0, 1.0, length)
+        segment.data.materials[0] = flip_material if (start, end) in flipped_segments else bone_material
     for name, joint in joints.items():
         joint.location = Vector(points[name])
+        joint.data.materials[0] = flip_material if name in flipped_joints else joint_material
     forward = _forward_vector(points)
     chest = Vector(points["thorax"])
     # The cone is centred on its own origin (base at local -Z, tip at +Z), so
@@ -193,15 +212,21 @@ def main() -> None:
     bpy.ops.object.delete(use_global=False)
     centre, span = _bounds(frames)
     proxies = {kind: _make_proxy(kind, span * 0.008) for kind in _SKELETONS}
-    for kind, (segments, joints, arrow) in proxies.items():
-        _update_proxy(frames[0][kind], segments, joints, arrow)
+
+    def render_frame(index: int) -> None:
+        # Only the prediction ("estimate") can flip against the reference;
+        # ground truth is never colored as an alert.
+        for kind, (segments, joints, arrow, bone_material, joint_material, flip_material) in proxies.items():
+            flipped = frames[index].get("flipped_joints", []) if kind == "estimate" else []
+            _update_proxy(frames[index][kind], segments, joints, arrow, bone_material, joint_material, flip_material, flipped)
+
+    render_frame(0)
     _configure_scene(args, centre, span, len(frames), fps)
 
     def update_for_render(scene):
         index = scene.frame_current - 1
         if 0 <= index < len(frames):
-            for kind, (segments, joints, arrow) in proxies.items():
-                _update_proxy(frames[index][kind], segments, joints, arrow)
+            render_frame(index)
 
     bpy.app.handlers.frame_change_pre.append(update_for_render)
     try:

@@ -73,9 +73,14 @@ def test_build_sequence_export_orders_frames_from_zero_and_pairs_gt_with_estimat
 
     n = len(H36M_NAMES)
     targets = np.arange(4 * n * 3, dtype=np.float32).reshape(4, n, 3)
+    # A uniform translation preserves every joint difference, so bend
+    # directions -- and therefore flip status -- are unchanged from targets.
     prediction = targets + 1000.0
+    valid = np.ones((4, n), dtype=bool)
 
-    export = module._build_sequence_export(prediction, targets, global_start=1, global_end=2, action="seq_a", fps=30.0)
+    export = module._build_sequence_export(
+        prediction, targets, valid, global_start=1, global_end=2, action="seq_a", fps=30.0,
+    )
 
     assert export["schema"] == module.SCHEMA
     assert export["action"] == "seq_a"
@@ -84,6 +89,28 @@ def test_build_sequence_export_orders_frames_from_zero_and_pairs_gt_with_estimat
     first = export["frames"][0]
     assert first["reference"]["pelvis"] == [float(value) for value in targets[1, 0]]
     assert first["estimate"]["pelvis"] == [float(value) for value in prediction[1, 0]]
+    assert first["flipped_joints"] == []
+
+
+def test_flipped_joints_matches_the_official_hinge_flip_definition():
+    """Reuses the same reversed-elbow geometry as
+    test_export_lifter_audit_frames.py's diagnostics test, so a joint this
+    script flags is guaranteed to be one the official report's
+    hinge_flip_rate counted the same way."""
+    module = _load_module()
+    from pose.pose_lifter import H36M_NAMES
+
+    n = len(H36M_NAMES)
+    reference = np.zeros((n, 3), dtype=np.float32)
+    reference[H36M_NAMES.index("left_shoulder")] = [0, 0, 0]
+    reference[H36M_NAMES.index("left_elbow")] = [0, -0.1, 0.3]
+    reference[H36M_NAMES.index("left_wrist")] = [0, 0, 0.6]
+    estimate = reference.copy()
+    estimate[H36M_NAMES.index("left_elbow")] = [0, 0.1, 0.3]  # bend flipped to the other side
+    valid = np.ones(n, dtype=bool)
+
+    assert module._flipped_joints(estimate, reference, valid) == ["left_elbow"]
+    assert module._flipped_joints(reference, reference, valid) == []
 
 
 def test_cli_writes_a_contiguous_window_json(tmp_path, monkeypatch, capsys):
@@ -122,7 +149,9 @@ def test_cli_writes_a_contiguous_window_json(tmp_path, monkeypatch, capsys):
     assert export["schema"] == module.SCHEMA
     assert export["fps"] == pytest.approx(25.0)
     assert [frame["frame_index"] for frame in export["frames"]] == list(range(5))
+    assert all("flipped_joints" in frame for frame in export["frames"])
 
     summary = json.loads(capsys.readouterr().out)
     assert summary["frame_count"] == 5
     assert summary["global_index_range"] == [1, 5]
+    assert summary["flipped_frame_count"] == sum(1 for frame in export["frames"] if frame["flipped_joints"])

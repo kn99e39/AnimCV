@@ -27,9 +27,11 @@ from typing import Any
 
 import numpy as np
 
-from training.temporal_lifter import H36M_NAMES, _arrays, _frame_metadata, _model, _predict_batched, _torch, load_dataset
+from training.temporal_lifter import (
+    H36M_NAMES, _arrays, _frame_metadata, _hinge_errors, _model, _predict_batched, _torch, load_dataset,
+)
 
-SCHEMA = "animcv_lifter_audit_sequence_v1"
+SCHEMA = "animcv_lifter_audit_sequence_v2"
 
 
 def _action_bounds(metadata: list[dict[str, str | None]], action: str) -> tuple[int, int]:
@@ -64,14 +66,26 @@ def _character_points(row: np.ndarray) -> dict[str, list[float]]:
     return {name: [float(value) for value in row[index]] for index, name in enumerate(H36M_NAMES)}
 
 
+def _flipped_joints(prediction_row: np.ndarray, target_row: np.ndarray, valid_row: np.ndarray) -> list[str]:
+    """Joint names (``left_elbow``/``right_elbow``/``left_knee``/``right_knee``)
+    whose bend direction is reversed against the reference this frame.
+
+    Reuses the official evaluation's own ``_hinge_errors``, so a joint marked
+    here is guaranteed to be a joint the report's ``hinge_flip_rate`` counted.
+    """
+    return [hinge["joint"] for hinge in _hinge_errors(prediction_row, target_row, valid_row) if hinge["flipped"]]
+
+
 def _build_sequence_export(
-    prediction: np.ndarray, targets: np.ndarray, global_start: int, global_end: int, action: str, fps: float,
+    prediction: np.ndarray, targets: np.ndarray, valid: np.ndarray,
+    global_start: int, global_end: int, action: str, fps: float,
 ) -> dict[str, Any]:
     frames = [
         {
             "frame_index": local_index,
             "reference": _character_points(targets[global_index]),
             "estimate": _character_points(prediction[global_index]),
+            "flipped_joints": _flipped_joints(prediction[global_index], targets[global_index], valid[global_index]),
         }
         for local_index, global_index in enumerate(range(global_start, global_end + 1))
     ]
@@ -100,7 +114,7 @@ def _run(checkpoint: Path, holdout: Path, device: str):
         if source_fps:
             fps = float(source_fps)
             break
-    return prediction, targets, metadata, fps
+    return prediction, targets, valid, metadata, fps
 
 
 def main() -> int:
@@ -115,19 +129,20 @@ def main() -> int:
     parser.add_argument("--out", required=True, type=Path)
     args = parser.parse_args()
 
-    prediction, targets, metadata, dataset_fps = _run(args.checkpoint, args.holdout, args.device)
+    prediction, targets, valid, metadata, dataset_fps = _run(args.checkpoint, args.holdout, args.device)
     global_start, global_end = _resolve_window(metadata, args.action, args.start_frame, args.end_frame)
     fps = args.fps if args.fps is not None else dataset_fps
     if not fps:
         raise ValueError("dataset has no recorded source FPS; pass --fps explicitly")
 
-    export = _build_sequence_export(prediction, targets, global_start, global_end, args.action, fps)
+    export = _build_sequence_export(prediction, targets, valid, global_start, global_end, args.action, fps)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(export, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
     print(json.dumps({
         "action": args.action,
         "frame_count": len(export["frames"]),
+        "flipped_frame_count": sum(1 for frame in export["frames"] if frame["flipped_joints"]),
         "fps": fps,
         "global_index_range": [global_start, global_end],
         "out": str(args.out),

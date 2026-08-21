@@ -62,6 +62,25 @@ def _look_at(camera, target: Vector) -> None:
     camera.rotation_euler = (target - camera.location).to_track_quat("-Z", "Y").to_euler()
 
 
+def _forward_vector(points: dict[str, list[float]]) -> Vector:
+    """Chest-facing direction, derived from the shoulder line and spine.
+
+    A bare cylinder/sphere proxy has no front or back, so a root-yaw flip and
+    a correct-but-rotated torso look identical, and a hinge "flip" (a knee or
+    elbow bending the wrong way) can't be judged without knowing which way
+    the body is actually facing. This cross product gives an anterior normal
+    that turns with the torso -- shoulder line x spine axis -- rather than
+    assuming a fixed world "front" axis, so it stays meaningful through lean
+    and yaw alike. The same formula runs on both skeletons, so a real
+    orientation flip shows up as the two arrows pointing apart, regardless of
+    which absolute direction this convention calls "forward".
+    """
+    shoulder_axis = Vector(points["right_shoulder"]) - Vector(points["left_shoulder"])
+    spine_axis = Vector(points["thorax"]) - Vector(points["pelvis"])
+    forward = shoulder_axis.cross(spine_axis)
+    return forward.normalized() if forward.length > 1e-6 else Vector((0.0, 0.0, 1.0))
+
+
 def _make_proxy(kind: str, radius: float):
     style = _SKELETONS[kind]
     bone_material = _material(f"AnimCV audit bones ({kind})", style["bone_color"])
@@ -83,10 +102,17 @@ def _make_proxy(kind: str, radius: float):
             joint.name = f"__animcv_{kind}_joint__{name}"
             joint.data.materials.append(joint_material)
             joints[name] = joint
-    return segments, joints
+    # A cone planted at the chest, pointing along the torso's forward normal.
+    # Blender's default cone extends along local +Z, matching the same
+    # to_track_quat("Z", "Y") alignment used for the bone segments above.
+    bpy.ops.mesh.primitive_cone_add(vertices=10, radius1=radius * 3.2, radius2=0.0, depth=radius * 9.0)
+    arrow = bpy.context.object
+    arrow.name = f"__animcv_{kind}_forward_arrow__"
+    arrow.data.materials.append(joint_material)
+    return segments, joints, arrow
 
 
-def _update_proxy(points: dict[str, list[float]], segments, joints) -> None:
+def _update_proxy(points: dict[str, list[float]], segments, joints, arrow) -> None:
     for (start, end), segment in segments.items():
         a, b = Vector(points[start]), Vector(points[end])
         direction = b - a
@@ -97,6 +123,14 @@ def _update_proxy(points: dict[str, list[float]], segments, joints) -> None:
         segment.scale = (1.0, 1.0, length)
     for name, joint in joints.items():
         joint.location = Vector(points[name])
+    forward = _forward_vector(points)
+    chest = Vector(points["thorax"])
+    # The cone is centred on its own origin (base at local -Z, tip at +Z), so
+    # offsetting by half its depth plants the base at the chest and lets the
+    # tip point outward along `forward`.
+    arrow.location = chest + forward * (arrow.dimensions.z / 2.0)
+    arrow.rotation_mode = "QUATERNION"
+    arrow.rotation_quaternion = forward.to_track_quat("Z", "Y")
 
 
 def _bounds(frames: list[dict]) -> tuple[Vector, float]:
@@ -159,15 +193,15 @@ def main() -> None:
     bpy.ops.object.delete(use_global=False)
     centre, span = _bounds(frames)
     proxies = {kind: _make_proxy(kind, span * 0.008) for kind in _SKELETONS}
-    for kind, (segments, joints) in proxies.items():
-        _update_proxy(frames[0][kind], segments, joints)
+    for kind, (segments, joints, arrow) in proxies.items():
+        _update_proxy(frames[0][kind], segments, joints, arrow)
     _configure_scene(args, centre, span, len(frames), fps)
 
     def update_for_render(scene):
         index = scene.frame_current - 1
         if 0 <= index < len(frames):
-            for kind, (segments, joints) in proxies.items():
-                _update_proxy(frames[index][kind], segments, joints)
+            for kind, (segments, joints, arrow) in proxies.items():
+                _update_proxy(frames[index][kind], segments, joints, arrow)
 
     bpy.app.handlers.frame_change_pre.append(update_for_render)
     try:

@@ -5,7 +5,7 @@ pytest.importorskip("torch", reason="supervised temporal lifter tests require th
 
 from pose.pose_lifter import LiftedPoseFrame, LiftedPosePoint, LiftedPoseSequence, H36M_NAMES
 from pose.pose_types import PoseFrame, PoseLandmark, PoseSequence
-from training.temporal_lifter import BONES, H36M_NAMES, HINGE_CHAINS, TrainingConfig, _augment_inputs, _hinge_flip_loss, _hinge_loss, _model, _normalize_inputs, _rank_shard, _source_balanced_permutation, _supervision_loss, _vector_loss, _yaw_axis_loss, _yaw_tail_loss, build_dataset, combine_datasets, evaluate, infer, load_dataset, preflight, save_dataset, train
+from training.temporal_lifter import BONES, END_EFFECTOR_NAMES, H36M_NAMES, HINGE_CHAINS, TrainingConfig, _augment_inputs, _end_effector_loss, _hinge_flip_loss, _hinge_loss, _model, _normalize_inputs, _rank_shard, _source_balanced_permutation, _supervision_loss, _vector_loss, _yaw_axis_loss, _yaw_tail_loss, build_dataset, combine_datasets, evaluate, infer, load_dataset, preflight, save_dataset, train
 
 
 def _pose(index):
@@ -223,6 +223,47 @@ def test_hinge_flip_loss_only_penalizes_reversed_bend_direction():
 
     assert _hinge_flip_loss(torch, target, target, valid) == pytest.approx(0)
     assert _hinge_flip_loss(torch, reversed_bend, target, valid) == pytest.approx(1.0)
+
+
+def test_end_effector_loss_only_penalizes_wrist_and_ankle_error():
+    import torch
+
+    target = torch.zeros((1, 17, 3))
+    valid = torch.ones((1, 17), dtype=torch.bool)
+
+    off_target_shoulder = target.clone()
+    off_target_shoulder[0, H36M_NAMES.index("left_shoulder"), 0] = 1.0
+    off_target_wrist = target.clone()
+    off_target_wrist[0, H36M_NAMES.index("left_wrist"), 0] = 1.0
+
+    assert _end_effector_loss(torch, target, target, valid) == pytest.approx(0)
+    assert _end_effector_loss(torch, off_target_shoulder, target, valid) == pytest.approx(0)
+    assert _end_effector_loss(torch, off_target_wrist, target, valid) > 0
+
+
+def test_end_effector_loss_weight_amplifies_wrist_and_ankle_error_in_supervision_loss():
+    import torch
+
+    target = torch.zeros((1, 17, 3))
+    valid = torch.ones((1, 17, 1))
+    wrong_wrist = target.clone()
+    wrong_wrist[0, H36M_NAMES.index("left_wrist"), 0] = 1.0
+    wrong_shoulder = target.clone()
+    wrong_shoulder[0, H36M_NAMES.index("left_shoulder"), 0] = 1.0
+
+    base = TrainingConfig(window=3, channels=8, epochs=1, batch_size=1)
+    weighted = TrainingConfig(window=3, channels=8, epochs=1, batch_size=1, end_effector_loss_weight=5.0)
+
+    base_wrist_loss = _supervision_loss(torch, wrong_wrist, target, valid, base)
+    weighted_wrist_loss = _supervision_loss(torch, wrong_wrist, target, valid, weighted)
+    weighted_shoulder_loss = _supervision_loss(torch, wrong_shoulder, target, valid, weighted)
+
+    # Adding the weight only grows loss for an end-effector error...
+    assert weighted_wrist_loss > base_wrist_loss
+    # ...not for an equally-sized error on a non-end-effector joint, which the
+    # coordinate term alone already weighs the same as the wrist.
+    assert weighted_shoulder_loss == pytest.approx(base_wrist_loss)
+    assert set(END_EFFECTOR_NAMES) == {"left_wrist", "right_wrist", "left_ankle", "right_ankle"}
 
 
 def test_vectorized_structural_losses_match_per_chain_reference_reduction():

@@ -73,6 +73,7 @@ def _config(args: argparse.Namespace, *, epochs: int, init_checkpoint: Path | No
         bone_loss_weight=args.bone_loss_weight, torso_loss_weight=args.torso_loss_weight,
         hinge_loss_weight=args.hinge_loss_weight, yaw_loss_weight=args.yaw_loss_weight,
         yaw_tail_loss_weight=args.yaw_tail_loss_weight, hinge_flip_loss_weight=args.hinge_flip_loss_weight,
+        end_effector_loss_weight=args.end_effector_loss_weight,
         init_checkpoint=str(init_checkpoint) if init_checkpoint else None,
     )
 
@@ -136,6 +137,7 @@ def main() -> int:
     parser.add_argument("--yaw-loss-weight", type=float, default=0.0)
     parser.add_argument("--yaw-tail-loss-weight", type=float, default=0.0)
     parser.add_argument("--hinge-flip-loss-weight", type=float, default=0.0)
+    parser.add_argument("--end-effector-loss-weight", type=float, default=0.0)
     parser.add_argument("--candidates", default="mpi_only,mpi_3dpw,direct_mix,amass_pretrain,amass_pretrain_mpi_3dpw_finetune",
                         help="comma-separated subset of the reproducible candidate matrix")
     args = parser.parse_args()

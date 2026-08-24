@@ -130,6 +130,52 @@ samples/s 대비 2.27배 빠르며, checkpoint/report에 seed 계약이 기록�
 validation, holdout JSON의 SHA-256·byte size·frame/sequence count를 기록한다. 후보 간 정량 또는
 정성 비교 전 이 값이 일치하는지 확인한다. 다르면 동일 조건 실험으로 취급하지 않는다.
 
+### A9 결과 (2026-08-19, fingerprint 도입 후 공식 기준선)
+
+A8 고정-seed batch 128과 정확히 동일한 설정(위 표)으로, `dataset_fingerprints` 도입 이후
+재실행한 run. checkpoint를 SHA-256으로 비교한 결과 A8과 **비트 단위로 동일**했다 (seed 계약
+검증). 처리량만 3,470.9 samples/s, 1,335.6초로 A8보다 느렸으나 가중치가 동일하므로 환경
+변동으로 기록하고 architecture regression으로 해석하지 않는다.
+
+| Holdout | PA-MPJPE mm | yaw MAE ° | yaw P95 ° | hinge flip | 판정 |
+| --- | ---: | ---: | ---: | ---: | --- |
+| 3DPW test | 75.31 | 14.90 | 34.77 | 2.36% | yaw P95 실패 |
+| AMASS internal | 69.19 | 8.77 | 22.37 | 2.32% | 통과 |
+
+이후 후보 비교의 유일한 fingerprint 기준선이다 (`ablation_a9_fingerprinted_baseline_10e`).
+
+### hinge_flip_rate gate 제거 (2026-08-24)
+
+`hinge_flip_rate <= 0.0`은 하나의 hinge 샘플이라도 90도를 넘는 반전이 있으면 실패하는 gate였다.
+3DPW holdout 37개 시퀀스를 정성 review video(`scripts/render_lifter_audit_video.py`)로 직접
+확인한 결과, 집계 flip률이 가장 낮은 시퀀스(`downtown_bar_00:actor1`, 0.16%)조차 단일 프레임에서
+176도 반전이 있었다 — **flip률 0%인 시퀀스가 holdout에 하나도 없다.** 이 gate는 후보의 품질과
+무관하게 어떤 checkpoint도 통과할 수 없는 조건이었으므로 `criteria`에서 제거했다 (`445efb8`).
+`hinge_flip_rate`/`hinge_direction_mae_degrees`/`hinge_direction_p95_degrees`는 진단용으로
+report에 계속 남는다. 이후 gate는 PA-MPJPE/yaw MAE/yaw P95 3개뿐이다.
+
+같은 커밋에서 IK 방식 `end_effector_loss_weight`를 추가했다. 기존 좌표 loss는 17개 관절을 동일
+가중치로 다루는데, 이 항목은 limb-chain 말단(`left_wrist`/`right_wrist`/`left_ankle`/
+`right_ankle` — `constraint_target_builder.py`가 이미 "end_effector"라고 부르는 것과 동일)의
+위치 오차만 추가로 가중해, "말단이 도착한 위치"를 우선시하는 IK 관점을 loss에 직접 반영한다.
+
+### A10 결과 (2026-08-24, end_effector_loss_weight=0.2, rejected)
+
+A9와 완전히 동일한 조건(dataset fingerprint 6개 전부 일치 확인)에 `--end-effector-loss-weight 0.2`
+하나만 추가한 단일 가설 run.
+
+| Holdout | PA-MPJPE mm | yaw MAE ° | yaw P95 ° | hinge flip | 판정 (3-gate) |
+| --- | ---: | ---: | ---: | ---: | --- |
+| 3DPW test | 74.66 (A9 75.31) | 13.70 (A9 14.90) | 34.91 (A9 34.77) | 2.41% (A9 2.36%) | yaw P95 실패 |
+| AMASS internal | 80.03 (A9 69.19) | 8.51 (A9 8.77) | 23.00 (A9 22.37) | 3.00% (A9 2.32%) | **PA-MPJPE 신규 실패** |
+
+3DPW PA-MPJPE와 yaw MAE는 소폭 개선됐지만 정작 게이트를 막던 yaw P95는 그대로거나 더 나빠졌다
+(34.77 → 34.91). AMASS는 PA-MPJPE가 69.19 → 80.03 mm로 크게 악화돼 새로 gate를 실패했다
+(기존엔 통과). training MPJPE 자체도 40.19 → 44.34 mm로 악화됐다 — 말단 4개 관절에 가중치를
+더한 것이 나머지 13개 관절/전체 좌표 적합을 밀어낸 것으로 보인다. yaw P95를 막는 원인 해결에는
+도움이 안 됐고 AMASS 쪽에 새 회귀를 만들었으므로 **거절**한다. 더 작은 weight(예: 0.05)로
+재시도하거나, 다른 가설(yaw 직접 supervision 등)로 전환을 고려한다.
+
 ## 사용자 정성 평가: 리그 애니메이션 review video
 
 수치 gate가 통과하더라도 관절의 순간적인 반전, foot sliding, 루트의 회전 흔들림은 사람이 보는

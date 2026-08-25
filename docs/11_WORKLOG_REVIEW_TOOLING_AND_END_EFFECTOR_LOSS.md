@@ -1,8 +1,9 @@
-# Worklog — 2026-08-24
+# Worklog — Review Tooling and End-Effector Loss (2026-08-24)
 
 > 이 문서부터 "다음 Agent를 위한 handoff"가 아니라 **세션 단위 작업 기록**으로 남긴다.
-> 매 세션 새 번호로 추가하고(다음은 `12_WORKLOG_<date>.md`), 이전 파일을 지우거나 덮어쓰지
-> 않는다. 실험 수치·데이터 계약처럼 계속 갱신되는 사실은 여전히
+> 매 세션 새 번호로 추가하고, 파일명은 그 세션의 작업을 관통하는 이름으로 짓는다(날짜는
+> 제목 안에만 적는다). 이전 파일을 지우거나 덮어쓰지 않는다. 실험 수치·데이터 계약처럼
+> 계속 갱신되는 사실은 여전히
 > `docs/10_TEMPORAL_LIFTER_IMPROVEMENT_ABLATION.md`가 단일 출처(source of truth)이고, 이
 > 문서는 "그 세션에 무엇을 왜 했는지"만 기록한다. 서버 환경/컨테이너 세부사항은
 > `docs/06_SERVER_AI_AGENT_TRAINING_RUNBOOK.md`가 이미 다루므로 여기서 반복하지 않는다.

@@ -1,7 +1,8 @@
-# Worklog — 2026-08-25
+# Worklog — Yaw Tail Attribution and A11 (2026-08-25)
 
-> 형식은 `docs/11_WORKLOG_2026-08-24.md`가 정한 관례를 따른다: 세션 서사만 여기 남기고,
-> 실험 수치·데이터 계약·gate 정의는 `docs/10_TEMPORAL_LIFTER_IMPROVEMENT_ABLATION.md`가
+> 형식은 `docs/11_WORKLOG_REVIEW_TOOLING_AND_END_EFFECTOR_LOSS.md`가 정한 관례를 따른다:
+> 세션 서사만 여기 남기고 파일명은 그 세션의 작업을 관통하는 이름으로 짓는다(날짜는 제목
+> 안에만). 실험 수치·데이터 계약·gate 정의는 `docs/10_TEMPORAL_LIFTER_IMPROVEMENT_ABLATION.md`가
 > 단일 출처다. 서버 환경은 `docs/06_SERVER_AI_AGENT_TRAINING_RUNBOOK.md`를 그대로 참조한다.
 
 ## 시작 상태

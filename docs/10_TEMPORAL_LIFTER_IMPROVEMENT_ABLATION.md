@@ -236,6 +236,56 @@ training MPJPE가 40.19 → 78.23 mm로 거의 두 배로 악화됐다. 정작 �
 weight 조정이 아니라 다른 접근(표현/관측 증거 자체를 다루는 방향)이 필요하다는 결론이며, 이번
 batch에서 그 다음 아키텍처를 구현하지는 않는다.
 
+### A11 붕괴 원인 규명 (2026-08-25, 학습 없이 diagnostic replay만)
+
+A11이 왜 이렇게 파괴적이었는지 원인을 규명하기 전에는 selector를 바꾸지 말라는 지시에 따라,
+`scripts/diagnose_yaw_tail_gradients.py`(신규, 학습 없음)로 A9/A11이 실제로 봤던 첫 epoch의
+동일 batch(같은 seed·augmentation·source-balanced permutation) 10개를 세 가지 실제 모델
+상태 — **초기화 직후**, **A9 최종 checkpoint**, **A11 최종 checkpoint** — 에 재생시켜 loss 성분과
+gradient 상호작용을 분해했다.
+
+**선행 확인(Section 1)**: `train()`은 epoch/step 단위 loss를 전혀 기록하지 않는다 — A9/A11 모두
+최종 post-training 집계값(`training_mpjpe_mm`) 하나만 report에 남고, A11은 detached 컨테이너로
+실행돼 stdout log조차 없다. 따라서 "언제부터 발산했는지"는 기존 기록으로 answer 불가 — 이 한계를
+그대로 인정하고 아래 diagnostic replay로 대체했다(재학습 없이).
+
+**핵심 발견**: `yaw_tail_pooled`(가중치 적용 전 raw)의 gradient norm 대비 base(A9 전체 objective,
+bone/torso/hinge 가중 포함) gradient norm의 비율이 모델 상태에 따라 극적으로 변한다.
+
+| 모델 상태 | base gradient norm | yaw gradient norm(raw) | 비율(yaw/base) | pooled tail loss 중 AMASS 비중 |
+| --- | ---: | ---: | ---: | ---: |
+| 초기화 직후 | 0.659 | 1.114 | **1.7배** | 41% |
+| A9 최종 checkpoint | 0.011 | 35.48 | **3,170배** | **87%** |
+| A11 최종 checkpoint | 0.018 | 2.75 | 157배 | 59% |
+
+base task(좌표/구조 loss)가 수렴할수록 base gradient는 근처 극소점이라 거의 0으로 줄어드는데,
+`yaw_tail`의 raw 크기는 전혀 같이 줄지 않는다 — A9가 이미 잘 맞춘 상태에서 yaw_tail 항만 켜면
+gradient가 base보다 **3,000배 이상** 커진다. weight 0.05를 곱해도 이 정도 스케일 불균형은
+전혀 흡수되지 않는다(가중된 yaw_tail이 여전히 coordinate loss와 맞먹거나 넘어서는 크기,
+초기화 상태에서 이미 coordinate 0.159 대비 가중 yaw_tail 0.100).
+
+**방향 충돌(Case C)은 주 원인이 아니다**: cosine(G_base, G_yaw)은 초기화 직후에만 일부 배치에서
+음수(10개 중 4개)였고, A9/A11 학습된 상태에서는 **10개 배치 전부 양수**(0.04~0.13)였다 — 방향은
+대체로 정렬돼 있다. 문제는 방향이 아니라 **크기**다.
+
+**selector granularity(Case A)는 원인이 아니다**: frame-level counterfactual selector(evaluator와
+동일하게 frame당 pair를 먼저 평균한 뒤 순위, `_yaw_tail_loss_frame_level`, 학습에는 안 씀)로
+동일 배치·동일 모델 상태를 재계산해도 gradient norm과 비율이 pooled selector와 사실상 동일하다
+(A9 상태에서 yaw gradient norm 35.48 vs 35.95, 비율 3,170배 vs 3,200배; cosine도 거의 동일).
+**selector를 frame-level로 바꿔도 이 문제는 사라지지 않는다** — 그래서 이번 batch는 Section 8(frame-level
+후보 학습)로 진행하지 않는다.
+
+**source 불균형(Case D)도 함께 존재한다**: A9 수렴 상태에서 pooled tail loss의 **87%가 AMASS**에서
+나온다(초기화 상태 41%, A11 학습 후 59%에서 크게 증가). A11에서 AMASS PA-MPJPE가 3DPW보다 훨씬
+더 크게 악화된 것(+25.1mm vs +10.7mm)과 방향이 일치한다 — 학습이 진행될수록 yaw-tail 신호가
+사실상 AMASS 하나의 도메인에 집중된다.
+
+**판정: Case B(gradient-scale 불균형)가 주 원인, Case D(source 불균형)가 이를 증폭하는 부차
+원인. Case A(selector 구조)와 Case C(방향 충돌)는 배제.** 지시에 따라 frame-level selector
+후보를 구현·학습하지 않는다. 다음 아키텍처 질문은 "tail selection을 어떻게 고를지"가 아니라
+"orientation supervision 자체의 형태(스케일이 base 3D objective와 자연스럽게 맞물리는 형태,
+그리고 소수 도메인에 좌우되지 않는 정규화)"가 돼야 한다.
+
 ## 사용자 정성 평가: 리그 애니메이션 review video
 
 수치 gate가 통과하더라도 관절의 순간적인 반전, foot sliding, 루트의 회전 흔들림은 사람이 보는

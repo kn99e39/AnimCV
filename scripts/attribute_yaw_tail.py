@@ -147,7 +147,7 @@ def _pair_disagreement(rows: list[dict[str, Any]], disagreement_deg: float = 20.
     both = [row for row in rows if row["shoulder_error_deg"] is not None and row["hip_error_deg"] is not None]
     disagreements = [row for row in both if abs(row["shoulder_error_deg"] - row["hip_error_deg"]) >= disagreement_deg]
     only_shoulder = [row for row in rows if row["shoulder_error_deg"] is not None and row["hip_error_deg"] is None]
-    only_hip = [row for row in rows if row["hip_error_deg"] is None and row["shoulder_error_deg"] is not None]
+    only_hip = [row for row in rows if row["shoulder_error_deg"] is None and row["hip_error_deg"] is not None]
     neither = [row for row in rows if row["shoulder_error_deg"] is None and row["hip_error_deg"] is None]
     return {
         "frames_with_both_pairs": len(both),

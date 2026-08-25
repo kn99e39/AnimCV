@@ -122,21 +122,28 @@ def test_temporal_runs_distinguishes_contiguous_streak_from_singletons():
 
 def test_pair_disagreement_flags_large_shoulder_hip_gaps_and_missing_pairs():
     module = _load_module()
-    rows = [
-        _row("a", 30.0, shoulder=10.0, hip=12.0),   # agree
-        _row("a", 40.0, shoulder=5.0, hip=60.0),    # disagree >= 20
-        _row("a", None, shoulder=8.0, hip=None),    # hip missing
-        _row("a", None, shoulder=None, hip=9.0),    # shoulder missing
-        _row("a", None, shoulder=None, hip=None),   # both missing
-    ]
+    rows = (
+        [_row("a", 30.0, shoulder=10.0, hip=12.0)]        # agree
+        + [_row("a", 40.0, shoulder=5.0, hip=60.0)]       # disagree >= 20
+        + [_row("a", None, shoulder=8.0, hip=None)] * 3   # hip missing (shoulder present) x3
+        + [_row("a", None, shoulder=None, hip=9.0)] * 2   # shoulder missing (hip present) x2
+        + [_row("a", None, shoulder=None, hip=None)]      # both missing
+    )
+    assert len(rows) == 8  # sanity: every row accounted for below
 
     result = module._pair_disagreement(rows, disagreement_deg=20.0)
 
     assert result["frames_with_both_pairs"] == 2
     assert result["frames_disagreeing_ge_20deg"] == 1
-    assert result["frames_missing_hip_pair"] == 1
-    assert result["frames_missing_shoulder_pair"] == 1
+    # Deliberately asymmetric counts (3 vs 2) so a category swap (this
+    # function's earlier bug: "missing_shoulder_pair" computed the same
+    # subset as "missing_hip_pair") cannot pass by coincidence.
+    assert result["frames_missing_hip_pair"] == 3
+    assert result["frames_missing_shoulder_pair"] == 2
     assert result["frames_missing_both_pairs"] == 1
+    total = (result["frames_with_both_pairs"] + result["frames_missing_hip_pair"]
+             + result["frames_missing_shoulder_pair"] + result["frames_missing_both_pairs"])
+    assert total == len(rows)
 
 
 def test_build_attribution_reports_bins_and_frame_count_without_torch():

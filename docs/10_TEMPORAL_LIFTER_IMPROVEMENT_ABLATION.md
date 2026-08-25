@@ -176,6 +176,66 @@ A9와 완전히 동일한 조건(dataset fingerprint 6개 전부 일치 확인)�
 도움이 안 됐고 AMASS 쪽에 새 회귀를 만들었으므로 **거절**한다. 더 작은 weight(예: 0.05)로
 재시도하거나, 다른 가설(yaw 직접 supervision 등)로 전환을 고려한다.
 
+### A9 root-yaw P95 tail 원인 규명 (2026-08-25, 학습 없이 진단만)
+
+A10이 yaw P95 원인과 무관했으므로, 새 아키텍처/weight를 만지기 전에 A9 checkpoint를 3DPW holdout에
+재추론해 tail을 직접 원인 규명했다 (`scripts/attribute_yaw_tail.py`, 학습 없음, 평가 semantics 불변).
+
+**정량**: yaw error 분포는 ≥30° 8.39%(2,961/35,310), ≥45° 1.71%, ≥90° 0.028%(10 frames),
+**≥150° 0건**. 37개 시퀀스 중 34개가 30° 이상 오차를 가져(top-1 시퀀스가 전체 tail의 11.5%만
+차지) **넓게 분산**돼 있고 소수 시퀀스에 집중돼 있지 않다. 30° 기준 연속 run은 327개, 최장
+136프레임(다운타운 워킹 시퀀스), 39%가 5프레임 이상 지속 — 순간적 튐이 아니라 일부는 지속적인
+드리프트다. 반면 ≥90° 오차는 7 run 중 5개가 단일 프레임(고립), 즉 극단적 오차는 드물고 고립적이다.
+어깨/엉덩이 pair 20° 이상 불일치는 34,456개 중 1,300개(3.8%)뿐이라 pair 간 모순은 부차적이다.
+tail 프레임은 non-tail 대비 (pelvis/torso 정규화된) 어깨·엉덩이 2D 입력 span이 32~33% 더
+좁다 — 정면/후면에 가까운 자세일수록 오차가 크다는 부분적 상관은 있지만, confidence는 tail/non-tail
+간 차이가 거의 없다(가려짐·저신뢰 신호는 아니다).
+
+**정성**: worst-P95(`downtown_stairs_00:actor0`, 59.15°), 최장-run(`downtown_walking_00:actor1`,
+47.42°), P95 근접(`downtown_bus_00:actor1`, 32.26°), 대조군(`downtown_bar_00:actor0`, 16.97°) 4개
+시퀀스를 각 271프레임 고정 구간(GT/예측 overlay + 가슴 방향 wedge)으로 렌더해 worst-error 프레임을
+확인했다. 4건 모두 두 wedge가 보고된 오차 크기만큼만 벌어져 있었고, 근사 180° 반전(앞뒤가 뒤바뀐
+모습)은 관찰되지 않았다 — 정량 결과(≥150° 0건)와 일치.
+
+**결론**: yaw tail은 주로 학습으로 개선 가능한 잔차(broadly-distributed, 대부분 30–45° 대역,
+근사-180° 반전 없음)로 판단되며, 2D 관측의 정면/후면 모호성이 부차적으로 기여한다는 증거도
+확인됐다(대체·대안 아님, 함께 존재). Case A/B 조건 충족 → `yaw_tail_loss` 계약 검증으로 진행.
+
+### yaw_tail_loss 계약 검증 (2026-08-25)
+
+`tests/test_yaw_tail_loss_contract.py` 5개 테스트로 실제 torch/autograd에서 확인: (1) 정확히
+top `ceil(N/20)` pooled pair-관측만 선택, 나머지에 희석되지 않음, (2) 선택된 어깨/엉덩이 joint 외
+(예: wrist, 비선택 sample)에는 gradient가 정확히 0, (3) A11 계획된 설정(yaw_tail_loss_weight=0.05,
+나머지 전부 0)이 다른 항을 재활성화하지 않음. **PASS.**
+
+단, 실제 계약상 근사(caveat) 하나를 발견해 기록한다: 이 loss는 매 (frame, pair) 관측을 그대로
+pool해서 순위를 매기는데, 정작 게이트가 쓰는 `root_yaw_p95_degrees`는 frame마다 어깨/엉덩이를
+먼저 평균한 뒤 frame 단위로 순위를 매긴다. 구성한 반례로, 한쪽 pair만 극단적으로 나쁜 frame이
+실제로는 combined 오차가 더 낮은데도 pooled 선택에서 우선될 수 있음을 보였다. 실제 A9 3DPW holdout에서
+이 pair 불일치(≥20°)율은 3.8%로 측정됐으므로 — 실재하지만 지배적이지 않은 근사로 판단해 GO를
+막지 않았다.
+
+### A11 결과 (2026-08-25, yaw_tail_loss_weight=0.05, rejected — Case B)
+
+A9와 dataset fingerprint 6개 완전히 동일, `--yaw-tail-loss-weight 0.05` 하나만 추가
+(`yaw_loss_weight`/`hinge_flip_loss_weight`/`end_effector_loss_weight` 전부 0으로 강제).
+
+| Holdout | PA-MPJPE mm | yaw MAE ° | yaw P95 ° | hinge flip | 판정 (3-gate) |
+| --- | ---: | ---: | ---: | ---: | --- |
+| 3DPW test | 86.01 (A9 75.31) | 14.62 (A9 14.90) | **35.21** (A9 34.77) | 1.97% (A9 2.36%) | **PA-MPJPE 신규 실패**, yaw P95 실패(악화) |
+| AMASS internal | 94.32 (A9 69.19) | 9.43 (A9 8.77) | 21.96 (A9 22.37) | 3.57% (A9 2.32%) | **PA-MPJPE 신규 실패** |
+
+training MPJPE가 40.19 → 78.23 mm로 거의 두 배로 악화됐다. 정작 막고 있던 yaw P95는 개선되지
+않고 오히려 소폭 악화(34.77→35.21°)됐고, 두 holdout 모두 PA-MPJPE가 크게 악화돼 기존에 통과하던
+게이트까지 새로 실패했다. Section 3에서 고정한 동일 4개 시퀀스·프레임으로 A9/A11 matched 정성
+비교도 수행 — 시각적으로도 orientation 어긋남이 개선된 정황이 없었다(오히려 전반적 pose 정합이
+눈에 띄게 흐트러짐, 급격한 training MPJPE 악화와 일치).
+
+**판정: Case B — 기존 `yaw_tail_loss`는 A9의 통제된 조건에서 tail을 실질적으로 개선하지 못하며,
+다른 weight/percentile/CVaR 비율을 추가로 시도하지 않는다.** yaw P95를 해결하려면 이 loss의
+weight 조정이 아니라 다른 접근(표현/관측 증거 자체를 다루는 방향)이 필요하다는 결론이며, 이번
+batch에서 그 다음 아키텍처를 구현하지는 않는다.
+
 ## 사용자 정성 평가: 리그 애니메이션 review video
 
 수치 gate가 통과하더라도 관절의 순간적인 반전, foot sliding, 루트의 회전 흔들림은 사람이 보는

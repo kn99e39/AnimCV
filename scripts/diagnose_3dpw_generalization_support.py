@@ -451,7 +451,9 @@ def _build_split(name: str, path: Path, dataset: dict[str, Any], normalization: 
         "mean_abs_joint_velocity_normalized_s": np.full((len(targets), len(H36M_NAMES), 2), np.nan),
         "window_net_joint_displacement_normalized": np.full((len(targets), len(H36M_NAMES), 2), np.nan),
     }
-    target_descriptor = np.full((len(targets), 2 + 2 + 2 + 4 + 15), np.nan, dtype=np.float64)
+    # root unit (2) + pair units (4) + signed axes (4) + pair lengths (2)
+    # + temporal target features (15).
+    target_descriptor = np.full((len(targets), 2 + 4 + 4 + 2 + 15), np.nan, dtype=np.float64)
     input_descriptor = np.full((len(targets), 34 + 17 + 34 + 34), np.nan, dtype=np.float64)
     target_descriptor_valid = np.zeros(len(targets), dtype=bool)
     input_descriptor_valid = np.zeros(len(targets), dtype=bool)

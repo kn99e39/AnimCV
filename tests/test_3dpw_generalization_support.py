@@ -39,11 +39,16 @@ def test_gt_descriptor_preserves_requested_signed_z_and_forward_y_axes():
     targets[:, module.RIGHT_HIP] = [0.8, 0.4, 0.4]
 
     geometry = module._target_frame_geometry(targets, valid)
+    offsets = module._window_offsets(len(targets), 5)
+    temporal = module._target_temporal_geometry(geometry, 30.0, offsets)
+    descriptor, descriptor_valid = module._target_descriptor(geometry, temporal)
 
     assert geometry["shoulder"]["signed_z"].tolist() == pytest.approx([-0.4, -0.4])
     assert geometry["shoulder"]["signed_forward_y"].tolist() == pytest.approx([0.5, 0.5])
     assert geometry["hip"]["signed_z"].tolist() == pytest.approx([0.6, 0.6])
     assert np.isfinite(geometry["root_orientation"]).all()
+    assert descriptor.shape == (2, 27)
+    assert descriptor_valid.all()
 
 
 def test_input_descriptor_keeps_canonical_geometry_and_temporal_context():

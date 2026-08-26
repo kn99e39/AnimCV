@@ -143,11 +143,11 @@ report도 변경하지 않았다.
 
 - `1eaa64d` — diagnose source stratified A12 tail
 - `13a365f` — match source replay RNG order
-- documentation closure commit 예정
+- `9d0c93f` — documentation closure
 
 진단 JSON은 commit하지 않고 다음 서버 output에 보관한다.
 
 `/home/nd/animcv-output/experiments/a12_source_tail_aggregation_diagnosis/diagnosis.json`
 
-`origin/On_Work`와 `LabServer63:/home/nd/AnimCV`는 `13a365f`까지 fast-forward 상태다.
+`origin/On_Work`와 `LabServer63:/home/nd/AnimCV`는 `9d0c93f`까지 fast-forward 상태다.
 서버의 기존 미추적 `.DS_Store`, `.animcv_sync_stage/`, `docker/`도 건드리지 않았다.

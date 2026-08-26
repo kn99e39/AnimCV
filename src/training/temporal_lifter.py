@@ -193,6 +193,47 @@ class TrainingConfig:
             raise ValueError("input_coordinate_normalization must be image_v1 or pelvis_torso_v1")
 
 
+def _epoch_telemetry_snapshot(torch, model, x, y, valid_tensor, offset_tensor, indices, config, amp_enabled) -> dict[str, Any]:
+    """Lightweight, no-grad per-epoch loss-component + geometry snapshot on a
+    small fixed subset (first 512 windows -- deterministic, not shuffled).
+
+    Exists so a future diagnosis of a run's optimization behavior doesn't
+    depend on stdout logs or a full replay from checkpoints (the gap this
+    session's A11 diagnosis had to work around). Runs after each epoch's
+    optimizer step, in eval/no_grad mode; never touches gradients or the
+    optimizer, and its own forward pass is discarded afterward.
+    """
+    sample = indices[: min(512, len(indices))]
+    was_training = model.training
+    model.eval()
+    with torch.no_grad():
+        windows = x[offset_tensor[sample]]
+        with torch.amp.autocast("cuda", enabled=amp_enabled):
+            prediction = model(windows)
+        target = y[sample]
+        mask = valid_tensor[sample]
+        valid_bool = mask.squeeze(-1).bool()
+        total_weighted = float(_supervision_loss(torch, prediction, target, mask, config).item())
+        coordinate = float(((torch.nn.functional.smooth_l1_loss(prediction, target, reduction="none") * mask)
+                            .sum() / mask.sum().clamp_min(1.0)).item())
+        bone = float(_vector_loss(torch, prediction, target, valid_bool, BONE_INDICES,
+                                  lambda first, second: first - second).item())
+        torso = float(_vector_loss(torch, prediction, target, valid_bool, TORSO_INDICES,
+                                   lambda first, second: second - first).item())
+        hinge = float(_hinge_loss(torch, prediction, target, valid_bool).item())
+        yaw_tail = float(_yaw_tail_loss(torch, prediction, target, valid_bool).item())
+        cartesian_torso_tail = float(_cartesian_torso_tail_loss(torch, prediction, target, valid_bool).item())
+        errors = torch.linalg.vector_norm(prediction - target, dim=-1)
+        valid_float = valid_bool.float()
+        sample_mpjpe_mm = float((errors * valid_float).sum().item() / valid_float.sum().clamp_min(1.0).item() * 1000)
+    if was_training:
+        model.train()
+    return {
+        "total_weighted": total_weighted, "coordinate": coordinate, "bone": bone, "torso": torso, "hinge": hinge,
+        "yaw_tail_raw": yaw_tail, "cartesian_torso_tail_raw": cartesian_torso_tail, "sample_mpjpe_mm": sample_mpjpe_mm,
+    }
+
+
 def train(dataset: dict[str, Any], checkpoint_path: str | Path, config: TrainingConfig) -> dict[str, Any]:
     torch, nn = _torch()
     # The epoch generators below already seed augmentation and sampling, but
@@ -227,6 +268,7 @@ def train(dataset: dict[str, Any], checkpoint_path: str | Path, config: Training
         scaler = torch.cuda.amp.GradScaler(enabled=amp_enabled)
     started = perf_counter()
     local_samples_seen = 0
+    epoch_telemetry = []
     for epoch in range(config.epochs):
         generator = torch.Generator(device=device).manual_seed(config.seed + epoch)
         epoch_inputs = _augment_inputs(torch, x, config, generator, sequence_ranges)
@@ -246,6 +288,11 @@ def train(dataset: dict[str, Any], checkpoint_path: str | Path, config: Training
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
+        if context["primary"]:
+            snapshot = _epoch_telemetry_snapshot(
+                torch, model, epoch_inputs, y, valid_tensor, offset_tensor, indices, config, amp_enabled,
+            )
+            epoch_telemetry.append({"epoch": epoch, **snapshot})
     model.eval()
     with torch.no_grad():
         # Evaluation has no gradient collectives, so ranks can use unequal shards
@@ -290,6 +337,7 @@ def train(dataset: dict[str, Any], checkpoint_path: str | Path, config: Training
             "architecture": {"name": config.architecture,
                              "receptive_field": (model.module if context["enabled"] else model).receptive_field},
             "structural_losses": _structural_loss_report(config),
+            "epoch_telemetry": epoch_telemetry,
             "is_primary": context["primary"]}
 
 

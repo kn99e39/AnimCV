@@ -1,3 +1,5 @@
+import math
+
 import numpy as np
 import pytest
 
@@ -48,6 +50,35 @@ def test_training_seed_reproduces_model_initialization_and_report(tmp_path):
     assert first_report["training_mpjpe_mm"] == pytest.approx(second_report["training_mpjpe_mm"])
     assert first_state.keys() == second_state.keys()
     assert all(torch.equal(first_state[key], second_state[key]) for key in first_state)
+
+
+def test_epoch_telemetry_is_recorded_without_perturbing_reproducibility(tmp_path):
+    """The no-grad per-epoch telemetry snapshot must not consume any RNG
+    state the next epoch's explicit Generator depends on -- checked here by
+    re-running the existing seed-reproducibility contract with telemetry
+    now always on, plus verifying the snapshot's own shape/keys."""
+    import torch
+
+    pose = PoseSequence([_pose(i) for i in range(4)], 25)
+    target = LiftedPoseSequence([_target(i) for i in range(4)], 25)
+    dataset = build_dataset(pose, target, (100, 100), "telemetry-smoke")
+    config = TrainingConfig(window=3, channels=8, epochs=3, batch_size=2, seed=17)
+    first, second = tmp_path / "first.pth", tmp_path / "second.pth"
+    first_report, second_report = train(dataset, first, config), train(dataset, second, config)
+    first_state = torch.load(first, weights_only=True)["state_dict"]
+    second_state = torch.load(second, weights_only=True)["state_dict"]
+
+    assert all(torch.equal(first_state[key], second_state[key]) for key in first_state)
+    assert first_report["training_mpjpe_mm"] == pytest.approx(second_report["training_mpjpe_mm"])
+
+    telemetry = first_report["epoch_telemetry"]
+    assert [snapshot["epoch"] for snapshot in telemetry] == [0, 1, 2]
+    expected_keys = {
+        "epoch", "total_weighted", "coordinate", "bone", "torso", "hinge",
+        "yaw_tail_raw", "cartesian_torso_tail_raw", "sample_mpjpe_mm",
+    }
+    assert set(telemetry[0]) == expected_keys
+    assert all(math.isfinite(value) for snapshot in telemetry for key, value in snapshot.items() if key != "epoch")
 
 
 def test_rank_shards_pad_only_to_equalize_ddp_steps():

@@ -340,7 +340,8 @@ def _input_temporal_geometry(frame_geometry: dict[str, np.ndarray], inputs: np.n
         if np.isfinite(window_speed).any():
             window_mean_speed[center] = float(np.nanmean(window_speed))
         window_velocity = velocity[row]
-        mean_abs_velocity[center] = np.nanmean(np.abs(window_velocity), axis=0)
+        with np.errstate(invalid="ignore"):
+            mean_abs_velocity[center] = np.nanmean(np.abs(window_velocity), axis=0)
         mean_abs_velocity[center] = np.nan_to_num(mean_abs_velocity[center], nan=0.0)
         first, last = row[0], row[-1]
         net_displacement[center] = coordinates[last] - coordinates[first]
@@ -1031,7 +1032,13 @@ def _split_target_report(split: dict[str, Any]) -> dict[str, Any]:
     }
     for name, values in split["target_temporal"].items():
         multiplier = 180.0 / np.pi if "orientation" in name and ("rad" in name or "run" not in name) else 1.0
-        result["temporal"][name] = _stats(values * multiplier)
+        report_name = {
+            "orientation_velocity_rad_s": "orientation_velocity_degrees_s",
+            "orientation_acceleration_rad_s2": "orientation_acceleration_degrees_s2",
+            "orientation_window_net_rad": "orientation_window_net_degrees",
+            "orientation_window_path_rad": "orientation_window_path_degrees",
+        }.get(name, name)
+        result["temporal"][report_name] = _stats(values * multiplier)
     return result
 
 

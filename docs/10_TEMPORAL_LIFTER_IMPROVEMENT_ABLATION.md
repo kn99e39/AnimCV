@@ -286,6 +286,52 @@ gradient가 base보다 **3,000배 이상** 커진다. weight 0.05를 곱해도 �
 "orientation supervision 자체의 형태(스케일이 base 3D objective와 자연스럽게 맞물리는 형태,
 그리고 소수 도메인에 좌우되지 않는 정규화)"가 돼야 한다.
 
+### Cartesian torso-tail loss 후보와 A12 (2026-08-25)
+
+각도(1-cos) 표현 대신, 안정적인 3D geometry objective와 **같은 Cartesian 좌표 공간**에서
+orientation tail을 표현하는 후보를 만들었다: 어깨/엉덩이 bilateral vector(`v = p_right - p_left`,
+기존 `torso_loss_weight`와 동일한 벡터 컨벤션)의 smooth-L1 잔차를, 기존 `yaw_tail_loss`와
+**완전히 동일한 pooled tail-selector**(`_pooled_tail_mean`로 공유 리팩터링, 기존 동작 불변
+확인됨)로 선택한다(`_cartesian_torso_tail_loss`). 벡터 차분이라 uniform translation에 자동으로
+불변이고, 각도 표현이 요구했던 축-길이 degenerate guard가 필요 없다.
+
+**Fixed-batch 진단(학습 전)**: A9/A11 진단과 동일한 10개 배치 × 3개 모델 상태에서 candidate를
+측정한 결과, A9 수렴 상태의 gradient 비율(candidate/base)이 각도 loss의 **3,170배 → 5.28배**로
+600배 넘게 줄었고, 세 상태(초기화/A9/A11) 전체에서 1.7~7.2배 범위에 머물러 각도 loss처럼
+학습이 진행될수록 폭발하지 않았다. cosine(G_base, G_candidate)은 모든 상태에서 양수였고
+각도 loss보다 오히려 더 정렬돼 있었다(예: A9 상태 0.164 vs 0.069). synthetic contract
+9개(정상 geometry→0, 어깨/엉덩이/회전 오차→반응, uniform translation→false positive 없음,
+gradient가 해당 관절에만 도달) 전부 통과. **GO 조건(파괴적 gradient 지배 제거 + orientation
+민감도 유지) 둘 다 충족** — 단, source 편중(Case D)은 candidate에서도 그대로 관찰됨
+(A9 수렴 상태 기준 AMASS가 tail loss의 45~92%, 각도 loss의 87%와 비슷한 규모).
+
+A9와 fingerprint 완전 동일, `cartesian_torso_tail_loss_weight=0.05`만 추가해 A12를 실행.
+이번 세션에서 새로 추가한 epoch별 telemetry(`train()`의 `epoch_telemetry`, 512-window 고정
+subset, no-grad)로 학습 중 수렴 궤적을 직접 확인했다 — `sample_mpjpe_mm`이 54.0→38.1mm로
+매끄럽게 수렴했고 `cartesian_torso_tail_raw`도 0.00192→0.00085로 `torso`/`coordinate`와 같이
+줄어들어, A11처럼 발산하지 않고 실제로 base task와 스케일이 맞물려 수렴한다는 gradient
+진단의 예측이 실제 학습에서도 확인됐다.
+
+| Holdout | PA-MPJPE mm | yaw MAE ° | yaw P95 ° | 판정 |
+| --- | ---: | ---: | ---: | --- |
+| 3DPW test | 78.51 (A9 75.31) | **15.87**(A9 14.90, 신규 실패) | **38.45**(A9 34.77, 악화) | yaw MAE·P95 실패 |
+| AMASS internal | 68.60 (A9 69.19) | 8.05 (A9 8.77) | 20.08 (A9 22.37) | 통과(A9도 통과) |
+
+training MPJPE는 40.19→**40.39mm**로 사실상 그대로다 — A11의 78.23mm 붕괴와 달리 base
+geometry 적합이 전혀 무너지지 않았다. **하지만 3DPW yaw는 개선되지 않고 오히려 더
+나빠졌다**(MAE 14.90→15.87°로 이전엔 통과하던 gate까지 신규 실패, P95는 34.77→38.45°로
+목표 방향과 반대로 이동). AMASS는 3개 지표 모두 소폭 개선됐지만 A9에서도 이미 전부 통과
+상태였다. 고정된 review 시퀀스(stairs/walking, A9 진단 단계에서 이미 선정)의 GT/예측 overlay
+정지 화면을 A9와 비교한 결과도 눈에 띄는 개선은 보이지 않았다 — 여전히 비슷한 정도의
+orientation 어긋남.
+
+**판정: Case B — Cartesian 재구성은 안정적이지만 orientation을 개선하지 못한다.** A11의
+붕괴가 각도 loss의 scale 문제였다는 진단은 이 결과로 재확인됐다(training MPJPE 붕괴가 실제로
+사라짐). 하지만 단순히 torso geometry를 재가중하는 것만으로는 yaw-tail 품질 문제 자체를
+풀지 못한다 — 오히려 3DPW에서 악화됐다. weight를 조정하지 않는다(지시에 따름). 다음
+아키텍처 질문은 orientation supervision의 형태(예: 방향 정보만 분리해서 스케일을 통제하는
+방법, 또는 tail-selection이 아닌 다른 표현)여야 한다.
+
 ## 사용자 정성 평가: 리그 애니메이션 review video
 
 수치 gate가 통과하더라도 관절의 순간적인 반전, foot sliding, 루트의 회전 흔들림은 사람이 보는

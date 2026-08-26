@@ -497,6 +497,141 @@ historical loss definition은 변경하지 않았다.
 `/home/nd/animcv-output/experiments/a12_source_tail_aggregation_diagnosis/diagnosis.json`에
 있다.
 
+### 3DPW generalization support 진단 (2026-08-26, 추가 학습 없음)
+
+이 진단은 이전에 관찰한 `3DPW train prediction yaw error << validation/test yaw error`를
+GT target coverage의 증거로 사용하지 않는다. A9 기존 evaluator로 hard set을 먼저 고정한 뒤,
+canonical GT 3D target descriptor와 A9 전처리 후 canonical 2D input descriptor를 분리해
+sequence-disjoint nearest-train support를 비교했다. A12는 같은 hard examples가 A12에서도
+어려운지 확인하는 용도로만 사용했다. loss, augmentation, sampler, optimizer, gate와
+checkpoint는 변경하지 않았다.
+
+#### GT target-space와 temporal coverage
+
+3DPW root/torso orientation의 wrapped angle 통계는 circular quantity라 선형 평균을 판정에
+사용하지 않았다. median/P95/P99는 train `76.16/165.83/177.55°`, validation
+`82.62/167.03/177.37°`, official test `3.35/173.31/178.29°`로 tail이 train에만 없는
+형태가 아니다. 지시문에서 요구한 `d=z_right-z_left`는 canonical z축 성분으로 그대로
+계산했고, AnimCV 계약상 실제 camera forward/depth인 `+Y` 성분도 별도 계산했다.
+
+| Split | shoulder d(z) mean/std/median/P05/P10/P90/P95/P99 (m) | hip d(z) mean/std/median/P05/P10/P90/P95/P99 (m) |
+| --- | --- | --- |
+| train | `.0185/.0686/.0213/-.0981/-.0693/.0990/.1239/.1741` | `.00013/.0172/.00035/-.0268/-.0201/.0191/.0281/.0478` |
+| validation | `.0174/.0725/.0157/-.1081/-.0761/.1071/.1336/.1866` | `.0039/.0185/.0024/-.0267/-.0188/.0252/.0328/.0570` |
+| official test | `-.0033/.0633/-.00076/-.1100/-.0874/.0770/.0984/.1401` | `-.0081/.0141/-.0078/-.0315/-.0258/.0087/.0149/.0272` |
+
+Shoulder/hip forward-y signed-depth quantiles도 train/validation/test가 겹쳤다. test의
+GT temporal motion은 train보다 더 급하지 않았다. orientation velocity P95/P99는
+train `96.0/195.8°/s`, validation `93.2/172.2°/s`, test `65.7/129.6°/s`였고,
+orientation window path P95는 `299.9°`, `252.0°`, `189.5°`였다. shoulder/hip signed-z
+velocity와 sign-transition quantiles도 full JSON에 mean/std/median/P05/P10/P90/P95/P99로
+기록했다. 따라서 single-frame target pose나 81-frame GT trajectory가 train에 전혀 없다는
+Case A 결론은 지지되지 않는다.
+
+#### 2D observation-space coverage
+
+`pelvis_torso_v1`로 실제 lifter에 입력된 2D를 비교했다. normalized torso height는 계약상
+1.0으로 고정되지만 lateral evidence는 달랐다.
+
+| Split | shoulder span mean/median/P95 | hip span mean/median/P95 | confidence mean | valid joints mean |
+| --- | ---: | ---: | ---: | ---: |
+| train | `.823/.887/1.263` | `.543/.583/.819` | `.803` | `16.26` |
+| validation | `.799/.864/1.269` | `.527/.572/.843` | `.801` | `16.19` |
+| official test | `.542/.384/1.204` | `.352/.244/.757` | `.757` | `16.11` |
+
+test는 raw image torso scale이 오히려 train/validation보다 컸지만, canonical normalized
+shoulder/hip projected span은 작고 confidence도 낮았다. 따라서 input preprocessing 뒤의
+observation condition이 split별로 같다고 볼 수 없다.
+
+#### A9 hard set과 A12 overlap
+
+A9 root-yaw evaluator로 top-5%와 top-1%을 먼저 고정했다. 선택 수와 A9 cutoff는 train
+`1133/227`, validation `511/103`, test `1766/354`이며, 각각의 top-5% cutoff는
+`9.663°`, `32.554°`, `34.778°`였다. A12는 이 집합을 재정의하지 않았다.
+
+| Split | A9/A12 yaw rank rho | top-5 center overlap / Jaccard | top-5 window-frame Jaccard | top-1 center overlap / Jaccard |
+| --- | ---: | ---: | ---: | ---: |
+| train | `.113` | `14.1% / .076` | `.505` | `10.6% / .056` |
+| validation | `.450` | `40.1% / .251` | `.490` | `20.4% / .114` |
+| official test | `.409` | `33.2% / .199` | `.422` | `38.1% / .236` |
+
+같은 사례가 완전히 고정되지는 않았지만 validation/test에서 A12도 상당수 같은 temporal
+영역에서 실패했다. overlap만으로 data insufficiency를 단정하지 않고 support와 함께
+해석했다. 각 hard record의 sequence ID, frame ID, 81-frame window center와 frame 목록은
+진단 JSON에 모두 보존했다.
+
+#### Sequence-disjoint nearest support
+
+지원 descriptor는 target 27차원, input 119차원이며 scale은 train support의 mean/std만
+사용했다. split별 binary threshold는 새로 튜닝하지 않고 train→other-train-sequence
+control 대비 empirical percentile을 사용했다.
+
+| Query → train support | target distance median/P95 (control percentile median) | input distance median/P95 (control percentile median) |
+| --- | ---: | ---: |
+| train → other sequence | `.362/.839` | `.464/1.003` |
+| validation hard top-5% | `.475/1.095` (`73.4%`) | `.855/1.208` (`91.2%`) |
+| official test hard top-5% | `.549/.947` (`82.8%`) | `.501/1.059` (`56.6%`) |
+
+validation hard cases는 input support가 control보다 뚜렷하게 멀다. 반면 test hard cases는
+input nearest support median이 control과 비슷한데, 그 동일 input-nearest train sample의
+GT target gap은 컸다. test에서 root orientation gap median/P95는 `43.6°/154.0°`,
+shoulder forward-y gap은 `.223/.554 m`, hip forward-y gap은 `.0688/.178 m`이며,
+각각 control 대비 median empirical percentile은 `88.3%`, `85.7%`, `85.7%`였다.
+이는 local 2D evidence가 가까워도 서로 다른 3D orientation/depth state를 허용하는
+monocular ambiguity의 직접적인 증거다. validation의 같은 값은 root orientation
+`24.6°/87.3°`(`72.1%`), shoulder forward-y `.115/.421 m`(`71.9%`)로 test만큼 강하지
+않았다. nearest record별 target gap도 JSON에 저장했다.
+
+#### Signed relative-depth attribution
+
+A9 hard vs non-hard에서 `z_right-z_left`와 canonical forward-y를 모두 비교했다. test
+hard shoulder/hip forward-y absolute residual은 각각 `.231/.091 m` 대 non-hard
+`.081/.022 m`, sign disagreement는 `48.4%/50.2%` 대 `13.0%/6.7%`였다. validation은
+각각 `.174/.062 m` 대 `.058/.022 m`, sign disagreement `20.1%/20.7%` 대
+`6.3%/6.7%`였다. 요청한 z축 성분에서는 test shoulder residual이 `.0314 m` 대
+`.0316 m`로 non-hard와 비슷했지만 hip sign disagreement는 `43.3%` 대 `26.7%`였다.
+즉 실제 forward-depth ordering과 yaw error의 연관이 강하고, canonical z축만을 물리적
+depth로 부르는 것은 좌표 계약과 맞지 않는다. hard-window center sign-transition
+behavior disagreement도 test shoulder/hip z에서 `6.6%/9.7%`, validation `11.5%/13.3%`
+로 기록했다. signed-relative-depth loss는 구현·학습하지 않았다.
+
+#### Sequence diversity와 replacement sampling
+
+3DPW train은 34개 sequence, 22,646개 unique frame-center window이다. source-balanced
+direct-mix epoch는 3DPW에 `154,520` sample mass를 replacement로 부여한다. deterministic
+seed `1337` replay에서 unique sampled windows는 `22,622`, duplicate sample은 `131,898`,
+nominal mass/unique-window replay factor는 `6.823`, realized mass/unique-sampled-window
+factor는 `6.831`이었다. top sequence share는 `5.58%`, top-5 sequence share는 `26.78%`,
+sequence HHI는 `.0354`였다. frame mass balance가 sequence-level diversity를 늘려주지는
+않는다는 점은 확인됐지만 sampler는 변경하지 않았다.
+
+#### 최종 판정과 architecture interpretation
+
+**Case E — split별 mixed failure**로 판정한다.
+
+- **Target coverage gap:** GT orientation, signed relative-depth, temporal target이 train에
+  전혀 없다는 증거는 없다. target nearest support는 일부 tail shift가 있지만 새 binary
+  unsupported threshold를 만들 정도의 증거는 아니다.
+- **Input-domain shift:** validation hard set에서 명확하다(input support median
+  percentile `91.2%`). 다음 architecture decision에서는 crop/projection/confidence 및
+  camera/view diversity를 우선 검토해야 한다.
+- **Monocular ambiguity:** official test에서 명확하다(input support median percentile
+  `56.6%`인데 input-nearest target orientation/forward-depth gap이 control보다 큼).
+  다음 질문은 temporal evidence와 latent orientation-state supervision이다.
+- **Model/objective failure:** target·input support가 모두 충분하고 ambiguity도 없는
+  Case D 조건은 확인되지 않았다. 따라서 현재 A9 objective를 primary suspect로 판정하지
+  않는다.
+- **Sequence diversity:** 6.8배 replacement replay와 34 sequence concentration은
+  보조 제한 요인이다. 그러나 target absence의 증거는 아니며 sampler를 바꾸지 않았다.
+
+추가 loss, temporal loss, signed-relative-depth supervision, augmentation, source mixture,
+sampler, optimizer, gate 변경과 추가 학습은 모두 보류한다.
+
+재현 가능한 최종 진단 JSON은
+`/home/nd/animcv-output/experiments/a9_target_input_support_diagnosis/diagnosis_final.json`이다.
+핵심 정량 수치와 hard/support record 전체를 포함하며 generated artifact는 repository에
+commit하지 않았다.
+
 ## 사용자 정성 평가: 리그 애니메이션 review video
 
 수치 gate가 통과하더라도 관절의 순간적인 반전, foot sliding, 루트의 회전 흔들림은 사람이 보는

@@ -17,6 +17,7 @@
 | [08_RESEARCH_DATASET_ASSESSMENT](08_RESEARCH_DATASET_ASSESSMENT.md) | 공개 dataset 조사, 코드 현황, 구현 배치 | 설계 완료·구현 승인 대기 |
 | [15_WORKLOG_A12_MAGNITUDE_DIRECTION_ATTRIBUTION](15_WORKLOG_A12_MAGNITUDE_DIRECTION_ATTRIBUTION.md) | A12 Cartesian torso residual magnitude/direction 진단 및 A13 판정 | **NO-GO: A13 미실행** |
 | [16_WORKLOG_SOURCE_TAIL_AGGREGATION](16_WORKLOG_SOURCE_TAIL_AGGREGATION.md) | A12 global hard-tail source reweighting 및 3DPW coverage 진단 | **Case B: coverage 우선, 후보 학습 중단** |
+| [17_WORKLOG_3DPW_GENERALIZATION_SUPPORT](17_WORKLOG_3DPW_GENERALIZATION_SUPPORT.md) | 3DPW GT target/input support, hard-case overlap, ambiguity 진단 | **Mixed: validation input shift + test monocular ambiguity** |
 
 ## 원칙
 

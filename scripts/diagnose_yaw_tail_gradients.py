@@ -427,7 +427,10 @@ def _prediction_gradient_concentration(torch, prediction, loss, source_ids):
     joint_mass = gradient.abs().sum(dim=-1)
     total = float(joint_mass.sum().item())
     first, second = zip(*TORSO_INDICES)
-    pair_mass = torch.stack((joint_mass[:, first].sum(dim=-1) + joint_mass[:, second].sum(dim=-1)), dim=-1)
+    pair_mass = torch.stack(
+        (joint_mass[:, first].sum(dim=-1), joint_mass[:, second].sum(dim=-1)),
+        dim=-1,
+    )
     torso_mass = float(pair_mass.sum().item())
     source_grid = source_ids.unsqueeze(-1).expand_as(joint_mass)
     by_source = {}

@@ -26,9 +26,9 @@ from typing import Any
 import numpy as np
 
 from training.temporal_lifter import (
-    TrainingConfig, _arrays, _augment_inputs, _hinge_loss, _model,
-    _source_balanced_permutation, _supervision_loss, _torch, _vector_loss, _yaw_axis_error_grid,
-    _yaw_tail_loss, BONE_INDICES, TORSO_INDICES, load_dataset,
+    TrainingConfig, _arrays, _augment_inputs, _cartesian_torso_tail_loss, _hinge_loss, _model,
+    _source_balanced_permutation, _supervision_loss, _torch, _torso_vector_error_grid, _vector_loss,
+    _yaw_axis_error_grid, _yaw_tail_loss, BONE_INDICES, TORSO_INDICES, load_dataset,
 )
 
 # A9's exact structural-loss configuration; only yaw_tail_loss_weight differs
@@ -129,6 +129,63 @@ def _source_restricted_yaw_tail_loss(torch, prediction, target, valid, source_id
     return selected.masked_select(chosen).mean()
 
 
+def _torso_pooled_selection_detail(torch, prediction, target, valid, source_ids) -> dict[str, Any]:
+    """Same accounting as ``_pooled_selection_detail``, but over the
+    Cartesian torso-vector grid instead of the angular yaw grid -- so the
+    Section 2 candidate's real selection/attribution can be compared to the
+    angular loss's on identical terms (Section 5-6)."""
+    errors, stable = _torso_vector_error_grid(torch, prediction, target, valid)  # (batch, 2)
+    batch_size = errors.shape[0]
+    flattened_errors, flattened_stable = errors.flatten(), stable.flatten()
+    tail_count = int(((flattened_stable.sum() + 19) // 20).clamp_min(1).item())
+    maximum_tail = max(1, (flattened_errors.numel() + 19) // 20)
+    values, indices = torch.topk(flattened_errors.masked_fill(~flattened_stable, 0.0), maximum_tail)
+    selected_values = values[:tail_count]
+    selected_indices = indices[:tail_count].detach().cpu().numpy()
+    frame_indices = selected_indices // 2
+    pair_indices = selected_indices % 2  # 0=shoulder, 1=hip (TORSO_INDICES order)
+    selected_sources = source_ids[frame_indices].detach().cpu().numpy() if len(frame_indices) else np.asarray([])
+
+    shoulder_only = int(((pair_indices == 0).sum()))
+    hip_only = int(((pair_indices == 1).sum()))
+    both_frames = len(set(frame_indices.tolist())) if len(frame_indices) else 0
+
+    source_share: dict[str, float] = {}
+    total = float(selected_values.sum().item()) if len(selected_values) else 0.0
+    for source_id, name in enumerate(SOURCE_NAMES):
+        mask = selected_sources == source_id
+        share = float(selected_values[:tail_count][mask].sum().item()) / total if total > 0 and mask.any() else 0.0
+        source_share[name] = share
+
+    return {
+        "candidate_count": int(flattened_errors.numel()),
+        "stable_candidate_count": int(flattened_stable.sum().item()),
+        "selected_count": tail_count,
+        "selected_frame_count": both_frames,
+        "shoulder_only_selections": shoulder_only,
+        "hip_only_selections": hip_only,
+        "selected_frame_indices": frame_indices.tolist(),
+        "loss_share_by_source": source_share,
+        "batch_size": batch_size,
+    }
+
+
+def _source_restricted_cartesian_torso_tail_loss(torch, prediction, target, valid, source_ids, source_id: int):
+    """Cartesian-candidate counterpart to ``_source_restricted_yaw_tail_loss``
+    -- isolates one source's contribution to the tail-selected Cartesian
+    torso penalty (Section 6), same deliberate single-source-pool
+    construction, not the real joint-pool selection."""
+    errors, stable = _torso_vector_error_grid(torch, prediction, target, valid)
+    source_mask = (source_ids == source_id).unsqueeze(-1).expand_as(stable)
+    restricted_stable = stable & source_mask
+    flattened_errors, flattened_stable = errors.flatten(), restricted_stable.flatten()
+    tail_count = ((flattened_stable.sum() + 19) // 20).clamp_min(1)
+    maximum_tail = max(1, (flattened_errors.numel() + 19) // 20)
+    selected = torch.topk(flattened_errors.masked_fill(~flattened_stable, 0.0), maximum_tail).values
+    chosen = torch.arange(maximum_tail, device=prediction.device) < tail_count
+    return selected.masked_select(chosen).mean()
+
+
 def _component_losses(torch, prediction, target, valid) -> dict[str, float]:
     """Raw (unweighted, coefficient=1.0) structural-loss magnitudes, reusing
     the production helpers directly so these numbers cannot drift from what
@@ -140,6 +197,7 @@ def _component_losses(torch, prediction, target, valid) -> dict[str, float]:
     hinge = _hinge_loss(torch, prediction, target, valid)
     yaw_tail = _yaw_tail_loss(torch, prediction, target, valid)
     yaw_tail_frame_level = _yaw_tail_loss_frame_level(torch, prediction, target, valid)
+    cartesian_torso_tail = _cartesian_torso_tail_loss(torch, prediction, target, valid)
     return {
         "coordinate": float(coordinate.item()),
         "bone": float(bone.item()),
@@ -147,6 +205,7 @@ def _component_losses(torch, prediction, target, valid) -> dict[str, float]:
         "hinge": float(hinge.item()),
         "yaw_tail_pooled": float(yaw_tail.item()),
         "yaw_tail_frame_level": float(yaw_tail_frame_level.item()),
+        "cartesian_torso_tail": float(cartesian_torso_tail.item()),
     }
 
 
@@ -170,10 +229,12 @@ def _gradient_interaction(torch, model, prediction, target, valid, source_ids) -
     base_loss = _supervision_loss(torch, prediction, target, mask, a9_config)
     yaw_loss_pooled = _yaw_tail_loss(torch, prediction, target, valid)
     yaw_loss_frame = _yaw_tail_loss_frame_level(torch, prediction, target, valid)
+    candidate_loss = _cartesian_torso_tail_loss(torch, prediction, target, valid)
 
     g_base = _grad_of(torch, base_loss, model)
     g_yaw_pooled = _grad_of(torch, yaw_loss_pooled, model)
     g_yaw_frame = _grad_of(torch, yaw_loss_frame, model)
+    g_candidate = _grad_of(torch, candidate_loss, model)
 
     def stats(g_yaw):
         if g_base is None or g_yaw is None:
@@ -186,24 +247,30 @@ def _gradient_interaction(torch, model, prediction, target, valid, source_ids) -
             "cosine": float(cosine),
         }
 
-    per_source = {}
+    per_source_yaw = {}
+    per_source_candidate = {}
     for source_id, name in enumerate(SOURCE_NAMES):
         if not (source_ids == source_id).any():
             continue
-        source_loss = _source_restricted_yaw_tail_loss(torch, prediction, target, valid, source_ids, source_id)
-        g_source = _grad_of(torch, source_loss, model)
-        per_source[name] = stats(g_source) | {
-            # This source's share of *this batch* (expected ~= 1/3 under
-            # source-balanced sampling) -- NOT its share of the real pooled
-            # tail selection, which is reported separately in
-            # pooled_selection.loss_share_by_source.
-            "batch_composition_share": float((source_ids == source_id).float().mean().item()),
-        }
+        composition_share = float((source_ids == source_id).float().mean().item())
+        yaw_source_loss = _source_restricted_yaw_tail_loss(torch, prediction, target, valid, source_ids, source_id)
+        g_yaw_source = _grad_of(torch, yaw_source_loss, model)
+        # This source's share of *this batch* (expected ~= 1/3 under
+        # source-balanced sampling) -- NOT its share of the real pooled tail
+        # selection, which is reported separately in loss_share_by_source.
+        per_source_yaw[name] = stats(g_yaw_source) | {"batch_composition_share": composition_share}
+        candidate_source_loss = _source_restricted_cartesian_torso_tail_loss(
+            torch, prediction, target, valid, source_ids, source_id,
+        )
+        g_candidate_source = _grad_of(torch, candidate_source_loss, model)
+        per_source_candidate[name] = stats(g_candidate_source) | {"batch_composition_share": composition_share}
 
     return {
         "pooled_selector": stats(g_yaw_pooled),
         "frame_level_selector": stats(g_yaw_frame),
-        "per_source_isolated": per_source,
+        "cartesian_torso_tail_candidate": stats(g_candidate),
+        "per_source_isolated": per_source_yaw,
+        "per_source_isolated_candidate": per_source_candidate,
     }
 
 
@@ -281,6 +348,9 @@ def main() -> int:
 
             components = _component_losses(torch, prediction, target_batch, valid_batch)
             selection = _pooled_selection_detail(torch, prediction, target_batch, valid_batch, batch_source_ids)
+            candidate_selection = _torso_pooled_selection_detail(
+                torch, prediction, target_batch, valid_batch, batch_source_ids,
+            )
             gradients = _gradient_interaction(torch, model, prediction, target_batch, valid_batch, batch_source_ids)
             batch_reports.append({
                 "components_raw": components,
@@ -289,8 +359,10 @@ def main() -> int:
                     "torso": components["torso"] * A9_STRUCTURAL_WEIGHTS["torso_loss_weight"],
                     "hinge": components["hinge"] * A9_STRUCTURAL_WEIGHTS["hinge_loss_weight"],
                     "yaw_tail_pooled_at_0.05": components["yaw_tail_pooled"] * 0.05,
+                    "cartesian_torso_tail_at_0.05": components["cartesian_torso_tail"] * 0.05,
                 },
                 "pooled_selection": selection,
+                "cartesian_torso_tail_selection": candidate_selection,
                 "gradients": gradients,
             })
         report["states"][state_name] = batch_reports

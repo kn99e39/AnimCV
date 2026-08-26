@@ -187,3 +187,78 @@ def test_component_losses_matches_production_yaw_tail_and_is_finite():
 
     assert components["yaw_tail_pooled"] == pytest.approx(float(_yaw_tail_loss(torch, prediction, target, valid)))
     assert all(math.isfinite(value) for value in components.values())
+
+
+def test_component_losses_matches_production_cartesian_torso_tail():
+    import torch
+    from training.temporal_lifter import _cartesian_torso_tail_loss
+
+    module = _load_module()
+    n = 6
+    torch.manual_seed(4)
+    target = _zeroed(n)
+    prediction = target + torch.randn_like(target) * 0.05
+    valid = torch.ones((n, target.shape[1]), dtype=torch.bool)
+
+    components = module._component_losses(torch, prediction, target, valid)
+
+    assert components["cartesian_torso_tail"] == pytest.approx(
+        float(_cartesian_torso_tail_loss(torch, prediction, target, valid))
+    )
+
+
+def test_torso_pooled_selection_detail_attributes_selected_entries_by_source():
+    import torch
+    from pose.pose_lifter import H36M_NAMES
+
+    module = _load_module()
+    n = 4
+    target, prediction = _zeroed(n), _zeroed(n)
+    ls, rs = H36M_NAMES.index("left_shoulder"), H36M_NAMES.index("right_shoulder")
+    lh, rh = H36M_NAMES.index("left_hip"), H36M_NAMES.index("right_hip")
+    target[:, ls, :2] = torch.tensor([-1.0, 0.0])
+    target[:, rs, :2] = torch.tensor([1.0, 0.0])
+    target[:, lh, :2] = torch.tensor([-1.0, 0.0])
+    target[:, rh, :2] = torch.tensor([1.0, 0.0])
+    for i in range(n):
+        prediction[i, ls, :2], prediction[i, rs, :2] = torch.tensor([-1.0, 0.0]), torch.tensor([1.0, 0.0])
+        prediction[i, lh, :2], prediction[i, rh, :2] = torch.tensor([-1.0, 0.0]), torch.tensor([1.0, 0.0])
+    # Only sample 2's hip pair is off -> the sole tail entry in this small pool.
+    prediction[2, rh, 0] = 3.0
+    valid = torch.ones((n, len(H36M_NAMES)), dtype=torch.bool)
+    source_ids = torch.tensor([0, 0, 1, 2])  # sample 2 (the tail entry) belongs to source 1 (3DPW)
+
+    detail = module._torso_pooled_selection_detail(torch, prediction, target, valid, source_ids)
+
+    assert detail["candidate_count"] == n * 2
+    assert detail["selected_count"] >= 1
+    assert detail["hip_only_selections"] >= 1
+    assert detail["loss_share_by_source"]["3DPW"] == pytest.approx(1.0, abs=1e-4)
+    assert detail["loss_share_by_source"]["MPI-INF-3DHP"] == pytest.approx(0.0, abs=1e-4)
+
+
+def test_source_restricted_cartesian_torso_tail_loss_ignores_other_sources():
+    import torch
+    from pose.pose_lifter import H36M_NAMES
+
+    module = _load_module()
+    n = 2
+    target, prediction = _zeroed(n), _zeroed(n)
+    ls, rs = H36M_NAMES.index("left_shoulder"), H36M_NAMES.index("right_shoulder")
+    lh, rh = H36M_NAMES.index("left_hip"), H36M_NAMES.index("right_hip")
+    target[:, ls, :2] = torch.tensor([-1.0, 0.0])
+    target[:, rs, :2] = torch.tensor([1.0, 0.0])
+    target[:, lh, :2] = torch.tensor([-1.0, 0.0])
+    target[:, rh, :2] = torch.tensor([1.0, 0.0])
+    for i in range(n):
+        prediction[i, lh, :2], prediction[i, rh, :2] = torch.tensor([-1.0, 0.0]), torch.tensor([1.0, 0.0])
+    prediction[0, rs, 0] = 4.0  # only source-0 sample is wrong
+    prediction[1, ls, :2], prediction[1, rs, :2] = torch.tensor([-1.0, 0.0]), torch.tensor([1.0, 0.0])
+    valid = torch.ones((n, len(H36M_NAMES)), dtype=torch.bool)
+    source_ids = torch.tensor([0, 1])
+
+    restricted_to_source_1 = module._source_restricted_cartesian_torso_tail_loss(
+        torch, prediction, target, valid, source_ids, 1,
+    )
+
+    assert float(restricted_to_source_1) == pytest.approx(0.0, abs=1e-6)

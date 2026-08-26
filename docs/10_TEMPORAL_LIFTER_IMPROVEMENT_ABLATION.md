@@ -413,6 +413,90 @@ A13 학습, 새 정성 review, source normalization, dynamic balancing, weight t
 `/home/nd/animcv-output/experiments/a12_direction_attribution_10b/diagnosis.json`이며,
 A9–A12 checkpoint/fingerprint/report는 변경하지 않았다.
 
+### A12 global tail source aggregation 및 3DPW coverage 진단 (2026-08-26, 학습 없이 진단만)
+
+A12의 3DPW orientation 악화가 source-balanced input sampling 뒤의 global hard-tail mining
+때문인지, 아니면 3DPW train과 official holdout의 coverage/domain shift 때문인지 분리했다.
+A12 Cartesian torso-tail loss, `cartesian_torso_tail_loss_weight=0.05`, pooled top-5% tail
+semantics는 변경하지 않았다. 동일 seed 1337·augmentation·source-balanced RNG 순서의 첫
+epoch 10개 batch를 init/A9/A12 상태에 replay하고, source-stratified tail은 학습에 연결하지
+않은 counterfactual로만 계산했다.
+
+#### 입력 balance와 global-tail reweighting
+
+direct-mix 원본 frame mass는 MPI-INF-3DHP `106,512`, 3DPW `22,646`, AMASS `334,402`로
+불균형하지만 source-balanced sampler의 한 epoch sample mass는 세 source 모두 `154,520`이다.
+고정 10개 batch의 입력 mass도 MPI `403`, 3DPW `466`, AMASS `411`로 거의 균형이었다.
+따라서 입력 기회 자체가 3DPW를 배제한 것은 아니다.
+
+A12 상태에서 global pooled tail은 다음과 같이 source를 다시 가중했다. `within-source`는
+그 source의 유효 candidate 중 selected 비율이며, `selected share`는 전체 selected 중 비율이다.
+
+| Source | candidate/batch | selected/batch | within-source selected | total selected share | raw loss share |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| MPI-INF-3DHP | 83.6 | 6.7 | 7.96% | **51.54%** | 47.58% |
+| 3DPW | 82.4 | 1.2 | **1.37%** | **9.23%** | 7.44% |
+| AMASS | 87.7 | 5.1 | 5.87% | 39.23% | 44.97% |
+
+A9 상태에서도 3DPW within-source selected 비율은 `2.01%`, 전체 selected share는 `12.31%`에
+그쳤다. init 상태에서는 3DPW `0.36%`/`2.31%`, AMASS `13.82%`/`91.54%`였다. 따라서
+global tail이 source-balanced input contract를 덮어쓰는 현상은 실제로 존재한다.
+
+#### Source-stratified counterfactual 및 gradient
+
+각 active source 안에서 동일 A12 tail fraction을 적용한 뒤 source별 loss mean을 동일하게
+평균하는 generic counterfactual을 만들었다. A12 상태에서 각 source의 within-source selected
+비율은 MPI `5.53%`, 3DPW `5.61%`, AMASS `5.27%`였고, 전체 selected share는 각각 약 `33.3%`였다.
+3DPW local raw auxiliary loss는 `0.000826`으로 MPI `0.001518`, AMASS `0.001867`보다 낮았다.
+
+global A12 auxiliary gradient는 norm `0.07054`, base norm `0.01326`, base와의 cosine
+`.318`이었다. source-stratified counterfactual은 `0.06742`, `.01326`, cosine `.322`였다.
+A12 상태의 source-local gradient norm은 3DPW `.0623`, AMASS `.1281`, MPI `.1041`이며,
+source pair cosine은 MPI–3DPW `.188`, MPI–AMASS `.124`, 3DPW–AMASS `.095`였다. 강한
+cross-source cancellation이나 A11-scale pathology는 없었다.
+
+#### Source-specific training error distributions
+
+A12 checkpoint를 source-balanced direct-mix training frames 전체에 재추론했다.
+
+| Source | yaw mean / median / P90 / P95 / P99 (deg) | Cartesian residual mean / median / P90 / P95 / P99 |
+| --- | --- | --- |
+| MPI-INF-3DHP | 5.50 / 4.77 / 10.16 / 12.30 / 17.44 | .000356 / .000249 / .000787 / .001036 / .001683 |
+| 3DPW | **4.75 / 4.21 / 8.62 / 10.18 / 14.44** | **.000165 / .000092 / .000393 / .000563 / .001050** |
+| AMASS | 7.99 / 4.48 / **17.60 / 27.34 / 57.02** | .000275 / .000136 / .000673 / .000993 / .001936 |
+
+3DPW train의 tail이 다른 source보다 전반적으로 작기 때문에 global selector의 3DPW 억제는
+구현 오류만이 아니라 error distribution 차이와 결합된 결과다.
+
+#### 3DPW train/validation/test coverage
+
+| Split | Frames / sequences | A9 yaw mean / P95 / P99 | A12 yaw mean / P95 / P99 |
+| --- | ---: | ---: | ---: |
+| 3DPW train | 22,646 / 34 | 4.33 / 9.66 / 13.24 | 4.75 / 10.18 / 14.44 |
+| 3DPW validation | 10,206 / 16 | 11.99 / 32.55 / 45.71 | 12.47 / 32.38 / 45.22 |
+| 3DPW official test | 35,310 / 37 | 14.90 / 34.77 / 50.11 | **15.87 / 38.45 / 53.41** |
+
+GT torso turn delta P95는 train `4.418°`, validation `4.332°`, test `3.195°`였다. test가 더
+큰 turning motion 때문에 실패한다는 증거는 없다. Input confidence mean은 train `.770`,
+validation `.765`, test `.721`이었다. Manifest에는 sequence ID는 있지만 semantic action
+taxonomy와 camera-view label이 없으므로 view distribution 비교는 unavailable이다. train은
+주로 `courtyard_*`/`outdoors_climbing_*`, validation은 `courtyard_*`/`outdoors_parcours_*`,
+test는 `downtown_*` sequence를 포함한다.
+
+3DPW train yaw P95 `10.18°` 대 test `38.45°`, P99 `14.44°` 대 `53.41°`로 hard-case coverage가
+크게 다르다. source-stratified aggregation이 3DPW participation은 복구하지만, 현재 train에
+test와 comparable한 hard examples를 공급한다는 증거는 없다.
+
+**판정: Case B — 3DPW training coverage/domain shift가 primary limitation.** Global-tail
+starvation은 실재하는 secondary mechanism이지만 Case A의 relevant training coverage 조건이
+충족되지 않는다. source-stratified 후보 학습, A12 coefficient/tail percentage/source mixture/
+augmentation/optimizer 변경은 수행하지 않았다. A9–A12 checkpoint/fingerprint/report와
+historical loss definition은 변경하지 않았다.
+
+재현 가능한 진단 JSON은
+`/home/nd/animcv-output/experiments/a12_source_tail_aggregation_diagnosis/diagnosis.json`에
+있다.
+
 ## 사용자 정성 평가: 리그 애니메이션 review video
 
 수치 gate가 통과하더라도 관절의 순간적인 반전, foot sliding, 루트의 회전 흔들림은 사람이 보는

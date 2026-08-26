@@ -169,6 +169,7 @@ class TrainingConfig:
     yaw_tail_loss_weight: float = 0.0
     hinge_flip_loss_weight: float = 0.0
     end_effector_loss_weight: float = 0.0
+    cartesian_torso_tail_loss_weight: float = 0.0
     init_checkpoint: str | None = None
 
     def __post_init__(self) -> None:
@@ -179,7 +180,8 @@ class TrainingConfig:
         if min(self.input_jitter_std, self.confidence_jitter_std, self.input_global_scale_std,
                self.input_translation_std, self.input_rotation_degrees, self.bone_loss_weight,
                self.torso_loss_weight, self.hinge_loss_weight, self.yaw_loss_weight,
-               self.yaw_tail_loss_weight, self.hinge_flip_loss_weight, self.end_effector_loss_weight) < 0:
+               self.yaw_tail_loss_weight, self.hinge_flip_loss_weight, self.end_effector_loss_weight,
+               self.cartesian_torso_tail_loss_weight) < 0:
             raise ValueError("input augmentation standard deviations must be non-negative")
         if not 0.0 <= self.input_dropout_probability < 1.0 or not 0.0 <= self.temporal_occlusion_probability < 1.0:
             raise ValueError("dropout and temporal occlusion probabilities must be in [0, 1)")
@@ -625,6 +627,8 @@ def _supervision_loss(torch, prediction, target, mask, config: TrainingConfig):
         total = total + config.hinge_flip_loss_weight * _hinge_flip_loss(torch, prediction, target, valid)
     if config.end_effector_loss_weight:
         total = total + config.end_effector_loss_weight * _end_effector_loss(torch, prediction, target, valid)
+    if config.cartesian_torso_tail_loss_weight:
+        total = total + config.cartesian_torso_tail_loss_weight * _cartesian_torso_tail_loss(torch, prediction, target, valid)
     return total
 
 
@@ -663,6 +667,23 @@ def _yaw_axis_loss(torch, prediction, target, valid):
     return _masked_mean(torch, errors, stable)
 
 
+def _pooled_tail_mean(torch, errors, stable):
+    """CVaR-style mean of the worst 5% pooled observations in ``errors``.
+
+    Shared by every tail-selected auxiliary loss (angular yaw-tail and the
+    Cartesian torso-tail candidate) so "which observations count as the
+    tail" stays one mechanism, not a duplicated-and-possibly-drifting one.
+    Invalid entries are zero-filled; errors are non-negative, so an invalid
+    entry can only tie with a correct observation and cannot change the mean.
+    """
+    flattened_errors, flattened_stable = errors.flatten(), stable.flatten()
+    tail_count = ((flattened_stable.sum() + 19) // 20).clamp_min(1)
+    maximum_tail = max(1, (flattened_errors.numel() + 19) // 20)
+    selected = torch.topk(flattened_errors.masked_fill(~flattened_stable, 0.0), maximum_tail).values
+    chosen = torch.arange(maximum_tail, device=errors.device) < tail_count
+    return selected.masked_select(chosen).mean()
+
+
 def _yaw_tail_loss(torch, prediction, target, valid):
     """CVaR-style loss for the worst 5% bilateral yaw observations.
 
@@ -671,15 +692,39 @@ def _yaw_tail_loss(torch, prediction, target, valid):
     gate without forcing already-correct axes to move.
     """
     errors, stable = _yaw_axis_error_grid(torch, prediction, target, valid)
-    flattened_errors, flattened_stable = errors.flatten(), stable.flatten()
-    # Keep the former CVaR upper 5% definition while keeping ``tail_count`` on
-    # the device. Invalid entries are zero; yaw errors are non-negative, so they
-    # can only tie with a correct observation and cannot change the loss value.
-    tail_count = ((flattened_stable.sum() + 19) // 20).clamp_min(1)
-    maximum_tail = max(1, (flattened_errors.numel() + 19) // 20)
-    selected = torch.topk(flattened_errors.masked_fill(~flattened_stable, 0.0), maximum_tail).values
-    chosen = torch.arange(maximum_tail, device=prediction.device) < tail_count
-    return selected.masked_select(chosen).mean()
+    return _pooled_tail_mean(torch, errors, stable)
+
+
+def _torso_vector_error_grid(torch, prediction, target, valid):
+    """Per-(frame, bilateral pair) Cartesian residual for the shoulder and
+    hip torso vectors, in the same smooth-L1 units and pair convention as
+    ``torso_loss_weight`` (``_vector_loss`` over ``TORSO_INDICES``) -- not a
+    new geometry semantic, just the same one kept per-observation instead of
+    averaged, so a tail selector can rank it.
+    """
+    first, second = zip(*TORSO_INDICES)
+    pair_valid = valid[:, first] & valid[:, second]
+    predicted_vectors = prediction[:, second] - prediction[:, first]
+    target_vectors = target[:, second] - target[:, first]
+    errors = torch.nn.functional.smooth_l1_loss(predicted_vectors, target_vectors, reduction="none").mean(dim=-1)
+    return errors, pair_valid
+
+
+def _cartesian_torso_tail_loss(torch, prediction, target, valid):
+    """Tail-selected Cartesian counterpart to the angular yaw-tail loss.
+
+    Same pooled worst-5% selection mechanism as ``_yaw_tail_loss``, applied
+    to the shoulder/hip bilateral vector's smooth-L1 residual instead of a
+    (1-cos) angular error. A vector *difference* (right - left) is invariant
+    to a uniform translation of the whole skeleton by construction, so this
+    needs no separate translation-invariance handling. Because it shares the
+    coordinate/structural stack's own scale (smooth-L1 on the same
+    normalized positions), its raw magnitude is expected to shrink alongside
+    ``torso_loss_weight`` as training converges, unlike the angular term's
+    scale-independent (1-cos) magnitude.
+    """
+    errors, stable = _torso_vector_error_grid(torch, prediction, target, valid)
+    return _pooled_tail_mean(torch, errors, stable)
 
 
 def _yaw_axis_errors(torch, prediction, target, valid):
@@ -847,7 +892,8 @@ def _structural_loss_report(config: TrainingConfig) -> dict[str, float]:
             "hinge_loss_weight": config.hinge_loss_weight, "yaw_loss_weight": config.yaw_loss_weight,
             "yaw_tail_loss_weight": config.yaw_tail_loss_weight,
             "hinge_flip_loss_weight": config.hinge_flip_loss_weight,
-            "end_effector_loss_weight": config.end_effector_loss_weight}
+            "end_effector_loss_weight": config.end_effector_loss_weight,
+            "cartesian_torso_tail_loss_weight": config.cartesian_torso_tail_loss_weight}
 
 
 def _source_frame_counts(dataset: dict[str, Any]) -> dict[str, int]:

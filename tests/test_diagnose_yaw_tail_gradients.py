@@ -262,3 +262,38 @@ def test_source_restricted_cartesian_torso_tail_loss_ignores_other_sources():
     )
 
     assert float(restricted_to_source_1) == pytest.approx(0.0, abs=1e-6)
+
+
+def test_torso_attribution_preserves_exact_squared_energy_identity():
+    import torch
+    from pose.pose_lifter import H36M_NAMES
+
+    module = _load_module()
+    target, valid = _zeroed(2), torch.zeros((2, len(H36M_NAMES)), dtype=torch.bool)
+    ls, rs = H36M_NAMES.index("left_shoulder"), H36M_NAMES.index("right_shoulder")
+    lh, rh = H36M_NAMES.index("left_hip"), H36M_NAMES.index("right_hip")
+    target[:, ls] = torch.tensor((-1.0, 0.0, 0.0))
+    target[:, rs] = torch.tensor((1.0, 0.0, 0.0))
+    target[:, lh] = torch.tensor((-0.5, 0.0, 0.0))
+    target[:, rh] = torch.tensor((0.5, 0.0, 0.0))
+    valid[:, [ls, rs, lh, rh]] = True
+    prediction = target.clone()
+    theta = math.radians(30.0)
+    direction = torch.tensor((math.cos(theta), math.sin(theta), 0.0))
+    for left, right in ((ls, rs), (lh, rh)):
+        midpoint = (target[:, left] + target[:, right]) / 2.0
+        half_span = (target[:, right] - target[:, left]).norm(dim=-1, keepdim=True) / 2.0
+        prediction[:, left] = midpoint - half_span * direction
+        prediction[:, right] = midpoint + half_span * direction
+    attribution = module._torso_attribution(torch, prediction, target, valid, torch.tensor([0, 1]))
+
+    assert torch.allclose(
+        attribution["total_energy"],
+        attribution["magnitude_energy"] + attribution["direction_energy"],
+        atol=1e-6,
+    )
+    assert attribution["a12_selected_count"] >= 1
+    assert sum(
+        item["selected_fraction"]
+        for item in attribution["a12_source_shares"].values()
+    ) == pytest.approx(1.0)

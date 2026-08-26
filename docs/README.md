@@ -15,6 +15,7 @@
 | [06_SERVER_AI_AGENT_TRAINING_RUNBOOK](06_SERVER_AI_AGENT_TRAINING_RUNBOOK.md) | 서버 Agent용 데이터 검증·학습·판정 실행 지침 | 실행 준비 완료 |
 | [07_WEB_DATASET_TRAINING_PLAN](07_WEB_DATASET_TRAINING_PLAN.md) | 웹 원천 데이터셋 도입·license·adapter 계획 | C1–C6 선행 구현 필요 |
 | [08_RESEARCH_DATASET_ASSESSMENT](08_RESEARCH_DATASET_ASSESSMENT.md) | 공개 dataset 조사, 코드 현황, 구현 배치 | 설계 완료·구현 승인 대기 |
+| [15_WORKLOG_A12_MAGNITUDE_DIRECTION_ATTRIBUTION](15_WORKLOG_A12_MAGNITUDE_DIRECTION_ATTRIBUTION.md) | A12 Cartesian torso residual magnitude/direction 진단 및 A13 판정 | **NO-GO: A13 미실행** |
 
 ## 원칙
 

@@ -332,6 +332,87 @@ orientation 어긋남.
 아키텍처 질문은 orientation supervision의 형태(예: 방향 정보만 분리해서 스케일을 통제하는
 방법, 또는 tail-selection이 아닌 다른 표현)여야 한다.
 
+### A12 magnitude/direction attribution 및 A13 판정 (2026-08-26, 학습 없이 진단만)
+
+A12가 실패한 이유가 Cartesian residual의 magnitude-direction entanglement인지 확인하기 위해,
+A9/A11 진단과 동일한 seed 1337·augmentation·source-balanced permutation의 첫 epoch 고정
+배치 10개(배치당 128 frame)를 네 상태(init/A9/A11/A12)에 replay했다. A12의 실제 pooled
+selection은 유지하고, attribution에는 (1) smooth-L1 scalar companion과 (2) 다음의 정확한
+제곱 에너지 항등식을 함께 사용했다.
+
+`||v_pred-v_gt||² = (||v_pred||-||v_gt||)² + ||v_pred|| ||v_gt|| ||u_pred-u_gt||²`
+
+A12가 선택한 tail에서의 결과는 다음과 같다. `direction`은 target span을 detached scale로
+복원한 unit-direction residual이며, scalar 두 항은 smooth-L1 자체가 비선형이므로 A12 raw
+loss를 단순히 합산하는 항이 아니라 attribution용 동반 측정이다.
+
+| 상태 | A12 raw tail | magnitude scalar | direction scalar | magnitude energy | direction energy | A12 raw × 0.05 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| init | 0.112882 | 0.127270 | 0.038603 | 37.6% | 62.4% | 0.005644 |
+| A9 | 0.001671 | 0.000959 | 0.001393 | 19.3% | **80.7%** | 0.0000836 |
+| A11 | 0.009038 | 0.010736 | 0.003847 | 39.6% | 60.4% | 0.000452 |
+| A12 | 0.001530 | 0.000944 | 0.001266 | 20.4% | **79.6%** | 0.0000765 |
+
+A12 checkpoint의 선택 tail predicted span 평균은 0.310, target span 평균은 0.309였다.
+따라서 수렴 상태에서 A12가 주로 magnitude를 줄이는 신호였다는 증거는 없다. parameter
+gradient만 보면 magnitude component의 raw norm/base norm은 6.12배, direction component는
+4.66배로 magnitude가 약 1.31배 컸지만, 이는 방향 항의 정보가 희석됐다는 수준이 아니며
+A11 angular loss의 폭발과도 질적으로 다르다. A12 선택 tail의 direction scalar 자체가
+magnitude scalar보다 컸고, squared energy는 direction이 약 80%였다.
+
+#### 고정 배치 gradient 및 yaw association
+
+아래 gradient ratio는 coefficient 1.0으로 계산한 raw ratio이며, 실제 coefficient 0.05를
+적용한 값은 괄호 안에 적었다. cosine은 base A9 objective와 component gradient의 cosine이다.
+
+| 상태 | Cartesian A12 candidate | scale-restored direction candidate | A12 magnitude component | A12 direction component | historical angular yaw-tail |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| init | 3.25 (0.162), cos .248 | 0.94 (0.047), cos -.019 | 6.37 (0.318), cos .275 | 0.29 (0.014), cos -.024 | 1.69 (0.084) |
+| A9 | 5.28 (0.264), cos .164 | 5.14 (0.257), cos .162 | 6.60 (0.330), cos .052 | 4.94 (0.247), cos .152 | **3169.92 (158.50)** |
+| A12 | 5.34 (0.267), cos .318 | 4.91 (0.245), cos .301 | 6.12 (0.306), cos .203 | 4.66 (0.233), cos .294 | **2596.64 (129.83)** |
+
+A12 상태에서 raw direction-candidate ratio의 p95/max는 6.34/6.45, Cartesian candidate는
+6.78/6.79이었다. 반면 historical angular ratio는 2596.64였으므로, 후보는 small-span
+계산을 포함해 A11의 gradient pathology를 재현하지 않았다. A12 상태에서 frame-level yaw
+error와의 Pearson r은 Cartesian .325, magnitude -.056, scale-restored direction **.610**,
+historical angular 1.000이었다. angular 값이 1인 것은 evaluator가 동일한 angular quantity를
+사용하기 때문이며 독립적인 성공 증거로 해석하지 않는다.
+
+#### source별 attribution
+
+A9 checkpoint에서 A12 실제 tail의 loss share는 MPI 44.4%, 3DPW 10.6%, AMASS 45.0%였다.
+AMASS의 내부 구성은 magnitude loss share 60.2%, direction loss share 40.8%로 magnitude
+쪽이 더 컸다. A12 checkpoint에서는 MPI 46.3%, 3DPW 7.5%, AMASS 46.2%였고, AMASS는
+magnitude 54.2%, direction 45.8%였다. init/A11처럼 AMASS가 86–92%까지 올라간 상태에서는
+magnitude와 direction이 함께 지배했다. 즉 기존 AMASS dominance는 순수 magnitude 하나가
+아니라 상태·selection에 따라 둘 다 나타나는 현상이며, 수렴 상태에서는 magnitude 편향이
+있어도 direction 정보가 사라지지는 않았다.
+
+scale-restored direction candidate의 자체 tail selection은 A12 상태에서 MPI 46.1%,
+3DPW 9.7%, AMASS 44.2%였고, source별 isolated gradient norm은 각각 0.0924, 0.0577,
+0.1254였다. 기존 A12의 source 집중을 더 악화시키는 새 source pathology는 관찰되지 않았지만,
+source 기여를 동일하게 만들기 위한 normalization은 이번 batch에서 도입하지 않았다.
+
+#### 합성 계약 및 판정
+
+diagnostic-only candidate는 `u_pred=normalize(v_pred)`, `u_gt=normalize(v_gt)`,
+`scale=stop_gradient(||v_gt||)`, `scale * (u_pred-u_gt)`이며 fixed epsilon은 기존 yaw 경로와
+동일한 `1e-6`이다. raw dimensionless/cosine/angle scalar나 별도 magnitude 항을 사용하지
+않는다. identical/translation invariance, same-direction different-magnitude zero,
+rotation/opposite response, shoulder/hip endpoint gradient isolation, detached target scale,
+collapsed predicted span finite loss/gradient의 6개 계약을 모두 통과했다.
+
+그러나 전체 GO는 **NO-GO**다. 후보 자체의 orientation sensitivity와 optimization stability는
+확인됐지만, A13을 허용하는 첫 조건인 “A12 signal이 magnitude 때문에 direction 정보에서
+materially diluted 됐다”가 A9/A12 수렴 상태에서 성립하지 않았다. 따라서 정확히 하나의
+A13 학습, 새 정성 review, source normalization, dynamic balancing, weight tuning을 모두
+실행하지 않았다. A12의 최종 architecture verdict는 **안정성은 해결했지만 orientation을
+개선하지 못했고, 그 실패를 단순 magnitude-direction entanglement로 설명할 수 없음**이다.
+
+재현 가능한 원본 진단 산출물은 서버의
+`/home/nd/animcv-output/experiments/a12_direction_attribution_10b/diagnosis.json`이며,
+A9–A12 checkpoint/fingerprint/report는 변경하지 않았다.
+
 ## 사용자 정성 평가: 리그 애니메이션 review video
 
 수치 gate가 통과하더라도 관절의 순간적인 반전, foot sliding, 루트의 회전 흔들림은 사람이 보는

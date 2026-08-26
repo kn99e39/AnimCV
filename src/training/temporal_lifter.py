@@ -56,6 +56,12 @@ YAW_INDICES = tuple((H36M_NAMES.index(left), H36M_NAMES.index(right)) for left, 
     ("left_shoulder", "right_shoulder"), ("left_hip", "right_hip"),
 ))
 
+# The existing angular yaw helper uses this same fixed guard when a bilateral
+# span is nearly collapsed.  It is a numerical safeguard, not a tunable
+# training hyperparameter; keep the direction-only counterfactual on the same
+# convention.
+VECTOR_NORMALIZATION_EPS = 1e-6
+
 
 def build_dataset(
     pose: PoseSequence, target: LiftedPoseSequence, image_size: tuple[int, int], sequence_id: str,
@@ -772,6 +778,70 @@ def _cartesian_torso_tail_loss(torch, prediction, target, valid):
     scale-independent (1-cos) magnitude.
     """
     errors, stable = _torso_vector_error_grid(torch, prediction, target, valid)
+    return _pooled_tail_mean(torch, errors, stable)
+
+
+def _torso_vector_geometry_grid(torch, prediction, target, valid):
+    """Return bilateral torso geometry used by the A12 attribution.
+
+    The returned grids are shaped ``(batch, 2)`` for the shoulder and hip
+    pairs, except vector/chord grids which have a final size-3 dimension.
+    ``pair_valid`` deliberately matches ``_torso_vector_error_grid`` so the
+    diagnostic can reproduce A12's exact pooled tail selection.  The
+    ``stable`` mask is stricter and is only for geometric quantities requiring
+    a non-zero target direction.
+    """
+    first, second = zip(*TORSO_INDICES)
+    pair_valid = valid[:, first] & valid[:, second]
+    predicted_vectors = prediction[:, second] - prediction[:, first]
+    target_vectors = target[:, second] - target[:, first]
+    predicted_lengths = torch.linalg.vector_norm(predicted_vectors, dim=-1)
+    target_lengths = torch.linalg.vector_norm(target_vectors, dim=-1)
+    predicted_units = predicted_vectors / predicted_lengths.clamp_min(VECTOR_NORMALIZATION_EPS).unsqueeze(-1)
+    target_units = target_vectors / target_lengths.clamp_min(VECTOR_NORMALIZATION_EPS).unsqueeze(-1)
+    direction_chord = predicted_units - target_units
+    stable = pair_valid & (target_lengths > VECTOR_NORMALIZATION_EPS)
+    return {
+        "predicted_vectors": predicted_vectors,
+        "target_vectors": target_vectors,
+        "predicted_lengths": predicted_lengths,
+        "target_lengths": target_lengths,
+        "predicted_units": predicted_units,
+        "target_units": target_units,
+        "direction_chord": direction_chord,
+        "pair_valid": pair_valid,
+        "stable": stable,
+    }
+
+
+def _scale_restored_direction_torso_error_grid(torch, prediction, target, valid):
+    """Scale-restored unit-direction residual for the A13 counterfactual.
+
+    The target span restores Cartesian units but is detached so this objective
+    cannot supervise torso-vector magnitude.  The predicted normalization uses
+    the fixed ``VECTOR_NORMALIZATION_EPS`` guard shared by the attribution
+    helpers and the angular yaw path.  This function is intentionally a
+    private candidate until its fixed-batch contract is shown to be healthy.
+    """
+    geometry = _torso_vector_geometry_grid(torch, prediction, target, valid)
+    residual = geometry["target_lengths"].detach().unsqueeze(-1) * (
+        geometry["predicted_units"] - geometry["target_units"]
+    )
+    errors = torch.nn.functional.smooth_l1_loss(
+        residual, torch.zeros_like(residual), reduction="none",
+    ).mean(dim=-1)
+    return errors, geometry["stable"], residual, geometry
+
+
+def _scale_restored_direction_torso_tail_loss(torch, prediction, target, valid):
+    """Tail-selected, target-scale-restored direction-only torso loss.
+
+    This is the single counterfactual representation considered for A13.  It
+    is not a cosine or angle loss and does not add a separate magnitude term.
+    """
+    errors, stable, _residual, _geometry = _scale_restored_direction_torso_error_grid(
+        torch, prediction, target, valid,
+    )
     return _pooled_tail_mean(torch, errors, stable)
 
 

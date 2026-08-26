@@ -143,13 +143,13 @@ A12는 A11의 optimization-scale 붕괴를 해결했지만 3DPW orientation gate
 
 - focused pytest: `24 passed`
 - `py_compile`: PASS
-- full regression: major documentation/code closure에서 실행 예정
+- full regression: `PYTHONPATH=.:src ./.venv/bin/pytest -q` → `364 passed`
 
 커밋:
 
 - `0c5d6bd` — diagnose A12 torso residual geometry
 - `5e56b1c` — fix diagnostic gradient concentration
-- 다음 문서/테스트 closure commit 예정
+- `110bc44` — record A12 magnitude direction no-go
 
 `origin/On_Work`와 `LabServer63:/home/nd/AnimCV`는 위 코드 커밋까지 fast-forward 상태다.
 `.vscode/`와 서버의 기존 미추적 `.DS_Store`, `.animcv_sync_stage/`, `docker/`는 건드리지

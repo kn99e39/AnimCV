@@ -118,3 +118,18 @@ def test_sequence_disjoint_nearest_support_excludes_same_sequence():
 
     assert index.tolist() == [2]
     assert distance.tolist() == pytest.approx([10.0])
+
+
+def test_input_nearest_target_gap_is_computed_from_gt_only():
+    module = _load_module()
+    targets = np.zeros((2, 17, 3), dtype=float)
+    valid = _valid(2)
+    targets[0, module.LEFT_SHOULDER] = [-1.0, 0.0, 0.0]
+    targets[0, module.RIGHT_SHOULDER] = [1.0, 0.0, 0.0]
+    targets[1, module.LEFT_SHOULDER] = [-1.0, 0.0, 0.0]
+    targets[1, module.RIGHT_SHOULDER] = [1.0, 0.0, 0.5]
+    split = {"target_geometry": module._target_frame_geometry(targets, valid)}
+
+    gaps = module._target_gap_records(split, np.asarray([0]), split, np.asarray([1]))
+
+    assert gaps[0]["shoulder_signed_z_abs_delta_m"] == pytest.approx(0.5)

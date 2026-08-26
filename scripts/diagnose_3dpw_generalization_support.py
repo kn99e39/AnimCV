@@ -755,6 +755,55 @@ def _distance_summary(values: np.ndarray, control_values: np.ndarray | None = No
     return result
 
 
+def _target_relation_values(split: dict[str, Any], index: int) -> dict[str, float]:
+    geometry = split["target_geometry"]
+    values: dict[str, float] = {}
+    orientation = geometry["root_orientation"][index]
+    if np.isfinite(orientation):
+        values["root_orientation_rad"] = float(orientation)
+    for pair_name in ("shoulder", "hip"):
+        pair = geometry[pair_name]
+        for key, output_name in (("angle", "orientation_rad"), ("signed_z", "signed_z_m"),
+                                 ("signed_forward_y", "signed_forward_y_m")):
+            value = pair[key][index]
+            if np.isfinite(value):
+                values[f"{pair_name}_{output_name}"] = float(value)
+    return values
+
+
+def _target_gap_records(query_split: dict[str, Any], query_indices: np.ndarray, support_split: dict[str, Any],
+                        support_indices: np.ndarray) -> list[dict[str, float]]:
+    records: list[dict[str, float]] = []
+    for query_index, support_index in zip(query_indices, support_indices):
+        if int(support_index) < 0:
+            records.append({})
+            continue
+        query_values = _target_relation_values(query_split, int(query_index))
+        support_values = _target_relation_values(support_split, int(support_index))
+        gap: dict[str, float] = {}
+        for key, value in query_values.items():
+            if key not in support_values:
+                continue
+            if key == "root_orientation_rad" or key.endswith("orientation_rad"):
+                gap[key.replace("_rad", "_abs_delta_degrees")] = abs(np.degrees(_angle_difference(value, support_values[key])))
+            else:
+                gap[key.replace("_m", "_abs_delta_m")] = abs(value - support_values[key])
+        records.append(gap)
+    return records
+
+
+def _gap_summary(records: list[dict[str, float]], control_records: list[dict[str, float]] | None = None) -> dict[str, Any]:
+    names = sorted({name for record in records for name in record})
+    result: dict[str, Any] = {}
+    for name in names:
+        values = np.asarray([record[name] for record in records if name in record], dtype=np.float64)
+        control_values = None
+        if control_records is not None:
+            control_values = np.asarray([record[name] for record in control_records if name in record], dtype=np.float64)
+        result[name] = _distance_summary(values, control_values)
+    return result
+
+
 def _support_report(train: dict[str, Any], validation: dict[str, Any], test: dict[str, Any],
                     hard_sets: dict[str, dict[str, dict[str, Any]]], seed: int) -> dict[str, Any]:
     target_scaler = _fit_scaler(train["target_descriptor"], train["target_descriptor_valid"])
@@ -769,6 +818,17 @@ def _support_report(train: dict[str, Any], validation: dict[str, Any], test: dic
     }
     control_target = relations["train_to_other_train_sequence"]["target_distance"]
     control_input = relations["train_to_other_train_sequence"]["input_distance"]
+    query_context = {
+        "train_to_other_train_sequence": (train, control_indices),
+        "validation_to_train": (validation, hard_sets["validation"]["top_5_percent"]["indices"]),
+        "test_to_train": (test, hard_sets["test"]["top_5_percent"]["indices"]),
+    }
+    control_input_target_gap = _target_gap_records(
+        train, control_indices, train, relations["train_to_other_train_sequence"]["input_index"],
+    )
+    control_target_input_gap = _target_gap_records(
+        train, control_indices, train, relations["train_to_other_train_sequence"]["target_index"],
+    )
     report: dict[str, Any] = {
         "descriptor_scaling": {
             "method": "training-support mean/std; no split-specific tuning",
@@ -782,16 +842,21 @@ def _support_report(train: dict[str, Any], validation: dict[str, Any], test: dic
     for name, relation in relations.items():
         target_summary = _distance_summary(relation["target_distance"], control_target if name != "train_to_other_train_sequence" else None)
         input_summary = _distance_summary(relation["input_distance"], control_input if name != "train_to_other_train_sequence" else None)
+        query_split, query_indices = query_context[name]
+        input_target_gap_records = _target_gap_records(
+            query_split, query_indices, train, relation["input_index"],
+        )
+        target_input_gap_records = _target_gap_records(
+            query_split, query_indices, train, relation["target_index"],
+        )
         records: list[dict[str, Any]] = []
-        query_indices = (control_indices if name == "train_to_other_train_sequence"
-                         else hard_sets["validation"]["top_5_percent"]["indices"] if name == "validation_to_train"
-                         else hard_sets["test"]["top_5_percent"]["indices"])
-        query_split = train if name == "train_to_other_train_sequence" else validation if name == "validation_to_train" else test
         for position, query_index in enumerate(query_indices):
             query_index = int(query_index)
             item = _record(query_split, query_index)
             item["target_support_distance"] = float(relation["target_distance"][position]) if np.isfinite(relation["target_distance"][position]) else None
             item["input_support_distance"] = float(relation["input_distance"][position]) if np.isfinite(relation["input_distance"][position]) else None
+            item["target_gap_at_input_nearest_support"] = input_target_gap_records[position]
+            item["target_gap_at_target_nearest_support"] = target_input_gap_records[position]
             for space, index_key in (("target", "target_index"), ("input", "input_index")):
                 support_index = int(relation[index_key][position])
                 item[f"{space}_support"] = None
@@ -806,6 +871,14 @@ def _support_report(train: dict[str, Any], validation: dict[str, Any], test: dic
             "query_count": int(relation["query_count"]),
             "target": target_summary,
             "input": input_summary,
+            "input_nearest_target_gap": _gap_summary(
+                input_target_gap_records,
+                None if name == "train_to_other_train_sequence" else control_input_target_gap,
+            ),
+            "target_nearest_target_gap": _gap_summary(
+                target_input_gap_records,
+                None if name == "train_to_other_train_sequence" else control_target_input_gap,
+            ),
             "records": records,
         }
     return report

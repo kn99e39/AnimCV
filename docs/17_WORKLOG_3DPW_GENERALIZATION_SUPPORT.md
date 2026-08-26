@@ -180,7 +180,7 @@ Full pytest는 production shared code가 변경되지 않아 반복 실행하지
 
 - `b7ab3a5` — input-nearest target-gap diagnostic
 - `a950d1c` — temporal diagnostic unit names and missing-value handling
-- documentation closure commit 예정
+- `43857f8` — documentation closure
 
 최종 진단 JSON:
 

@@ -307,9 +307,10 @@ def _gradient_comparison(torch, model, prediction, target, valid, source_ids, so
     }
 
 
-def _source_balance(torch, source_ids, source_labels, seed: int, batch_size: int, batch_count: int):
+def _source_balance(torch, source_ids, source_labels, seed: int, batch_size: int, batch_count: int, generator=None):
     indices = torch.arange(len(source_ids), device=source_ids.device)
-    generator = torch.Generator(device=source_ids.device).manual_seed(seed)
+    if generator is None:
+        generator = torch.Generator(device=source_ids.device).manual_seed(seed)
     permutation = _source_balanced_permutation(torch, indices, source_ids, generator)
 
     def counts(values):
@@ -552,11 +553,15 @@ def main() -> int:
         temporal_occlusion_frames=9, input_coordinate_normalization="pelvis_torso_v1",
         **A9_STRUCTURAL_WEIGHTS,
     )
-    balance = _source_balance(
-        torch, source_tensor, source_labels, args.seed, args.batch_size, args.batch_count,
-    )
     generator = torch.Generator(device=x.device).manual_seed(args.seed)
     epoch_inputs = _augment_inputs(torch, x, replay_config, generator, sequence_ranges)
+    # ``train()`` consumes the seeded RNG in this exact order: augmentation
+    # first, then source-balanced permutation.  Reusing one generator keeps
+    # these fixed batches identical to A9/A12's prior diagnostic replay.
+    balance = _source_balance(
+        torch, source_tensor, source_labels, args.seed, args.batch_size, args.batch_count,
+        generator=generator,
+    )
     batches = balance["batches"]
 
     model_states = {

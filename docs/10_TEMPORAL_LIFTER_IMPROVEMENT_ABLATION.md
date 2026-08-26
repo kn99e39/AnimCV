@@ -286,7 +286,7 @@ gradient가 base보다 **3,000배 이상** 커진다. weight 0.05를 곱해도 �
 "orientation supervision 자체의 형태(스케일이 base 3D objective와 자연스럽게 맞물리는 형태,
 그리고 소수 도메인에 좌우되지 않는 정규화)"가 돼야 한다.
 
-### Cartesian torso-tail loss 후보와 A12 (2026-08-25)
+### Cartesian torso-tail loss 후보와 A12 (2026-08-26)
 
 각도(1-cos) 표현 대신, 안정적인 3D geometry objective와 **같은 Cartesian 좌표 공간**에서
 orientation tail을 표현하는 후보를 만들었다: 어깨/엉덩이 bilateral vector(`v = p_right - p_left`,

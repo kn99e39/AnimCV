@@ -1,4 +1,4 @@
-# Worklog — Cartesian Torso-Tail Loss (2026-08-25)
+# Worklog — Cartesian Torso-Tail Loss (2026-08-26)
 
 > 형식은 `docs/11_WORKLOG_REVIEW_TOOLING_AND_END_EFFECTOR_LOSS.md`가 정한 관례를 따른다:
 > 세션 서사만 여기 남기고 파일명은 그 세션의 작업을 관통하는 이름으로 짓는다(날짜는 제목

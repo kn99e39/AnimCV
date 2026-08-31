@@ -632,6 +632,46 @@ sampler, optimizer, gate 변경과 추가 학습은 모두 보류한다.
 핵심 정량 수치와 hard/support record 전체를 포함하며 generated artifact는 repository에
 commit하지 않았다.
 
+### A14 결과 (2026-08-31, bilateral_forward_depth_supervision, Case B — rejected)
+
+A9와 fingerprint 6개 완전 동일, all-frame `q = (y_right - y_left) / sqrt(2)`
+(canonical `+Y`) shoulder/hip 잔차를 base coordinate loss의 sum/count에
+그대로 pooling(별도 weight 없음)했다. yaw_loss/yaw_tail_loss/hinge_flip_loss/
+end_effector_loss/cartesian_torso_tail_loss는 모두 0으로 유지했다. 학습 전
+fixed-batch gradient 진단(A9 상태 candidate/base ratio 평균 `0.458`, 최대
+`0.628`, cosine 양수)이 A11식 붕괴(`3,169.92`)나 A12(`5.28`)보다도 안전함을
+확인해 GO 판정했다.
+
+| Holdout | PA-MPJPE mm | yaw MAE ° | yaw P95 ° | 판정 (3-gate) |
+| --- | ---: | ---: | ---: | --- |
+| 3DPW test | 77.34 (A9 75.31) | **15.15** (A9 14.90, 신규 실패) | 38.18 (A9 34.77, 악화) | yaw MAE·P95 실패 |
+| AMASS internal | 73.87 (A9 69.19) | 7.71 (A9 8.77) | 21.19 (A9 22.37) | 통과(A9도 통과) |
+
+training MPJPE는 40.19→40.13mm로 사실상 그대로였다 — A11식 붕괴는 재현되지
+않았다. 3DPW 공식 test holdout 35,310프레임 전체에서 A9 evaluator 자신의
+hard top-5%/top-1%(candidate 관찰 전 고정)를 기준으로 forward-depth abs
+residual과 sign disagreement를 측정한 결과, **hard set에서는 의미 있게
+개선**됐다(shoulder abs residual top-5% `0.231→0.181m`, sign disagreement
+`48.4%→41.5%`; hip `0.091→0.067m`, `50.3%→39.1%`). 그러나 non-hard subset과
+이전까지 orientation 문제가 거의 없던 대조군 시퀀스(`downtown_bar_00:actor0`)
+에서는 오히려 악화됐다(shoulder sign disagreement `7.0%→16.0%`). hard
+top-1%의 sign disagreement는 거의 그대로였다(`68.8%→67.7%`, `61.6%→59.0%`).
+
+**판정: Case B(그러나 이상화된 Case B보다 나쁨) — 직접 supervise한
+bilateral forward-depth 신호는 hard set 평균에서 실제로 학습되지만, yaw
+evaluator 지표는 개선되지 않고 오히려 악화됐고(3DPW test yaw MAE는 새
+게이트 실패), 이전까지 문제없던 영역에 새 orientation 혼동을 만들었다.**
+weight를 조정하지 않는다(지시에 따름). 다음 아키텍처 질문은 더 풍부한
+torso relational/local-frame 표현, 또는 temporal/latent orientation-state
+supervision·multi-hypothesis modeling이며, 이번 batch에서 구현하지 않는다.
+자세한 진단은 `docs/18_WORKLOG_A14_BILATERAL_FORWARD_DEPTH.md`.
+
+재현 가능한 진단 JSON은
+`/home/nd/animcv-output/experiments/a14_bilateral_forward_depth_diagnosis/`
+(gradient_diagnosis.json, test_attribution.json)와 학습 결과
+`/home/nd/animcv-output/experiments/ablation_a14_bilateral_forward_depth_10e_v2/`
+에 있다.
+
 ## 사용자 정성 평가: 리그 애니메이션 review video
 
 수치 gate가 통과하더라도 관절의 순간적인 반전, foot sliding, 루트의 회전 흔들림은 사람이 보는

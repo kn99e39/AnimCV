@@ -8,6 +8,7 @@ passes the calibrated holdout gates.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
@@ -61,6 +62,17 @@ YAW_INDICES = tuple((H36M_NAMES.index(left), H36M_NAMES.index(right)) for left, 
 # training hyperparameter; keep the direction-only counterfactual on the same
 # convention.
 VECTOR_NORMALIZATION_EPS = 1e-6
+
+# AnimCV's canonical camera frame is (+X right, +Y forward/depth, +Z up) --
+# see pose_lifter._to_lifted_points. The bilateral forward-depth candidate
+# (docs/10 A14) must read the actual forward/depth column, not canonical Z.
+FORWARD_DEPTH_AXIS = 1
+# Orthonormal-basis normalization for a bilateral pair: with
+# common = (y_R + y_L) / sqrt(2) and q = (y_R - y_L) / sqrt(2), [common, q] is
+# an orthonormal transform of [y_R, y_L], so q keeps the same physical
+# Cartesian scale as the endpoint coordinates it is built from. This constant
+# is a basis normalization, not a tunable auxiliary weight.
+BILATERAL_DEPTH_NORMALIZATION = 1.0 / math.sqrt(2.0)
 
 
 def build_dataset(
@@ -176,6 +188,7 @@ class TrainingConfig:
     hinge_flip_loss_weight: float = 0.0
     end_effector_loss_weight: float = 0.0
     cartesian_torso_tail_loss_weight: float = 0.0
+    bilateral_forward_depth_supervision: bool = False
     init_checkpoint: str | None = None
 
     def __post_init__(self) -> None:
@@ -229,6 +242,12 @@ def _epoch_telemetry_snapshot(torch, model, x, y, valid_tensor, offset_tensor, i
         hinge = float(_hinge_loss(torch, prediction, target, valid_bool).item())
         yaw_tail = float(_yaw_tail_loss(torch, prediction, target, valid_bool).item())
         cartesian_torso_tail = float(_cartesian_torso_tail_loss(torch, prediction, target, valid_bool).item())
+        # Always computed for comparability across runs (like yaw_tail_raw and
+        # cartesian_torso_tail_raw above), regardless of whether
+        # bilateral_forward_depth_supervision is enabled for this run.
+        relational_sum, relational_count = _bilateral_forward_depth_residual_sum(torch, prediction, target, valid_bool)
+        bilateral_forward_depth = float((relational_sum / relational_count.clamp_min(1.0)).item())
+        bilateral_forward_depth_diagnostics = _bilateral_forward_depth_diagnostics(torch, prediction, target, valid_bool)
         errors = torch.linalg.vector_norm(prediction - target, dim=-1)
         valid_float = valid_bool.float()
         sample_mpjpe_mm = float((errors * valid_float).sum().item() / valid_float.sum().clamp_min(1.0).item() * 1000)
@@ -236,7 +255,12 @@ def _epoch_telemetry_snapshot(torch, model, x, y, valid_tensor, offset_tensor, i
         model.train()
     return {
         "total_weighted": total_weighted, "coordinate": coordinate, "bone": bone, "torso": torso, "hinge": hinge,
-        "yaw_tail_raw": yaw_tail, "cartesian_torso_tail_raw": cartesian_torso_tail, "sample_mpjpe_mm": sample_mpjpe_mm,
+        "yaw_tail_raw": yaw_tail, "cartesian_torso_tail_raw": cartesian_torso_tail,
+        "bilateral_forward_depth_raw": bilateral_forward_depth,
+        # Diagnostic-only attribution (docs/10 A14): never fed back into the
+        # optimizer, matching the earlier 3DPW generalization-support metrics.
+        **{f"diagnostic_{key}": value for key, value in bilateral_forward_depth_diagnostics.items()},
+        "sample_mpjpe_mm": sample_mpjpe_mm,
     }
 
 
@@ -657,9 +681,18 @@ def _predict_batched(model, x, offsets, batch_size: int, amp_enabled: bool):
 
 def _supervision_loss(torch, prediction, target, mask, config: TrainingConfig):
     """Coordinate loss plus canonical, rig-independent structural terms."""
-    coordinate = (torch.nn.functional.smooth_l1_loss(prediction, target, reduction="none") * mask).sum() / mask.sum().clamp_min(1.0)
-    total = coordinate
+    coordinate_sum = (torch.nn.functional.smooth_l1_loss(prediction, target, reduction="none") * mask).sum()
+    coordinate_count = mask.sum()
     valid = mask.squeeze(-1).bool()
+    if config.bilateral_forward_depth_supervision:
+        # All-frame, not tail-selected: every valid shoulder/hip pair joins
+        # the ordinary coordinate mean as two extra scalar coordinates, with
+        # no separate weight (docs/10 A14).
+        relational_sum, relational_count = _bilateral_forward_depth_residual_sum(torch, prediction, target, valid)
+        coordinate_sum = coordinate_sum + relational_sum
+        coordinate_count = coordinate_count + relational_count
+    coordinate = coordinate_sum / coordinate_count.clamp_min(1.0)
+    total = coordinate
     if config.bone_loss_weight:
         total = total + config.bone_loss_weight * _vector_loss(
             torch, prediction, target, valid, BONE_INDICES,
@@ -779,6 +812,64 @@ def _cartesian_torso_tail_loss(torch, prediction, target, valid):
     """
     errors, stable = _torso_vector_error_grid(torch, prediction, target, valid)
     return _pooled_tail_mean(torch, errors, stable)
+
+
+def _bilateral_forward_depth_grid(torch, prediction, target, valid):
+    """Signed bilateral forward-depth coordinates for the shoulder/hip pairs.
+
+    ``q = (y_right - y_left) / sqrt(2)`` on the canonical ``+Y`` forward/depth
+    axis (docs/10 A14), using the same ``TORSO_INDICES`` pair convention
+    (shoulder then hip, ``right - left``) and validity contract as
+    ``torso_loss_weight``. Being a linear combination of two endpoint
+    coordinates, it needs no degenerate-length guard the way a direction-
+    normalized quantity would.
+    """
+    left, right = zip(*TORSO_INDICES)
+    pair_valid = valid[:, left] & valid[:, right]
+    q_pred = (prediction[:, right, FORWARD_DEPTH_AXIS] - prediction[:, left, FORWARD_DEPTH_AXIS]) * BILATERAL_DEPTH_NORMALIZATION
+    q_target = (target[:, right, FORWARD_DEPTH_AXIS] - target[:, left, FORWARD_DEPTH_AXIS]) * BILATERAL_DEPTH_NORMALIZATION
+    return q_pred, q_target, pair_valid
+
+
+def _bilateral_forward_depth_residual_sum(torch, prediction, target, valid):
+    """Coordinate-equivalent smooth-L1 residual sum/count for A14.
+
+    Same smooth-L1 family (default beta) as the base coordinate loss. Returns
+    a raw ``(sum, count)`` pair instead of a mean so the caller can pool it
+    directly into the base coordinate loss's own sum/count -- one relational
+    scalar residual contributes exactly like one additional scalar
+    coordinate under the existing reduction convention, not a separately
+    averaged-and-weighted term (docs/10 A14 normalization derivation).
+    """
+    q_pred, q_target, pair_valid = _bilateral_forward_depth_grid(torch, prediction, target, valid)
+    mask = pair_valid.to(q_pred.dtype)
+    residual = torch.nn.functional.smooth_l1_loss(q_pred, q_target, reduction="none") * mask
+    return residual.sum(), mask.sum()
+
+
+def _bilateral_forward_depth_diagnostics(torch, prediction, target, valid) -> dict[str, float]:
+    """Diagnostic-only forward-depth attribution: never used by the optimizer.
+
+    Reports raw (un-normalized, physical-unit) shoulder/hip forward-depth
+    absolute residual and sign-disagreement rate, matching the quantities
+    used by the prior 3DPW generalization-support diagnosis so telemetry is
+    directly comparable to it.
+    """
+    left, right = zip(*TORSO_INDICES)
+    pair_valid = valid[:, left] & valid[:, right]
+    raw_pred = prediction[:, right, FORWARD_DEPTH_AXIS] - prediction[:, left, FORWARD_DEPTH_AXIS]
+    raw_target = target[:, right, FORWARD_DEPTH_AXIS] - target[:, left, FORWARD_DEPTH_AXIS]
+    abs_residual = (raw_pred - raw_target).abs()
+    sign_disagreement = (torch.sign(raw_pred) != torch.sign(raw_target)) & pair_valid
+    result: dict[str, float] = {}
+    for index, name in enumerate(("shoulder", "hip")):
+        column_valid = pair_valid[:, index]
+        count = column_valid.float().sum().clamp_min(1.0)
+        result[f"{name}_forward_depth_abs_residual_m"] = float(
+            (abs_residual[:, index] * column_valid).sum().item() / count.item())
+        result[f"{name}_forward_depth_sign_disagreement"] = float(
+            (sign_disagreement[:, index] & column_valid).float().sum().item() / count.item())
+    return result
 
 
 def _torso_vector_geometry_grid(torch, prediction, target, valid):
@@ -1005,13 +1096,14 @@ def _augmentation_report(config: TrainingConfig) -> dict[str, float | bool | int
     }
 
 
-def _structural_loss_report(config: TrainingConfig) -> dict[str, float]:
+def _structural_loss_report(config: TrainingConfig) -> dict[str, float | bool]:
     return {"bone_loss_weight": config.bone_loss_weight, "torso_loss_weight": config.torso_loss_weight,
             "hinge_loss_weight": config.hinge_loss_weight, "yaw_loss_weight": config.yaw_loss_weight,
             "yaw_tail_loss_weight": config.yaw_tail_loss_weight,
             "hinge_flip_loss_weight": config.hinge_flip_loss_weight,
             "end_effector_loss_weight": config.end_effector_loss_weight,
-            "cartesian_torso_tail_loss_weight": config.cartesian_torso_tail_loss_weight}
+            "cartesian_torso_tail_loss_weight": config.cartesian_torso_tail_loss_weight,
+            "bilateral_forward_depth_supervision": config.bilateral_forward_depth_supervision}
 
 
 def _source_frame_counts(dataset: dict[str, Any]) -> dict[str, int]:

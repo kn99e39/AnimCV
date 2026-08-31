@@ -111,9 +111,9 @@ def test_anti_symmetric_depth_error_produces_positive_residual_and_opposite_grad
     prediction.requires_grad_(True)
 
     valid = torch.ones((n, len(H36M_NAMES)), dtype=torch.bool)
-    total, count = _bilateral_forward_depth_residual_sum(torch, prediction, target, valid)
-    assert float(total) > 0.0
-    (total / count).backward()
+    total, _count = _bilateral_forward_depth_residual_sum(torch, prediction, target, valid)
+    assert float(total.detach()) > 0.0
+    total.backward()  # raw sum, not the pooled mean -- isolates the per-pair gradient contract
 
     right_grad = float(prediction.grad[0, right_index, FORWARD_DEPTH_AXIS])
     left_grad = float(prediction.grad[0, left_index, FORWARD_DEPTH_AXIS])
@@ -126,17 +126,19 @@ def test_correct_magnitude_wrong_sign_produces_large_residual():
 
     n = 1
     target = _zeroed(n)
-    _set_forward_y(target, 0, -0.15, 0.15, 0.0, 0.0)  # q_shoulder_target = 0.3/sqrt(2)
+    _set_forward_y(target, 0, -1.5, 1.5, 0.0, 0.0)  # q_shoulder_target = 3.0/sqrt(2)
     prediction = target.clone()
-    prediction[0, H36M_NAMES.index("left_shoulder"), FORWARD_DEPTH_AXIS] = 0.15
-    prediction[0, H36M_NAMES.index("right_shoulder"), FORWARD_DEPTH_AXIS] = -0.15  # sign flipped
+    prediction[0, H36M_NAMES.index("left_shoulder"), FORWARD_DEPTH_AXIS] = 1.5
+    prediction[0, H36M_NAMES.index("right_shoulder"), FORWARD_DEPTH_AXIS] = -1.5  # sign flipped
 
     valid = torch.ones((n, len(H36M_NAMES)), dtype=torch.bool)
     q_pred, q_target, _ = _bilateral_forward_depth_grid(torch, prediction, target, valid)
     assert float(q_pred[0, 0]) == pytest.approx(-float(q_target[0, 0]), abs=1e-6)
 
     total, _ = _bilateral_forward_depth_residual_sum(torch, prediction, target, valid)
-    assert float(total) > 0.3  # far outside the quadratic region -> large residual
+    # |q_error| = 6/sqrt(2) ~= 4.24, well past the beta=1.0 quadratic/linear
+    # transition -> the linear-region residual (|x| - 0.5) is large.
+    assert float(total) > 3.0
 
 
 def test_zero_target_bilateral_depth_gives_finite_well_behaved_loss():

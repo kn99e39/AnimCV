@@ -75,7 +75,10 @@ def test_epoch_telemetry_is_recorded_without_perturbing_reproducibility(tmp_path
     assert [snapshot["epoch"] for snapshot in telemetry] == [0, 1, 2]
     expected_keys = {
         "epoch", "total_weighted", "coordinate", "bone", "torso", "hinge",
-        "yaw_tail_raw", "cartesian_torso_tail_raw", "sample_mpjpe_mm",
+        "yaw_tail_raw", "cartesian_torso_tail_raw", "bilateral_forward_depth_raw",
+        "diagnostic_shoulder_forward_depth_abs_residual_m", "diagnostic_hip_forward_depth_abs_residual_m",
+        "diagnostic_shoulder_forward_depth_sign_disagreement", "diagnostic_hip_forward_depth_sign_disagreement",
+        "sample_mpjpe_mm",
     }
     assert set(telemetry[0]) == expected_keys
     assert all(math.isfinite(value) for snapshot in telemetry for key, value in snapshot.items() if key != "epoch")

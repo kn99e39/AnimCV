@@ -189,3 +189,29 @@ def test_experiment_runner_produces_isolated_candidates_and_comparisons(paired, 
     assert len(first["ground_truth_3d"]) == 17
     assert len(first["candidates"]["F1"]["prediction_3d"]) == 17
     assert first["candidates"]["F0"]["metrics"]["mpjpe_mm"] is not None
+
+
+def test_image_verification_script_detects_a_declared_size_mismatch(paired, tmp_path, capsys):
+    module = _load("verify_frame_bank_images")
+    bank, index_path, images = paired
+    argv = ["verify_frame_bank_images", "--bank", str(index_path),
+            "--image-root", f"3dpw_images={images}", "--sample", "0",
+            "--out", str(tmp_path / "verification.json")]
+    sys.argv = argv
+    assert module.main() == 0
+    capsys.readouterr()
+    report = read_json(tmp_path / "verification.json")
+    assert report["passed"] is True
+    assert report["checked_samples"] == len(bank)
+    assert report["image_size_mismatch_count"] == 0
+
+    from PIL import Image
+    reference = bank.samples[0].image_reference
+    path = Path(images) / reference.relative_path
+    Image.fromarray(np.zeros((IMAGE_SIZE[1] // 2, IMAGE_SIZE[0] // 2, 3), dtype=np.uint8)).save(path)
+    sys.argv = argv
+    assert module.main() == 1
+    capsys.readouterr()
+    report = read_json(tmp_path / "verification.json")
+    assert report["passed"] is False
+    assert report["image_size_mismatch_count"] == 1

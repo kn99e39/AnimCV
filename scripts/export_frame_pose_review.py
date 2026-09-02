@@ -41,9 +41,13 @@ def main() -> int:
         prediction_path = directory / f"prediction_{args.split}.npy"
         evaluation_path = directory / f"evaluation_{args.split}.json"
         if prediction_path.is_file() and evaluation_path.is_file():
+            evaluation = read_json(evaluation_path)
             candidates[directory.name] = {
                 "prediction": np.load(prediction_path),
-                "evaluation": read_json(evaluation_path),
+                "evaluation": evaluation,
+                # Indexed once: a linear scan per frame per candidate is
+                # quadratic over a full holdout split.
+                "metrics": {record["sample_id"]: record for record in evaluation["frames"]},
             }
     if not candidates:
         raise ValueError(f"no candidate predictions found under {args.experiment_root}")
@@ -81,8 +85,7 @@ def main() -> int:
                 "candidates": {},
             }
             for name, value in candidates.items():
-                metrics = next((item for item in value["evaluation"]["frames"]
-                                if item["sample_id"] == sample.sample_id), {})
+                metrics = value["metrics"].get(sample.sample_id, {})
                 record["candidates"][name] = {
                     "prediction_3d": value["prediction"][index].tolist(),
                     "metrics": {key: metrics.get(key) for key in

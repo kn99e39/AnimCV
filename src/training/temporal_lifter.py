@@ -189,6 +189,7 @@ class TrainingConfig:
     end_effector_loss_weight: float = 0.0
     cartesian_torso_tail_loss_weight: float = 0.0
     bilateral_forward_depth_supervision: bool = False
+    compile_training_graph: bool = False
     init_checkpoint: str | None = None
 
     def __post_init__(self) -> None:
@@ -210,6 +211,11 @@ class TrainingConfig:
             raise ValueError("architecture must be legacy_tcn_v1 or dilated_tcn_v1")
         if self.input_coordinate_normalization not in ("image_v1", "pelvis_torso_v1"):
             raise ValueError("input_coordinate_normalization must be image_v1 or pelvis_torso_v1")
+        if self.compile_training_graph and self.distributed:
+            # docs/20's eager-vs-compiled equivalence/throughput verdict only
+            # validated single-GPU execution; torch.compile's interaction
+            # with DistributedDataParallel was not tested in that batch.
+            raise ValueError("compile_training_graph is not validated together with distributed")
 
 
 def _epoch_telemetry_snapshot(torch, model, x, y, valid_tensor, offset_tensor, indices, config, amp_enabled) -> dict[str, Any]:
@@ -296,6 +302,21 @@ def train(dataset: dict[str, Any], checkpoint_path: str | Path, config: Training
         scaler = torch.amp.GradScaler("cuda", enabled=amp_enabled)
     else:  # PyTorch 2.1 keeps GradScaler under torch.cuda.amp.
         scaler = torch.cuda.amp.GradScaler(enabled=amp_enabled)
+
+    def _forward_loss(windows, target, mask):
+        prediction = model(windows)
+        loss = _supervision_loss(torch, prediction, target, mask, config)
+        return prediction, loss
+
+    # docs/20: compiling model-forward + the supervision loss as one graph
+    # measured a 54.7% steady-state throughput gain on the frozen A9
+    # benchmark, with exact compiled-vs-compiled reproducibility and
+    # eager-vs-compiled differences at float16/AMP-noise scale. Backward and
+    # the optimizer step stay eager either way. Opt-in and False by default,
+    # so every historical config (including A9-A14) keeps its exact eager
+    # execution path unless a run explicitly asks for the compiled one.
+    forward_loss_fn = torch.compile(_forward_loss) if config.compile_training_graph else _forward_loss
+
     started = perf_counter()
     local_samples_seen = 0
     epoch_telemetry = []
@@ -311,10 +332,9 @@ def train(dataset: dict[str, Any], checkpoint_path: str | Path, config: Training
             # Advanced indexing builds every temporal window in one GPU operation.
             windows = epoch_inputs[offset_tensor[batch]]
             optimizer.zero_grad()
+            mask = valid_tensor[batch]
             with torch.amp.autocast("cuda", enabled=amp_enabled):
-                prediction = model(windows)
-                mask = valid_tensor[batch]
-                loss = _supervision_loss(torch, prediction, y[batch], mask, config)
+                prediction, loss = forward_loss_fn(windows, y[batch], mask)
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
@@ -342,6 +362,7 @@ def train(dataset: dict[str, Any], checkpoint_path: str | Path, config: Training
                    "input_coordinate_normalization": config.input_coordinate_normalization,
                    "training_seed": config.seed,
                    "receptive_field": (model.module if context["enabled"] else model).receptive_field,
+                   "execution_backend": "compiled" if config.compile_training_graph else "eager",
                    "state_dict": (model.module if context["enabled"] else model).state_dict()}
         Path(checkpoint_path).parent.mkdir(parents=True, exist_ok=True)
         torch.save(payload, checkpoint_path)
@@ -359,7 +380,8 @@ def train(dataset: dict[str, Any], checkpoint_path: str | Path, config: Training
     return {"frame_count": len(inputs), "training_mpjpe_mm": mpjpe_mm,
             "valid_joint_count": int(valid.sum()), "config": config.__dict__,
             "parallelism": {"mode": "ddp" if config.distributed else "single_gpu", "world_size": context["world_size"],
-            "device": str(device), "mixed_precision": amp_enabled}, "performance": performance,
+            "device": str(device), "mixed_precision": amp_enabled,
+            "execution_backend": "compiled" if config.compile_training_graph else "eager"}, "performance": performance,
             "initialization": initialization, "input_augmentation": _augmentation_report(config),
             "sampling": {"source_balanced": config.source_balanced_sampling,
                          "source_frame_counts": _source_frame_counts(dataset)},

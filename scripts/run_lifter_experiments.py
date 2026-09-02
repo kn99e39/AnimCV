@@ -76,6 +76,7 @@ def _config(args: argparse.Namespace, *, epochs: int, init_checkpoint: Path | No
         end_effector_loss_weight=args.end_effector_loss_weight,
         cartesian_torso_tail_loss_weight=args.cartesian_torso_tail_loss_weight,
         bilateral_forward_depth_supervision=args.bilateral_forward_depth_supervision,
+        compile_training_graph=args.compile_training_graph,
         init_checkpoint=str(init_checkpoint) if init_checkpoint else None,
     )
 
@@ -144,6 +145,10 @@ def main() -> int:
     parser.add_argument("--bilateral-forward-depth-supervision", action="store_true",
                          help="all-frame signed bilateral forward-depth (+Y) supervision, "
                               "pooled into the base coordinate loss with no tunable weight (docs/10 A14)")
+    parser.add_argument("--compile-training-graph", action="store_true",
+                         help="torch.compile the model-forward + supervision-loss computation "
+                              "(backward/optimizer stay eager); +54.7%% measured steady-state "
+                              "throughput on the A9 benchmark, opt-in and False by default (docs/20)")
     parser.add_argument("--candidates", default="mpi_only,mpi_3dpw,direct_mix,amass_pretrain,amass_pretrain_mpi_3dpw_finetune",
                         help="comma-separated subset of the reproducible candidate matrix")
     args = parser.parse_args()

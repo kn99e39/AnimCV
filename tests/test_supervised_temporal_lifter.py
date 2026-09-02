@@ -341,3 +341,47 @@ def test_vectorized_structural_losses_match_per_chain_reference_reduction():
         reference_vector(BONES, lambda first, second: first - second)
     )
     assert _hinge_loss(torch, prediction, target, valid) == pytest.approx(reference_hinge())
+
+
+def test_compile_training_graph_defaults_to_eager_execution_backend(tmp_path):
+    """docs/20: the compile candidate is opt-in and False by default, so
+    every historical config's reported/checkpointed execution backend
+    stays 'eager' unless a run explicitly asks for the compiled one."""
+    pose = PoseSequence([_pose(i) for i in range(4)], 25)
+    target = LiftedPoseSequence([_target(i) for i in range(4)], 25)
+    dataset = build_dataset(pose, target, (100, 100), "compile-flag-default")
+    checkpoint = tmp_path / "model.pth"
+    report = train(dataset, checkpoint, TrainingConfig(window=3, channels=8, epochs=1, batch_size=2))
+
+    assert report["config"]["compile_training_graph"] is False
+    assert report["parallelism"]["execution_backend"] == "eager"
+    import torch
+    payload = torch.load(checkpoint, weights_only=True)
+    assert payload["execution_backend"] == "eager"
+
+
+def test_compile_training_graph_true_trains_and_reports_compiled_backend(tmp_path):
+    """torch.compile also targets CPU (inductor); this exercises the real
+    (non-mocked) compiled path end-to-end on a tiny dataset."""
+    pose = PoseSequence([_pose(i) for i in range(8)], 25)
+    target = LiftedPoseSequence([_target(i) for i in range(8)], 25)
+    dataset = build_dataset(pose, target, (100, 100), "compile-flag-enabled")
+    checkpoint = tmp_path / "model.pth"
+    report = train(dataset, checkpoint, TrainingConfig(
+        window=3, channels=8, epochs=1, batch_size=2, compile_training_graph=True,
+    ))
+
+    assert report["config"]["compile_training_graph"] is True
+    assert report["parallelism"]["execution_backend"] == "compiled"
+    assert math.isfinite(report["training_mpjpe_mm"])
+    import torch
+    payload = torch.load(checkpoint, weights_only=True)
+    assert payload["execution_backend"] == "compiled"
+
+
+def test_compile_training_graph_rejects_distributed_combination():
+    """docs/20 only validated single-GPU eager-vs-compiled equivalence;
+    compile_training_graph + distributed is refused rather than silently
+    shipped untested."""
+    with pytest.raises(ValueError, match="compile_training_graph"):
+        TrainingConfig(compile_training_graph=True, distributed=True)

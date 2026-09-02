@@ -23,6 +23,26 @@ from earlier in a conversation is still accurate if meaningful time has
 passed — re-check `git log`/`git status` against the remote rather than
 trusting a summary from a previous turn.
 
+## Experiments run on LabServer63
+
+Training and every GPU experiment run on the SSH host `LabServer63`
+(`~/.ssh/config`, user `nd`) in the checkout at `/home/nd/AnimCV`. The
+macOS and Windows checkouts are for authoring; nothing is measured
+there. That makes LabServer63 a third clone under the same
+"fetch before you start" rule above.
+
+When a branch is created, switched or pushed locally, mirror it on the
+server (`ssh LabServer63 'cd ~/AnimCV && git fetch origin && git
+checkout <branch>'`) — otherwise the experiment environment is silently
+still on the old branch. Check `git status` there first: that checkout
+normally carries untracked `.animcv_sync_stage/` and `docker/` plus
+stashes, and none of them should be disturbed.
+
+Datasets live outside the repo at `~/animcv-data` (3DPW with its
+`imageFiles/`, AMASS, body models) and outputs at `~/animcv-output`;
+MPI-INF-3DHP annotations are inside the repo at
+`datasets/mpi_inf_3dhp/`. GPU: one RTX 3080 Ti, 12 GB.
+
 ## Branch layout
 
 - `main`: kept lean on purpose — no `tests/`, and evaluation/verification

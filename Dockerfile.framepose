@@ -1,0 +1,23 @@
+# Layer A (Architecture_v3_FramePose.md) training image.
+#
+# Extends the existing CUDA 11.8 training image rather than pulling a second
+# multi-gigabyte CUDA base. It adds only what the frame-first core needs: the
+# frozen pretrained visual towers (timm) and image decoding (pillow).
+FROM animcv-train:cuda118
+
+ENV PIP_NO_CACHE_DIR=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /workspace/AnimCV
+
+# torchvision must match the base image's torch 2.1.2+cu118; timm needs it.
+RUN python3 -m pip install --upgrade pip && \
+    python3 -m pip install --index-url https://download.pytorch.org/whl/cu118 \
+        "torchvision==0.16.2+cu118" && \
+    python3 -m pip install "timm>=1.0,<2" "pillow" "safetensors" "huggingface_hub"
+
+COPY . .
+RUN python3 -m pip install -e '.[training]'
+
+ENTRYPOINT ["python3"]

@@ -1,0 +1,23 @@
+services:
+  framepose:
+    build:
+      context: .
+      dockerfile: Dockerfile.framepose
+    image: animcv-framepose:cuda118
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    working_dir: /workspace/AnimCV
+    volumes:
+      - .:/workspace/AnimCV
+      - ${ANIMCV_DATA_ROOT:?Set ANIMCV_DATA_ROOT to the host dataset directory}:/data:ro
+      - ${ANIMCV_OUTPUT_ROOT:?Set ANIMCV_OUTPUT_ROOT to a writable host output directory}:/output
+      - ${ANIMCV_HF_CACHE:-./.hf_cache}:/hf_cache
+    environment:
+      PYTHONUNBUFFERED: "1"
+      PYTHONPATH: "/workspace/AnimCV/src"
+      HF_HOME: "/hf_cache"

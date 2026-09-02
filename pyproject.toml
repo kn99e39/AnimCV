@@ -28,6 +28,9 @@ pose = [
 ]
 depth = ["torch", "opencv-python", "matplotlib"]
 training = ["torch", "scipy", "smplx"]
+# Layer A (Architecture_v3_FramePose.md): frozen pretrained visual/vision-language
+# towers are loaded through timm, and person crops are decoded with pillow.
+frame-pose = ["torch", "timm>=1.0", "pillow"]
 dev = ["pytest"]
 
 [project.scripts]

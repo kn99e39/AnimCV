@@ -22,6 +22,7 @@
 | [19_WORKLOG_TRAINING_THROUGHPUT_DIAGNOSIS](19_WORKLOG_TRAINING_THROUGHPUT_DIAGNOSIS.md) | 학습 step stage-by-stage 처리량 진단(GPU utilization 10-20% 증상) | **Case D: 커널 launch-overhead 지배, 이번 batch fix 없음** |
 | [20_WORKLOG_TORCH_COMPILE_CANDIDATE](20_WORKLOG_TORCH_COMPILE_CANDIDATE.md) | 커널 단위 fragmentation 증거 + torch.compile 후보 검증 | **ACCEPT: +54.7% 처리량, opt-in `compile_training_graph` 추가** |
 | [21_WORKLOG_CORRECTED_BILATERAL_FORWARD_DEPTH](21_WORKLOG_CORRECTED_BILATERAL_FORWARD_DEPTH.md) | A11/A12 진단 repair + denominator 수정한 A14 clean A/B(compiled A9 control) | **Case C+E: 수정해도 자기 target도 개선 못함, historical A14보다 강한 negative** |
+| [22_WORKLOG_A16_GENERALIZATION_GAP](22_WORKLOG_A16_GENERALIZATION_GAP.md) | A11 selector 완전 isolation + A16이 train-domain에서만 되고 3DPW에서 실패하는 이유 | **Case D(coherence+temporal branch persistence), frozen probe P1 → 다음은 structured torso head** |
 
 ## 원칙
 

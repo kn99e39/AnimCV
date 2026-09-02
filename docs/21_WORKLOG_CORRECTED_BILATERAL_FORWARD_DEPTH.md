@@ -57,6 +57,20 @@ magnitude mismatch worse. Historical A11 training and its Case
 B(gradient-scale)/Case D(selector structure excluded) verdict are
 unchanged. No A11 retraining performed.
 
+**Wording correction (docs/22 Section 1)**: the
+`exact_evaluator_angle_frame_selector` measured above both *ranked* and
+*differentiated* the real evaluator degree value, conflating selection
+semantics with penalty representation/scale. It is retained here as a
+valid measurement, but the selector-structure exclusion this section draws
+should be read as resting on the *properly isolated* P1/P2/P3 comparison
+in docs/22 Section 1 (P3: exact-angle ranking, same (1-cos) differentiated
+penalty as P2), which reaches the identical conclusion through a cleaner
+control (P1/P2/P3 ratios all land in the same narrow band — 3,170/3,200/
+3,325 at A9 state — regardless of selection rule, isolating the pathology
+to penalty representation alone). The number reported here is re-labeled
+in docs/22 as `angle_penalty_diagnostic`, a different (still valid, still
+extreme) question about penalty representation, not selector structure.
+
 ## 3. A12 true evaluator-yaw association
 
 The historical `_yaw_association` used `(1 - cos(theta)) * 180/pi` as a
@@ -171,9 +185,17 @@ exactly.
 | runtime (10 epoch) | seconds | 1,335.6 | 919.4 | **-31.2%** |
 | throughput | samples/s | 3,470.9 | 5,041.8 | **+45.3%** |
 
-All deltas are within the scale of historical run-to-run eager variance
-(e.g. A9 vs A10 differed by comparable amounts). No major unexplained
-quality regression attributable to the execution backend.
+**Wording correction (docs/22 Section 2)**: the deltas above are comparable
+in *magnitude* to historical eager-to-eager differences (e.g. A9 vs A10),
+but that is not the same claim as "ordinary run-to-run variance" — compiled
+execution preserves the mathematical training objective exactly but forms
+a **distinct numerical execution lineage** from eager (different kernel
+fusion, different floating-point reduction order end to end). It is a GO
+for using the compiled backend for new quality experiments, and it means
+architecture A/B comparisons after A15 must stay on the same compiled
+backend (A15, not historical eager A9) — which docs/21 already did for the
+A16 comparison (Section 11) — but the deltas themselves should not be
+described as if they were just another eager run.
 
 ## 9. GO / NO-GO for candidate training
 
@@ -338,10 +360,18 @@ current deterministic model/head — not merely "insufficient to move
 yaw" (A14's finding) but insufficient to reliably improve the very
 quantity it supervises, once execution-backend confounds are removed.
 This closes the "was A14's negative result an artifact of the
-denominator bug" question: **no, it was not** — the corrected version is,
-if anything, a cleaner and stronger negative result. The next
-architecture question (per the standing instruction, not pursued this
-batch) should move to coupled torso geometry / relational local-frame
+denominator bug" question at the level of the *hypothesis*: **no, it was
+not** — the corrected version is, if anything, a cleaner and stronger
+negative result. **Wording correction (docs/22 Section 2)**: this does
+**not** mean A16 proves which portion of historical A14's *exact* observed
+behavior (its specific PA-MPJPE/yaw numbers) came from denominator
+attenuation versus the underlying hypothesis failure — A14 and A16 differ
+in two things at once (the denominator *and* the execution backend), so
+their raw numbers are not directly decomposable against each other. What
+is established is the clean, single-variable result: A16 vs A15, same
+backend, only the corrected relational term differs, and it does not help.
+The next architecture question (per the standing instruction, not pursued
+this batch) should move to coupled torso geometry / relational local-frame
 representation, or explicit temporal orientation-state supervision.
 
 ## 18. Historical documentation status table

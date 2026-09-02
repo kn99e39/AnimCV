@@ -235,7 +235,29 @@ and no change to `bank.py`, `model.py`, `losses.py`, `train.py` or
 `evaluate.py`. Image roots are referenced by key, not absolute path, so a bank
 built on one machine is usable on another by remapping the key.
 
-## 10. What Layer A deliberately does not do
+## 10. Measured status of the observation backends
+
+The controlled F0/F1/F2 comparison was executed on the 21,817-frame 3DPW paired
+bank (docs/23). Result, on validation and on test, on every metric and in 37 of
+37 test sequences: **F0 (geometry only) wins.** Both RGB candidates fit the
+training frames far better and generalize far worse, and a token-substitution
+diagnosis shows the visual path is used heavily but carries ~4.6x less
+transferable pose information on unseen scenes than on seen ones.
+
+Consequences now binding on Layer A:
+
+- The Frame Pose Core's current primary configuration is **F0 — explicit 2D
+  geometry only.** The visual path stays implemented and tested but is not the
+  default.
+- The frozen-F2 precondition for parameter-efficient VLM adaptation
+  (section 8) is **unmet**; that branch is stopped, not deferred.
+- Restoring RGB evidence remains the right hypothesis about the *information*;
+  it is the data regime and the visual-path regularisation, not the fusion
+  interface, that this batch found wanting. Any retry needs a substantially
+  larger or more scene-diverse paired corpus, and should re-run exactly this
+  comparison.
+
+## 11. What Layer A deliberately does not do
 
 Animation stabilization, contact, root motion, IK, retargeting, Motion Graph
 work, temporal smoothing and temporal losses are out of scope for the frame

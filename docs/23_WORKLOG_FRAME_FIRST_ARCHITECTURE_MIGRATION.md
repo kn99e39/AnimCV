@@ -269,3 +269,271 @@ once per backbone as `(21817, 196, 768)` float16 (6.57 GB each), keyed to the
 bank's `content_digest` and sample-order digest; `load_feature_cache` refuses a
 cache built for a different bank. This makes F1/F2 training cost the same as F0
 and makes replay exact.
+
+## 10. Controlled run and training throughput
+
+`scripts/run_frame_pose_experiments.py`, one invocation, candidates `F0,F1,F2`,
+200 epochs, batch 256, AdamW lr 3e-4 -> 1e-5 cosine, weight decay 1e-4, seed
+1337, AMP, eager backend, `--evaluate-every 10`, selection on validation MPJPE.
+`experiment_matrix.json` records that only `backbone` differs between the three
+candidate configs.
+
+| Candidate | trainable params | frames/s | train wall time | peak VRAM | selected epoch |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| F0 | 1,652,227 | 6,903 | 328 s | 172 MB | 129 |
+| F1 | 2,427,139 | 1,039 | 2,181 s | 793 MB | 139 |
+| F2 | 2,427,139 | 1,049 | 2,162 s | 793 MB | 169 |
+
+Batch size was fixed once from memory feasibility and held across candidates; no
+batch-size sweep, and GPU utilisation was not a target.
+
+## 11. Frame-level quantitative comparison
+
+Mean over frames, 3DPW official splits, bank
+`75519e6394a764e3…0ed536`.
+
+| | val MPJPE | val PA | **test MPJPE** | test PA | test MPJPE p95 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| **F0** geometry only | **72.27** | **52.22** | **80.34** | **57.85** | **139.54** |
+| F1 vision + geometry | 73.66 | 54.26 | 108.25 | 72.23 | 172.98 |
+| F2 vision-language + geometry | 74.54 | 54.58 | 102.85 | 67.95 | 162.58 |
+
+### Orientation and forward-depth (test)
+
+| | root yaw MAE | yaw P95 | hinge dir MAE | shoulder \|D\| residual | shoulder sign disagreement (stable) | hip sign disagreement (stable) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| **F0** | **10.81** | **27.66** | **25.34** | **49.39 mm** | **0.112 (0.104)** | **0.148 (0.111)** |
+| F1 | 21.50 | 66.64 | 32.00 | 94.92 mm | 0.254 (0.248) | 0.278 (0.252) |
+| F2 | 19.29 | 48.23 | 28.82 | 92.80 mm | 0.232 (0.226) | 0.261 (0.225) |
+
+The geometry-only frame core is better on every orientation and forward-depth
+metric — the exact quantities the RGB path was introduced to fix.
+
+### Per-source and per-sequence
+
+Only one source can carry this comparison (Section 5), so per-source is 3DPW
+throughout and no cross-source claim is made. Per **sequence**, the result is not
+an averaging artifact: **F1 and F2 are worse than F0 on 37 of 37 test
+sequences.** Per-sequence test MPJPE: F0 min 58.8 / median 79.0 / max 119.3;
+F1 77.4 / 103.9 / 143.9; F2 80.2 / 106.5 / 145.9.
+
+### Per-stratum (test, mean delta vs F0; positive = worse)
+
+| Stratum bucket | F1 - F0 | F2 - F0 | F2 - F1 |
+| --- | ---: | ---: | ---: |
+| frontal | +18.9 | +18.3 | -0.6 |
+| near_frontal | +33.2 | +28.6 | -4.6 |
+| profile | +34.6 | +26.1 | -8.4 |
+| back_facing | +28.7 | +18.4 | -10.3 |
+| near_zero_forward_depth | +14.8 | +14.6 | -0.2 |
+| large_forward_depth | +36.6 | +27.3 | -9.3 |
+| fully_visible | +29.2 | +25.6 | -3.6 |
+| partially_visible | +26.0 | +17.9 | -8.1 |
+| low_confidence | +28.9 | +18.7 | -10.2 |
+| rare_articulation | +31.0 | +21.5 | -9.5 |
+
+There is **no stratum in which either RGB candidate beats geometry-only**.
+F1 regresses on 5,998 of 7,076 test frames, F2 on 5,682.
+
+## 12. Frame-by-frame review
+
+`scripts/export_frame_pose_review.py`, fixed selection (alphabetically first four
+test sequences, chosen before any candidate was compared), 850 frames with GT and
+all three predictions individually addressable
+(`/output/framepose/review_test.json`).
+
+| Review sequence | frames | MPJPE F0 / F1 / F2 | yaw F0 / F1 / F2 | shoulder sign-disagreement F0 / F1 / F2 |
+| --- | ---: | --- | --- | --- |
+| `downtown_arguing_00:actor0` | 180 | 68.2 / 137.9 / 112.7 | 8.3 / 44.1 / 13.7 | .050 / .383 / .039 |
+| `downtown_arguing_00:actor1` | 179 | 61.3 / 82.5 / 88.8 | 8.2 / 12.1 / 23.2 | .084 / .179 / .106 |
+| `downtown_bar_00:actor0` | 250 | 94.4 / 135.5 / 121.3 | 11.6 / 17.7 / 18.4 | .100 / .352 / .208 |
+| `downtown_bar_00:actor1` | 241 | 73.5 / 103.9 / 84.3 | 13.7 / 18.7 / 16.9 | .025 / .129 / .087 |
+
+The per-frame view is not uniformly negative and that is worth recording
+honestly: over `downtown_arguing_00:actor0` frames 0–35, F1 and F2 both hold a
+*smaller* shoulder forward-depth residual than F0 (e.g. frame 10: F0 -149.8 mm,
+F1 -83.4, F2 -89.8) and a smaller yaw error, while F0 wins on total MPJPE. The
+visual candidates are not failing to see orientation on every frame; they are
+failing to keep whatever they see when the scene changes (Section 13). No
+sequence playback was used as evidence.
+
+## 13. Why the RGB candidates lose — visual-feature usage diagnosis
+
+Because both RGB candidates failed to beat the control, the migration direction
+requires diagnosing feature usage before adding complexity (Case C). No training
+was involved: `scripts/diagnose_visual_feature_usage.py` replays each trained
+checkpoint with its image tokens substituted.
+
+MPJPE mm (delta vs that split's `real`):
+
+| Candidate | split | real | zero | shuffled | neighbour |
+| --- | --- | ---: | ---: | ---: | ---: |
+| F1 | train | 15.28 | 242.13 (+226.9) | 108.82 (**+93.5**) | 80.58 (+65.3) |
+| F1 | validation | 72.91 | 228.94 (+156.0) | 111.58 (**+38.7**) | 96.24 (+23.3) |
+| F1 | test | 108.10 | 255.50 (+147.4) | 128.14 (**+20.0**) | 119.71 (+11.6) |
+| F2 | train | 13.95 | 227.77 (+213.8) | 114.34 (**+100.4**) | 85.24 (+71.3) |
+| F2 | validation | 73.78 | 226.63 (+152.9) | 113.46 (**+39.7**) | 97.89 (+24.1) |
+| F2 | test | 102.84 | 247.41 (+144.6) | 125.08 (**+22.2**) | 115.49 (+12.6) |
+
+Three facts follow:
+
+1. **The visual path is used, heavily.** Silencing it (`zero`) costs 145–227 mm
+   on every split. This is not a case of the fusion ignoring the image.
+2. **What it extracts does not transfer.** Replacing the tokens with an
+   unrelated frame's costs +93.5 mm on train but only +20.0 mm on test for F1
+   (+100.4 / +22.2 for F2). The pose information the model recovers from an
+   image shrinks ~4.6x from seen to unseen scenes.
+3. **It is not purely scene identity.** `neighbour` (same scene and subject,
+   different pose) still costs +65 mm on train, so the model does read
+   frame-specific content — but the transferable remainder on test is +11.6 mm.
+
+The generalization gap makes the same point directly:
+
+| Candidate | train MPJPE | test MPJPE | gap | ratio |
+| --- | ---: | ---: | ---: | ---: |
+| F0 | 25.60 | 80.08 | +54.5 | 3.13x |
+| F1 | 15.28 | 108.10 | +92.8 | 7.08x |
+| F2 | 13.95 | 102.84 | +88.9 | 7.37x |
+
+Adding the frozen visual path cut training error by 40–46% and roughly doubled
+the generalization gap. With 11,334 training frames drawn from 34 actor-sequences
+of one dataset, 196 frozen ViT patch tokens are enough capacity to fit those
+scenes' appearance-to-pose mapping, and that mapping does not survive a change of
+subject, clothing and background.
+
+This is a **data-regime and fusion-regularisation** finding, not proof that RGB
+lacks the evidence. The distinction matters for what should be tried next and is
+stated as such rather than collapsed into "RGB does not help".
+
+### Trained-state loss screening
+
+`screening_trained.json` re-ran the fixed 10-batch screen at the F0-trained
+state. The structural terms' gradient ratio moves from 0.9997 at initialization
+to 0.954 with cosine 0.9974 — the shape prior becomes measurably more
+distinguishable from the coordinate term once the model has converged, while
+staying aligned in direction. The worst-error decile's loss share rises from
+0.125 to 0.284: at convergence the objective is increasingly carried by hard
+frames. Both are recorded as measurements; no acceptance rule is encoded, and
+nothing here was used to pick a candidate.
+
+## 14. Observation-architecture verdict
+
+**Case C**, with the mechanism of Case E.
+
+- F1 ~ F0 and F2 ~ F0 was the Case C hypothesis; the measured outcome is
+  stronger and must be stated as measured: **both RGB candidates are worse than
+  geometry-only**, on validation (the split selection used) and on test, on every
+  metric, in every stratum, and in 37 of 37 test sequences.
+- The Case E signature is present: the visual candidates fit training frames far
+  better (15.3 / 14.0 mm vs F0's 25.6) and generalize far worse.
+- Case D (helps some sources, damages others) cannot be evaluated — only one
+  source in this repository carries paired RGB, and that limitation is reported
+  rather than papered over.
+
+Per Case C, **no VLM fine-tuning was started.**
+
+**Does lightweight VLM pretraining help beyond ordinary visual pretraining?**
+No consistent advantage. F2 beats F1 by 5.40 mm mean on test, and that advantage
+does concentrate in exactly the predicted places — back-facing -10.3, profile
+-8.4, large forward-depth -9.3, low-confidence -10.2, rare articulation -9.5,
+partially visible -8.1 — with test yaw P95 48.23 vs 66.64. But F2 is **worse**
+than F1 on validation (+0.87 mm) and on per-sequence median test MPJPE (106.5 vs
+103.9). A directional hint that survives in one summary and reverses in two is
+not evidence; the honest reading is **F2 ~ F1**, both dominated by F0.
+
+**Answer to the batch's central question:** on identical paired-frame evidence,
+in this data regime and with this fusion, a lightweight vision-language
+representation provides **no measurable 3D orientation or depth benefit** beyond
+geometry-only, and no reliable benefit beyond conventional visual pretraining.
+
+### Section 13 gate: not reached
+
+Frozen F2 produced no real frame-level evidence that the vision-language
+representation is useful, so the precondition for parameter-efficient adaptation
+is unmet. **No LoRA/adapter candidate was trained, no rank or target-module set
+was swept, and the VLM fine-tuning branch is stopped.** Negative evidence is the
+result.
+
+### What the frame-first core itself established
+
+Separately from the RGB question, the answer to *"can AnimCV treat frame-level
+pose correctness as its primary perception contract?"* is **yes, and the
+frame-only baseline is already competitive with the Legacy Temporal Pose
+Baseline.** F0 reaches 57.85 mm PA-MPJPE and 27.66 deg root-yaw P95 on 3DPW test
+from a single frame, against A9's 75.31 mm and 34.77 deg from an 81-frame window
+— and A9's yaw P95 gate failure is what motivated this migration. These are not
+strictly comparable runs (different frame subsets, different training mixture:
+A9 trained on MPI + 3DPW + AMASS, F0 on 3DPW only), so this is a strong
+indication rather than a promotion, and it is reported as such. It does say the
+frame-first abstraction is viable on its own terms.
+
+## 15. Portability assessment
+
+Dataset knowledge is confined to `framepose/sources.py`: a `SourceSpec` plus an
+image-path callable. Nothing in `bank.py`, `crops.py`, `model.py`, `losses.py`,
+`train.py`, `evaluate.py` or `screening.py` mentions 3DPW, MPI or AMASS, and the
+tests assert that a geometry-only source is excluded from a paired bank by
+modality rather than by name. Imagery is addressed by `(root_key, relative_path)`,
+so a bank built here is consumable elsewhere by remapping one key.
+
+Onboarding a future paired commercial dataset requires: one `SourceSpec`
+(modality flags + image reference), the existing canonical joint mapping in its
+adapter, and its preprocessing metadata. No core change.
+
+Not yet portable: the frame contract assumes the prepared
+`animcv_supervised_3d_lifter_dataset_v2` intake shape, so a new dataset still
+needs an adapter down to that artifact first. That is the same boundary the
+Legacy Temporal Pose Baseline already has.
+
+## 16. Updated role of the historical temporal lifter
+
+`src/training/temporal_lifter.py` is unmodified and stays the **Legacy Temporal
+Pose Baseline**: reproducible historical baseline, future Layer B context
+provider, future Layer C refiner, and diagnostic comparison. Its structural loss
+terms are now *also* the frame core's shared objective, imported rather than
+copied, with an equality test.
+
+Layer B's comparison (`F0` vs `F0 + short temporal context` vs `F0 + long
+temporal context`) is **not** implemented here. The contract reserves what it
+needs — `sequence_id`, `frame_index`, `fps`, `timestamp`, and `neighbors` that
+never cross a sequence boundary — so that comparison needs no re-ingest.
+
+## 17. Limits of this batch
+
+- **One source.** Only 3DPW carries paired RGB in this repository, so every
+  conclusion about visual evidence is a 3DPW conclusion. Case D is untestable.
+- **One data regime.** 11,334 training frames from 34 actor-sequences. The
+  diagnosis in Section 13 says the failure is regime-shaped; a substantially
+  larger or more scene-diverse paired corpus could change the answer, and this
+  batch cannot say by how much.
+- **One fusion design.** Fixed width 256 / depth 2 / 196 tokens, no sweep, by
+  instruction. A different visual-regularisation regime (token dropout, stronger
+  augmentation, spatially constrained joint-to-patch attention) was not tried.
+- **One VLM family.** SigLIP's ViT-B/16 tower only, by instruction.
+- **No temporal anything.** No smoothing, no temporal loss, no root motion, no
+  contact, no IK, no retarget, no Motion Graph work.
+
+## 18. Artifacts, tests and synchronization
+
+Server outputs, all under `LabServer63:~/animcv-output/framepose/`:
+
+```
+bank_3dpw_paired_v1.json / .npz / _report.json     the frame bank + fingerprint
+bank_image_verification.json                       2,000-sample image contract check
+features_v1/{vit_in21k,siglip}/                    frozen tokens + weight provenance
+experiments_v1/{F0,F1,F2}/                         checkpoint, training + evaluation reports, predictions
+experiments_v1/experiment_matrix.json              the controlled matrix and comparisons
+experiments_v1/compare_{split}_{X}_vs_{Y}.json     per-frame deltas
+screening_initial.json / screening_trained.json    pre-training loss screening
+visual_usage_F1.json / visual_usage_F2.json        token-substitution diagnosis
+review_test.json                                   850-frame frame-by-frame review
+f0_split_mpjpe.json                                F0 train/validation/test MPJPE
+```
+
+Tests: 516 passed / 1 skipped in the full macOS suite (the skip is the
+timm-gated backbone test); 54 passed in the `animcv-framepose:cuda118` container
+on the training host, including the real frozen-backbone provenance and
+no-text-generation assertions.
+
+Branch `arch/single_frame_first`, branched from `On_Work` at `4b676fc`, in sync
+across the macOS checkout, `origin`, and `LabServer63:/home/nd/AnimCV`.

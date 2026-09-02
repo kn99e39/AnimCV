@@ -145,7 +145,7 @@ def setup(torch, nn, config: TrainingConfig, dataset, device):
     }
 
 
-def build_forward_loss_callable(torch, state, config: TrainingConfig, use_compile: bool):
+def build_forward_loss_callable(torch, model, config: TrainingConfig, use_compile: bool):
     """Return ``forward_loss(windows, target, mask) -> (prediction, loss)``.
 
     docs/20 Section 4's compile candidate scope: compile the model-forward +
@@ -154,8 +154,12 @@ def build_forward_loss_callable(torch, state, config: TrainingConfig, use_compil
     manual loss fusion/reduction-order change -- the exact same
     ``_supervision_loss`` call, just optionally wrapped by
     ``torch.compile`` with default settings (no backend/mode arguments).
+
+    Takes ``model`` directly (not the whole ``setup()`` state) so callers
+    that need an independent model instance -- e.g. a deep copy for a fair
+    eager-vs-compiled parameter comparison -- can use it without a fake
+    state dict.
     """
-    model = state["model"]
 
     def _forward_loss(windows, target, mask):
         prediction = model(windows)

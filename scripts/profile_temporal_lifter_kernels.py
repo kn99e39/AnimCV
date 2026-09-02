@@ -66,7 +66,7 @@ def _build_regioned_step(torch, state, config, use_compile: bool):
     optimizer, scaler = state["optimizer"], state["scaler"]
     epoch_inputs, offset_tensor, y, valid_tensor = state["epoch_inputs"], state["offset_tensor"], state["y"], state["valid_tensor"]
     amp_enabled = state["amp_enabled"]
-    forward_loss_fn = build_forward_loss_callable(torch, state, config, use_compile)
+    forward_loss_fn = build_forward_loss_callable(torch, state["model"], config, use_compile)
 
     def step(batch):
         with record_function("batch_construction"):
@@ -98,7 +98,7 @@ def _dynamo_graph_report(torch, state, config) -> dict[str, Any]:
     """One dry-run torch._dynamo.explain call on real batch shapes, outside
     the profiled window (Section 6): graph count, graph breaks, and break
     reasons for the exact compiled forward+loss callable."""
-    forward_loss_fn = build_forward_loss_callable(torch, state, config, use_compile=False)  # eager fn to explain
+    forward_loss_fn = build_forward_loss_callable(torch, state["model"], config, use_compile=False)  # eager fn to explain
     batch = state["batches"][0]
     windows = state["epoch_inputs"][state["offset_tensor"][batch]]
     target = state["y"][batch]
@@ -238,7 +238,7 @@ def main() -> int:
     # latency is paid, kept out of both the measured throughput and the
     # profiled trace (Section 6).
     from time import perf_counter
-    forward_loss_fn = build_forward_loss_callable(torch, state, config, use_compile=args.compile)
+    forward_loss_fn = build_forward_loss_callable(torch, state["model"], config, use_compile=args.compile)
     warmup_step_fn = build_step_callable(torch, state, config, forward_loss_fn)
     first_call_started = perf_counter()
     warmup_step_fn(state["batches"][0])

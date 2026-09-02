@@ -117,7 +117,10 @@ def train_candidate(bank: FrameBank, config: CandidateConfig, *,
     feature_source = None if features is None else np.ascontiguousarray(features)
 
     amp_enabled = bool(config.mixed_precision and device.type == "cuda")
-    scaler = torch.amp.GradScaler("cuda", enabled=amp_enabled)
+    if hasattr(torch.amp, "GradScaler"):
+        scaler = torch.amp.GradScaler("cuda", enabled=amp_enabled)
+    else:  # PyTorch 2.1 -- the training host's build -- keeps it under torch.cuda.amp.
+        scaler = torch.cuda.amp.GradScaler(enabled=amp_enabled)
 
     def _forward_loss(geometry_batch, token_batch, target_batch, mask_batch):
         prediction = model(geometry_batch, token_batch)

@@ -672,6 +672,53 @@ supervision·multi-hypothesis modeling이며, 이번 batch에서 구현하지 �
 `/home/nd/animcv-output/experiments/ablation_a14_bilateral_forward_depth_10e_v2/`
 에 있다.
 
+### A15/A16 결과 (2026-09-02, 컴파일 A9 control + 수정된 bilateral forward-depth, Case C/E — rejected)
+
+repository audit 결과 historical A14의 coordinate loss가 denominator를
+`mask.sum()`에서 `mask.sum() + relational_pair_count`로 바꿔 base A9
+coordinate gradient를 의도치 않게 희석시켰음을 발견했다. **historical A14는
+수정하지 않았다** — 별도의 새 flag
+(`bilateral_forward_depth_supervision_corrected`)로 `D_coord`를 그대로
+보존하는 수정된 reduction(`S_coord/D_coord + S_relational/D_coord`)을
+구현하고, docs/20에서 승인된 compiled execution backend로 깨끗한 A/B를
+실행했다.
+
+**A15(컴파일 A9 control)**: historical A9와 정확히 동일한 recipe +
+`compile_training_graph=True`만 추가. fingerprint 6개 전부 일치. 3DPW
+test PA-MPJPE `75.31→75.63mm`, AMASS PA-MPJPE `69.19→69.65mm` — historical
+run-to-run 변동 범위 내. 처리량 `+45.3%`, 전체 runtime `-31.2%`(1,335.6s→
+919.4s). GO 판정.
+
+**A16(수정된 candidate)**: A15와 fingerprint 6개 완전 동일, 수정된
+relational term만 추가. `coordinate` epoch telemetry가 A15와 거의 동일한
+궤적을 보여 base coordinate fit이 실제로 훼손되지 않았음을 확인했다.
+
+| Holdout | PA-MPJPE mm | yaw MAE ° | yaw P95 ° |
+| --- | ---: | ---: | ---: |
+| 3DPW test | 78.76 (A15 75.63, **+3.13 악화**) | 14.80 (A15 14.37) | 36.55 (A15 36.16) |
+| AMASS internal | 69.82 (A15 69.65) | **8.02**(A15 9.24, 개선) | **21.81**(A15 24.37, 개선) |
+
+**핵심 발견**: compiled A9 control 자체가(관련 supervision 없이도) eager
+A9보다 hard-set forward-depth residual/sign disagreement가 이미 더 낮았다
+— 즉 A9와 A16을 직접 비교하면 execution backend가 confound된다. A15
+(같은 backend)와 비교한 결과, **A16은 직접 supervise한 대상 자체가
+개선되지 않고 오히려 악화**됐다(hard top-5% shoulder sign disagreement
+31.1%→36.4%, hip 31.4%→41.0%; all_eligible/non_hard 전 구간 유사 악화).
+정성 비교 4개 고정 시퀀스 중 1개만 개선, 나머지(대조군 포함)는 악화됐다.
+
+**판정: Case C(자기 target도 개선 못함) + Case E(source-specific
+trade-off, AMASS 개선/3DPW 악화)** — weight를 조정하지 않는다. denominator
+버그를 고쳐도 이 가설은 성립하지 않으며, 오히려 historical A14보다 더
+확실한 negative 결과다. 자세한 진단은
+`docs/21_WORKLOG_CORRECTED_BILATERAL_FORWARD_DEPTH.md`.
+
+재현 가능한 진단 JSON은
+`/home/nd/animcv-output/experiments/a21_historical_diagnostic_repair/`
+와 학습 결과
+`/home/nd/animcv-output/experiments/ablation_a15_compiled_a9_control_10e/`,
+`/home/nd/animcv-output/experiments/ablation_a16_bilateral_forward_depth_corrected_10e/`
+에 있다.
+
 ## 사용자 정성 평가: 리그 애니메이션 review video
 
 수치 gate가 통과하더라도 관절의 순간적인 반전, foot sliding, 루트의 회전 흔들림은 사람이 보는

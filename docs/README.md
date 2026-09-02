@@ -21,6 +21,7 @@
 | [18_WORKLOG_A14_BILATERAL_FORWARD_DEPTH](18_WORKLOG_A14_BILATERAL_FORWARD_DEPTH.md) | all-frame bilateral forward-depth(+Y) 명시 supervision 학습·평가 | **Case B(악화 동반): hard set 개선하지만 yaw는 악화, 거절** |
 | [19_WORKLOG_TRAINING_THROUGHPUT_DIAGNOSIS](19_WORKLOG_TRAINING_THROUGHPUT_DIAGNOSIS.md) | 학습 step stage-by-stage 처리량 진단(GPU utilization 10-20% 증상) | **Case D: 커널 launch-overhead 지배, 이번 batch fix 없음** |
 | [20_WORKLOG_TORCH_COMPILE_CANDIDATE](20_WORKLOG_TORCH_COMPILE_CANDIDATE.md) | 커널 단위 fragmentation 증거 + torch.compile 후보 검증 | **ACCEPT: +54.7% 처리량, opt-in `compile_training_graph` 추가** |
+| [21_WORKLOG_CORRECTED_BILATERAL_FORWARD_DEPTH](21_WORKLOG_CORRECTED_BILATERAL_FORWARD_DEPTH.md) | A11/A12 진단 repair + denominator 수정한 A14 clean A/B(compiled A9 control) | **Case C+E: 수정해도 자기 target도 개선 못함, historical A14보다 강한 negative** |
 
 ## 원칙
 

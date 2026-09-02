@@ -189,6 +189,7 @@ class TrainingConfig:
     end_effector_loss_weight: float = 0.0
     cartesian_torso_tail_loss_weight: float = 0.0
     bilateral_forward_depth_supervision: bool = False
+    bilateral_forward_depth_supervision_corrected: bool = False
     compile_training_graph: bool = False
     init_checkpoint: str | None = None
 
@@ -216,6 +217,16 @@ class TrainingConfig:
             # validated single-GPU execution; torch.compile's interaction
             # with DistributedDataParallel was not tested in that batch.
             raise ValueError("compile_training_graph is not validated together with distributed")
+        if self.bilateral_forward_depth_supervision and self.bilateral_forward_depth_supervision_corrected:
+            # docs/21: the historical (denominator-contaminated) A14 flag and
+            # the corrected (D_coord-preserving) flag are two different
+            # mathematical objectives kept side by side so historical A14
+            # stays exactly reproducible. Running both at once is undefined
+            # and not something either batch validated.
+            raise ValueError(
+                "bilateral_forward_depth_supervision (historical A14) and "
+                "bilateral_forward_depth_supervision_corrected (docs/21) are mutually exclusive"
+            )
 
 
 def _epoch_telemetry_snapshot(torch, model, x, y, valid_tensor, offset_tensor, indices, config, amp_enabled) -> dict[str, Any]:
@@ -707,12 +718,24 @@ def _supervision_loss(torch, prediction, target, mask, config: TrainingConfig):
     coordinate_count = mask.sum()
     valid = mask.squeeze(-1).bool()
     if config.bilateral_forward_depth_supervision:
-        # All-frame, not tail-selected: every valid shoulder/hip pair joins
-        # the ordinary coordinate mean as two extra scalar coordinates, with
-        # no separate weight (docs/10 A14).
+        # HISTORICAL A14 (docs/10/18), preserved exactly as executed and
+        # NOT corrected here: this branch grows the denominator by the
+        # relational pair count, which unintentionally attenuates the base
+        # coordinate gradient relative to plain A9. docs/21 found this after
+        # the fact; historical A14's checkpoint/report stay valid evidence
+        # for the objective it actually trained, not a pure SRD test. Do not
+        # "fix" this branch -- that would make historical A14 irreproducible.
         relational_sum, relational_count = _bilateral_forward_depth_residual_sum(torch, prediction, target, valid)
         coordinate_sum = coordinate_sum + relational_sum
         coordinate_count = coordinate_count + relational_count
+    if config.bilateral_forward_depth_supervision_corrected:
+        # docs/21 corrected reduction: S_relational joins the SAME
+        # unmodified D_coord (coordinate_count) as the historical A9
+        # coordinate term -- the denominator is never grown by relational
+        # pair count. This is the only mathematical difference this flag is
+        # allowed to introduce relative to plain A9's coordinate term.
+        relational_sum, _relational_count = _bilateral_forward_depth_residual_sum(torch, prediction, target, valid)
+        coordinate_sum = coordinate_sum + relational_sum
     coordinate = coordinate_sum / coordinate_count.clamp_min(1.0)
     total = coordinate
     if config.bone_loss_weight:
@@ -1125,7 +1148,8 @@ def _structural_loss_report(config: TrainingConfig) -> dict[str, float | bool]:
             "hinge_flip_loss_weight": config.hinge_flip_loss_weight,
             "end_effector_loss_weight": config.end_effector_loss_weight,
             "cartesian_torso_tail_loss_weight": config.cartesian_torso_tail_loss_weight,
-            "bilateral_forward_depth_supervision": config.bilateral_forward_depth_supervision}
+            "bilateral_forward_depth_supervision": config.bilateral_forward_depth_supervision,
+            "bilateral_forward_depth_supervision_corrected": config.bilateral_forward_depth_supervision_corrected}
 
 
 def _source_frame_counts(dataset: dict[str, Any]) -> dict[str, int]:

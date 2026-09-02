@@ -215,3 +215,59 @@ def test_image_verification_script_detects_a_declared_size_mismatch(paired, tmp_
     report = read_json(tmp_path / "verification.json")
     assert report["passed"] is False
     assert report["image_size_mismatch_count"] == 1
+
+
+def test_visual_usage_diagnostic_separates_token_conditions(paired, tmp_path, capsys):
+    pytest.importorskip("torch")
+    import torch
+
+    from framepose.train import CandidateConfig, train_candidate
+
+    bank, index_path, _ = paired
+    features_root = tmp_path / "features"
+    directory = cache_directory(features_root, "siglip")
+    directory.mkdir(parents=True, exist_ok=True)
+    rng = np.random.default_rng(5)
+    np.save(directory / "tokens.npy", rng.normal(size=(len(bank), 196, 768)).astype(np.float16))
+    from common.serialization import write_json
+    from framepose.features import sample_order_digest
+    write_json(directory / "meta.json", {
+        "schema": "animcv_frame_pose_feature_cache_v1", "backbone": {"key": "siglip", "frozen": True},
+        "crop_contract": {}, "bank_content_digest": bank.content_digest(),
+        "sample_order_digest": sample_order_digest([s.sample_id for s in bank.samples]),
+        "sample_count": len(bank), "dtype": "float16", "shape": [len(bank), 196, 768],
+        "array": "tokens.npy"})
+
+    checkpoint = tmp_path / "f2.pt"
+    train_candidate(bank, CandidateConfig(name="unit", backbone="siglip", epochs=2, batch_size=16,
+                                          device="cpu", mixed_precision=False, evaluate_every=1),
+                    features=np.load(directory / "tokens.npy"), checkpoint_path=checkpoint)
+
+    module = _load("diagnose_visual_feature_usage")
+    sys.argv = ["diagnose_visual_feature_usage", "--bank", str(index_path),
+                "--checkpoint", str(checkpoint), "--features-root", str(features_root),
+                "--backbone", "siglip", "--device", "cpu", "--out", str(tmp_path / "usage.json")]
+    assert module.main() == 0
+    capsys.readouterr()
+    report = read_json(tmp_path / "usage.json")
+    assert set(report["mpjpe_mm"]) == {"train", "validation", "test"}
+    for split in report["mpjpe_mm"].values():
+        assert set(split) >= {"real", "zero", "shuffled", "neighbour",
+                              "zero_delta_mm", "shuffled_delta_mm", "neighbour_delta_mm"}
+        assert split["real"] > 0
+        assert split["zero_delta_mm"] == pytest.approx(split["zero"] - split["real"])
+
+
+def test_visual_usage_token_conditions_are_well_formed(paired):
+    module = _load("diagnose_visual_feature_usage")
+    bank, _, _ = paired
+    positions = bank.indices("test")
+    assert np.array_equal(module._token_indices(bank, positions, "real", 1), positions)
+    shuffled = module._token_indices(bank, positions, "shuffled", 1)
+    assert sorted(shuffled.tolist()) == sorted(positions.tolist())
+    assert not np.array_equal(shuffled, positions)
+    neighbour = module._token_indices(bank, positions, "neighbour", 1)
+    # A neighbour must be a different frame of the same sequence.
+    for source, mapped in zip(positions, neighbour):
+        assert bank.samples[int(mapped)].sequence_id == bank.samples[int(source)].sequence_id
+        assert int(mapped) != int(source)

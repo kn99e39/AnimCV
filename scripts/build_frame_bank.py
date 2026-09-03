@@ -70,6 +70,8 @@ def main() -> int:
     print(json.dumps({"index": str(index_path), "arrays": str(array_path),
                       "split_counts": report["split_counts"],
                       "sequence_counts": report["sequence_counts"],
+                      "observation_regime": report["regime"],
+                      "observation": report["observation"],
                       "content_digest": report["content_digest"]}, indent=2, sort_keys=True))
     return 0
 

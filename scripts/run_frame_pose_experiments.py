@@ -54,6 +54,9 @@ def main() -> int:
 
     bank = load_bank(args.bank)
     bank.assert_split_isolation()
+    # Oracle-geometry and real-observation frames must not be pooled into one
+    # measurement; `regime()` raises rather than letting them mix silently.
+    regime = bank.regime()
     geometry = geometry_tensor(bank)
     args.out.mkdir(parents=True, exist_ok=True)
 
@@ -63,11 +66,14 @@ def main() -> int:
         "bank_metadata": {key: bank.metadata.get(key) for key in
                           ("split_counts", "sequence_counts", "modality_by_source",
                            "strata_thresholds", "require_rgb", "intake")},
+        "observation_regime": regime,
+        "observation": bank.observation_summary(),
         "shared": {
             "epochs": args.epochs, "batch_size": args.batch_size,
             "learning_rate": args.learning_rate, "weight_decay": args.weight_decay,
             "seed": args.seed, "loss_contract": "baseline_geometry_v1",
             "selection_split": "validation",
+            "execution_backend": "compiled" if args.compile_training_graph else "eager",
         },
         "candidates": {},
     }

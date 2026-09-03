@@ -17,6 +17,7 @@ import numpy as np
 
 from framepose import strata as strata_module
 from framepose.contract import FrameBank, FrameSample, assert_split_isolation, modality_summary
+from framepose.observations import REGIME_UNLABELED
 from framepose.sources import frames_from_prepared_dataset, load_prepared_dataset, resolve_spec
 
 
@@ -57,7 +58,8 @@ def build_bank(requests: list[BankRequest], *, image_roots: dict[str, str | Path
             payload, spec=spec, split=request.split, stride=request.stride)
         kept = _filter(source_samples, image_roots, require_rgb=require_rgb, verify_images=verify_images)
         intake.append({**request.to_dict(), "available_frames": len(source_samples),
-                       "retained_frames": len(kept), "modality": spec.modality.to_dict()})
+                       "retained_frames": len(kept), "modality": spec.modality.to_dict(),
+                       "observation": (source_samples[0].observation.to_dict() if source_samples else None)})
         if not kept:
             continue
         keep_index = np.asarray(kept, dtype=np.int64)
@@ -83,7 +85,15 @@ def build_bank(requests: list[BankRequest], *, image_roots: dict[str, str | Path
                             for split, sequences in bank.split_sequences().items()},
         "require_rgb": require_rgb,
         "content_digest": bank.content_digest(),
+        "observation": bank.observation_summary(),
+        # A newly built bank must land in exactly one labelled regime; the
+        # oracle/real distinction is what makes its numbers readable at all.
+        "regime": bank.regime(),
     })
+    if report["regime"] == REGIME_UNLABELED:
+        raise ValueError(
+            "bank construction produced unlabelled 2D observation provenance; register the prepared "
+            "dataset's input_kind in framepose.observations.DATASET_OBSERVATIONS")
     bank.metadata.update(report)
     return bank, report
 

@@ -18,6 +18,9 @@ from common.serialization import read_json
 from framepose.contract import (
     JOINT_COUNT, JOINT_NAMES, FrameSample, ImageReference, Modality, make_sample_id,
 )
+from framepose.observations import (
+    ObservationProvenance, mmpose_observation, resolve_dataset_observation,
+)
 
 
 # The prepared lifter datasets these adapters read are the historical
@@ -33,12 +36,19 @@ THREE_DPW_IMAGE_ROOT_KEY = "3dpw_images"
 
 @dataclass(frozen=True)
 class SourceSpec:
-    """How one dataset maps onto the Frame Pose Contract."""
+    """How one dataset maps onto the Frame Pose Contract.
+
+    `default_input_kind` is the provenance a prepared artifact is expected to
+    declare. The artifact's own `input_kind` wins when present, so a source that
+    is later re-ingested through a different sensor is recorded as what it
+    actually is rather than as what this table assumed.
+    """
 
     name: str
     modality: Modality
     image_root_key: str | None = None
     image_reference: Callable[[str, int], ImageReference | None] | None = None
+    default_input_kind: str | None = None
 
 
 def _three_dpw_image_reference(sequence_id: str, frame_index: int) -> ImageReference | None:
@@ -61,18 +71,21 @@ SOURCE_SPECS: dict[str, SourceSpec] = {
         modality=Modality(has_2d=True, has_3d=True, has_rgb=True, has_camera=True),
         image_root_key=THREE_DPW_IMAGE_ROOT_KEY,
         image_reference=_three_dpw_image_reference,
+        default_input_kind="official_3dpw_2d_detection",
     ),
     # Only `annot.mat` + `camera.calibration` are intaken for MPI-INF-3DHP; the
     # video frames are not part of this repository's data intake.
     "MPI-INF-3DHP": SourceSpec(
         name="MPI-INF-3DHP",
         modality=Modality(has_2d=True, has_3d=True, has_rgb=False, has_camera=True),
+        default_input_kind="dataset_ground_truth_2d",
     ),
     # AMASS is marker-derived mocap with synthetic projection: there is no
     # photograph of the performer to restore, and none is fabricated.
     "AMASS": SourceSpec(
         name="AMASS",
         modality=Modality(has_2d=True, has_3d=True, has_rgb=False, has_camera=False),
+        default_input_kind="synthetic_virtual_camera_gt_2d",
     ),
 }
 
@@ -86,6 +99,20 @@ def load_prepared_dataset(path: str | Path) -> dict[str, Any]:
     if not payload.get("sequences") and not payload.get("frames"):
         raise ValueError("prepared dataset contains no frames")
     return payload
+
+
+def observation_for(payload: dict[str, Any], sequence: dict[str, Any],
+                    spec: SourceSpec) -> ObservationProvenance:
+    """Read the 2D observation provenance the prepared artifact declares.
+
+    Prepared lifter datasets already record `source.input_kind`; the sequence's
+    own source wins over the dataset default, and the `SourceSpec` default is
+    only the fallback for an artifact that predates that field.
+    """
+    sequence_source = sequence.get("source") or {}
+    dataset_source = payload.get("source") or {}
+    input_kind = sequence_source.get("input_kind") or dataset_source.get("input_kind") or spec.default_input_kind
+    return resolve_dataset_observation(input_kind)
 
 
 def frames_from_prepared_dataset(payload: dict[str, Any], *, spec: SourceSpec, split: str,
@@ -125,6 +152,7 @@ def frames_from_prepared_dataset(payload: dict[str, Any], *, spec: SourceSpec, s
         width, height = int(size[0]), int(size[1])
         fps = sequence.get("source_fps") or default_fps
         fps = float(fps) if fps else None
+        observation = observation_for(payload, sequence, spec)
         # Sample ids of the retained frames, so `neighbors` can point at real
         # bank members instead of dangling at decimated-away frames.
         retained = frames[::stride]
@@ -149,6 +177,7 @@ def frames_from_prepared_dataset(payload: dict[str, Any], *, spec: SourceSpec, s
                 split=split,
                 image_size=(width, height),
                 modality=spec.modality,
+                observation=observation,
                 timestamp=(frame_index / fps) if fps else None,
                 fps=fps,
                 image_reference=reference,
@@ -177,3 +206,18 @@ def resolve_spec(name: str) -> SourceSpec:
     if name not in SOURCE_SPECS:
         raise ValueError(f"unknown frame-pose source {name!r}; known: {sorted(SOURCE_SPECS)}")
     return SOURCE_SPECS[name]
+
+
+def mmpose_source_spec(name: str, *, modality: Modality, image_root_key: str | None = None,
+                       image_reference: Callable[[str, int], ImageReference | None] | None = None,
+                       **provenance) -> tuple[SourceSpec, ObservationProvenance]:
+    """Declare a source whose 2D geometry comes from AnimCV's own MMPose sensor.
+
+    The Real Observation regime's ingest is not built in this batch — no MMPose
+    outputs exist for the current research bank — but the contract does, so a
+    future observation bank records exactly which model, weights, config and
+    preprocessing produced its geometry (`framepose.observations`).
+    """
+    spec = SourceSpec(name=name, modality=modality, image_root_key=image_root_key,
+                      image_reference=image_reference, default_input_kind=None)
+    return spec, mmpose_observation(**provenance)

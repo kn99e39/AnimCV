@@ -25,6 +25,7 @@ from framepose.contract import FrameBank, JOINT_COUNT
 from framepose.crops import CROP_CONTRACT, crop_box, geometry_in_crop
 from framepose.losses import LossContract, compute_loss, loss_components, resolve_contract
 from framepose.model import ModelConfig, build_model, parameter_report
+from framepose.observations import summarize as summarize_observations
 
 
 CHECKPOINT_SCHEMA = "animcv_frame_pose_checkpoint_v1"
@@ -192,7 +193,9 @@ def train_candidate(bank: FrameBank, config: CandidateConfig, *,
         "crop_contract": CROP_CONTRACT,
         "bank": {"content_digest": bank.content_digest(),
                  "train_frames": int(len(train_positions)),
-                 "validation_frames": int(len(validation_positions))},
+                 "validation_frames": int(len(validation_positions)),
+                 "observation": summarize_observations([sample.observation for sample in bank.samples]),
+                 "observation_regime": bank.regime()},
         "selection": {"criterion": "validation_mpjpe_mm", "split": "validation",
                       "test_ground_truth_used": False, **best},
         "augmentation": {"enabled": False,

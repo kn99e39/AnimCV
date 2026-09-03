@@ -19,6 +19,7 @@ import numpy as np
 from framepose.contract import (
     BILATERAL_DEPTH_NORMALIZATION, FORWARD_DEPTH_AXIS, FrameBank, JOINT_INDEX, JOINT_NAMES,
 )
+from framepose.observations import summarize as summarize_observations
 from framepose.strata import stratum_names
 # The historical similarity alignment and root-yaw definitions are reused
 # verbatim so a frame-first number is comparable with the Legacy Temporal Pose
@@ -76,6 +77,7 @@ def evaluate_predictions(bank: FrameBank, positions: Sequence[int], prediction: 
             "frame_index": sample.frame_index,
             "source": sample.source,
             "split": sample.split,
+            "observation_backend": sample.observation.backend,
             "valid_joint_count": int(len(indices)),
             "mpjpe_mm": float(errors.mean()) if len(errors) else None,
             "max_joint_error_mm": float(errors.max()) if len(errors) else None,
@@ -90,9 +92,14 @@ def evaluate_predictions(bank: FrameBank, positions: Sequence[int], prediction: 
                                              _LEFT_HIP, _RIGHT_HIP))
         frames.append(record)
 
+    observations = [bank.samples[int(position)].observation for position in positions]
     report = {
         "schema": EVALUATION_SCHEMA,
         "candidate": candidate,
+        # Oracle-geometry and real-observation numbers are not comparable; the
+        # label travels with the report so a later reader cannot conflate them.
+        "observation_regime": sorted({item.regime for item in observations}),
+        "observation": summarize_observations(observations),
         "frame_count": len(frames),
         "aggregate": aggregate(frames),
         "per_joint_mean_error_mm": {

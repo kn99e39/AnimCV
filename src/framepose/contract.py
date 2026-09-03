@@ -20,11 +20,18 @@ from typing import Any, Iterable
 import numpy as np
 
 from common.serialization import read_json, write_json
+from framepose.observations import (
+    ObservationProvenance, UNRECORDED, assert_single_regime, summarize as summarize_observations,
+)
 from pose.pose_lifter import H36M_NAMES
 
 
-BANK_SCHEMA = "animcv_frame_pose_bank_v1"
-SAMPLE_SCHEMA = "animcv_frame_pose_sample_v1"
+# v2 adds the 2D observation provenance contract. A v1 bank still loads; its
+# samples come back with `UNRECORDED` provenance and the `unlabeled` regime,
+# which is never assigned to a newly built bank.
+BANK_SCHEMA = "animcv_frame_pose_bank_v2"
+LEGACY_BANK_SCHEMAS = ("animcv_frame_pose_bank_v1",)
+SAMPLE_SCHEMA = "animcv_frame_pose_sample_v2"
 
 JOINT_NAMES: tuple[str, ...] = tuple(H36M_NAMES)
 JOINT_COUNT = len(JOINT_NAMES)
@@ -95,6 +102,7 @@ class FrameSample:
     split: str
     image_size: tuple[int, int]
     modality: Modality
+    observation: ObservationProvenance = UNRECORDED
     timestamp: float | None = None
     fps: float | None = None
     image_reference: ImageReference | None = None
@@ -111,6 +119,7 @@ class FrameSample:
             "split": self.split,
             "image_size": list(self.image_size),
             "modality": self.modality.to_dict(),
+            "observation": self.observation.to_dict(),
             "timestamp": self.timestamp,
             "fps": self.fps,
             "image_reference": self.image_reference.to_dict() if self.image_reference else None,
@@ -130,6 +139,7 @@ class FrameSample:
             split=str(payload["split"]),
             image_size=(int(width), int(height)),
             modality=Modality.from_dict(payload["modality"]),
+            observation=ObservationProvenance.from_dict(payload.get("observation")),
             timestamp=payload.get("timestamp"),
             fps=payload.get("fps"),
             image_reference=ImageReference.from_dict(reference) if reference else None,
@@ -217,6 +227,13 @@ class FrameBank:
         """No sequence may appear in two splits.  Guards against test leakage."""
         assert_split_isolation(self.samples)
 
+    def observation_summary(self) -> dict[str, Any]:
+        return summarize_observations([sample.observation for sample in self.samples])
+
+    def regime(self) -> str:
+        """The single evaluation regime this bank measures.  Raises if mixed."""
+        return assert_single_regime([sample.observation for sample in self.samples])
+
     # ------------------------------------------------------------------ io --
 
     def save(self, index_path: str | Path) -> tuple[Path, Path]:
@@ -240,7 +257,7 @@ class FrameBank:
     def load(cls, index_path: str | Path) -> "FrameBank":
         index_path = Path(index_path)
         payload = read_json(index_path)
-        if payload.get("schema") != BANK_SCHEMA:
+        if payload.get("schema") not in (BANK_SCHEMA, *LEGACY_BANK_SCHEMAS):
             raise ValueError(f"unsupported frame bank schema: {payload.get('schema')!r}")
         if payload.get("joint_names") != list(JOINT_NAMES):
             raise ValueError("frame bank joint schema mismatch")
@@ -271,10 +288,19 @@ class FrameBank:
             "content_digest": self.content_digest(),
         }
         report["split_counts"] = {name: int(len(self.indices(name))) for name in SPLITS}
+        report["observation"] = self.observation_summary()
         return report
 
     def content_digest(self) -> str:
-        """Path-independent digest of sample identity and numeric content."""
+        """Path-independent digest of sample identity and numeric content.
+
+        Deliberately covers sample identity, split, source and the numeric
+        arrays only. Observation provenance is metadata *about* those arrays:
+        if the sensor changes, `input_2d` changes and the digest changes with
+        it. Keeping provenance out means adding the provenance contract to an
+        existing bank does not invalidate feature caches keyed to this digest,
+        while a genuinely different observation still does.
+        """
         digest = hashlib.sha256()
         digest.update(BANK_SCHEMA.encode("utf-8"))
         for sample in self.samples:

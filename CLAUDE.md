@@ -43,6 +43,25 @@ Datasets live outside the repo at `~/animcv-data` (3DPW with its
 MPI-INF-3DHP annotations are inside the repo at
 `datasets/mpi_inf_3dhp/`. GPU: one RTX 3080 Ti, 12 GB.
 
+## Architecture precedence
+
+`Architecture_v3_FramePose.md` is normative for AnimCV's perception stage:
+perception ownership, 2D pose observation (MMPose is the Geometry
+Observation Layer and nothing else), frame-pose learning, the role of
+temporal lifting, and visual/VLM evidence fusion. Where it and
+`Architecture_v2.md` disagree on those subjects, v3 wins and v2 is
+historical.
+
+`Architecture_v2.md` remains authoritative, unchanged, for everything v3
+does not replace: video intake, rig parsing and RigProfile, bone mapping,
+Motion Graph, keyframe collapse, the Blender isolation boundary, and
+retargeting/downstream animation contracts.
+
+Results are labelled by evaluation regime — `oracle_geometry`
+(dataset-provided 2D) vs `real_observation` (AnimCV's own MMPose sensor).
+They are never compared without the label. Everything measured so far is
+`oracle_geometry`.
+
 ## Branch layout
 
 - `main`: kept lean on purpose — no `tests/`, and evaluation/verification

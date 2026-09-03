@@ -2,9 +2,12 @@
 
 The visual backbones are frozen for the whole controlled comparison, so their
 patch tokens are a pure function of `(frame, crop contract, backbone weights)`.
-Materialising them once turns F1/F2 training into the same cost as F0 and makes
-candidate replay exact: the cache is keyed to the bank's content digest and to
-the backbone's weight digest, and refuses to be used with either changed.
+Materialising them once removes *backbone inference* from the training loop
+entirely; it does not make a visual candidate as cheap as the geometry-only one,
+because the fusion model still runs cross-attention over 196 image tokens per
+frame (measured: 6,903 frames/s for F0 against ~1,040 for F1/F2). The cache is
+keyed to the bank's content digest and to the backbone's weight digest, and
+refuses to be used with either changed, so candidate replay stays exact.
 """
 
 from __future__ import annotations

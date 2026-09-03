@@ -1,5 +1,11 @@
 # Worklog — Frame-First Architecture Migration (2026-09-02)
 
+> **Evaluation regime: `oracle_geometry` throughout.** Every number in this
+> document was measured on dataset-provided 2D geometry (3DPW's own released
+> keypoints), not on AnimCV's MMPose Geometry Observation Layer. The Real
+> Observation regime is contract-only and not yet measured
+> (`Architecture_v3_FramePose.md` section 5.1).
+>
 > Architecture migration batch, executed on branch `arch/single_frame_first`
 > (branched from `On_Work` at `4b676fc`). The Legacy Temporal Pose Baseline
 > (`src/training/temporal_lifter.py`, every A9–A16 checkpoint, fingerprint,
@@ -30,10 +36,17 @@ that the residual is not a tuning problem:
   and temporal effects were entangled enough to need a bespoke diagnostic per
   candidate.
 
-A stream of 2D joint coordinates does not contain the evidence that decides
-which shoulder is nearer the camera. Averaging more individually ambiguous
-frames does not create it. The evidence exists in the RGB frame and was being
-discarded before the model saw it.
+What this supports is narrower than "2D can never work": the *current* temporal
+2D lifter, in the *current* data regime, did not resolve the orientation and
+forward-depth generalization problem, and loss-side attempts to force it either
+did not move the tail or damaged pose geometry. Separately and independently,
+the 2D-joint-only observation contract *discards* appearance evidence that is
+present in the RGB frame and bears on exactly that ambiguity.
+
+It is **not** claimed that a temporal 2D sequence can never carry additional
+orientation or depth evidence — motion parallax, occlusion ordering over time and
+limb-swing phase are real cues in a 2D sequence. Temporal context stays a valid
+future evidence source as Layer B. What changes is which contract comes first.
 
 The temporal lifter is preserved as the **Legacy Temporal Pose Baseline**: a
 reproducible historical baseline, a future Layer B context provider, a future
@@ -217,23 +230,30 @@ at width 256 / 8 heads (width inherited from the Legacy Temporal Pose Baseline's
 `channels=256`). Head is a shared per-joint MLP to `(17, 3)`. No depth or width
 sweep was run.
 
-**F0 — geometry only.** No image tokens; the cross-attention sublayer is absent.
-This is the honest cost of the ablation and is reported rather than hidden: F0
-has 1,652,227 trainable parameters against F1/F2's 2,427,139. F1-vs-F2 is
-therefore the parameter-identical comparison, and F0 is the information
-reference.
+**F0 — geometry only.** No image tokens; the cross-attention sublayer and the
+image projection are absent. F0 therefore has 1,652,227 trainable parameters
+against F1/F2's 2,427,139, which means **F0 vs F1/F2 varies the architecture as
+well as the observation** and is not a pure information-only control. See
+Section 14.1. F1 vs F2 is the parameter-identical, architecture-matched
+comparison.
 
 **F1 — conventional vision + geometry.** `vit_base_patch16_224.augreg_in21k_ft_in1k`
 (`timm/…`, Apache-2.0, 85,798,656 parameters, 0 trainable), ImageNet-21k
 supervised pretraining fine-tuned on ImageNet-1k. Vision-only supervision.
 
-**F2 — vision-language representation + geometry.**
+**F2 — vision-language-pretrained visual tower + geometry.**
 `vit_base_patch16_siglip_224.webli` (`timm/ViT-B-16-SigLIP`, Apache-2.0,
 92,884,224 parameters, 0 trainable), SigLIP image-text sigmoid contrastive
-pretraining on WebLI. This is the visual tower that lightweight open VLM stacks
-(PaliGemma, SmolVLM, Idefics) are built on, taken without the language decoder —
-exactly the "use its learned representation, keep no language decoder in the hot
-path" contract.
+pretraining on WebLI. This is the **image tower only**: the visual encoder that
+lightweight open VLM stacks (PaliGemma, SmolVLM, Idefics) are built on, loaded
+without its text encoder, without any multimodal projector and without a
+language decoder.
+
+Scope, stated precisely because the shorthand "VLM" invites a bigger claim than
+the experiment supports: **F2 tests a vision-language-pretrained visual tower's
+representation.** It is not a test of full VLM reasoning, of multimodal decoder
+reasoning, or of a fine-tuned VLM. Its result is scoped to the representation
+actually used.
 
 The pair is deliberately architecture-matched: both are ViT-B/16 at 224x224,
 both emit a 14x14 = 196 patch-token grid at width 768, both normalize with
@@ -267,8 +287,13 @@ Because the backbones are frozen, features are a pure function of
 `(frame, crop, weights)`. `scripts/cache_frame_features.py` materialises them
 once per backbone as `(21817, 196, 768)` float16 (6.57 GB each), keyed to the
 bank's `content_digest` and sample-order digest; `load_feature_cache` refuses a
-cache built for a different bank. This makes F1/F2 training cost the same as F0
-and makes replay exact.
+cache built for a different bank, so replay stays exact.
+
+This removes *backbone inference* from the training loop; it does not make a
+visual candidate as cheap as F0. The fusion model still runs cross-attention over
+196 image tokens per frame, and the measured throughput gap is about 6.6x
+(Section 10). Both statements are true and were previously conflated into one
+misleading sentence.
 
 ## 10. Controlled run and training throughput
 
@@ -377,15 +402,26 @@ MPJPE mm (delta vs that split's `real`):
 
 Three facts follow:
 
-1. **The visual path is used, heavily.** Silencing it (`zero`) costs 145–227 mm
-   on every split. This is not a case of the fusion ignoring the image.
-2. **What it extracts does not transfer.** Replacing the tokens with an
+1. **The visual path is depended on, heavily.** Silencing it (`zero`) costs
+   145–227 mm on every split. Note this is the weakest of the three
+   interventions as evidence: an all-zero token block is far outside the
+   distribution the fusion ever saw, so a large error is expected from
+   distribution shift alone. It rules out the fusion *ignoring* the image; it
+   does not by itself show useful use of it. The `shuffled` and `neighbour`
+   substitutions, which keep the feature distribution intact and change only
+   *which* frame the content describes, are the load-bearing evidence.
+2. **Its content-dependence does not transfer.** Replacing the tokens with an
    unrelated frame's costs +93.5 mm on train but only +20.0 mm on test for F1
-   (+100.4 / +22.2 for F2). The pose information the model recovers from an
-   image shrinks ~4.6x from seen to unseen scenes.
+   (+100.4 / +22.2 for F2) — a ~4.6x smaller penalty on unseen scenes. Stated
+   conservatively: how much the prediction depends on *which specific frame* the
+   tokens describe is far larger on scenes the model was fitted to than on
+   unseen ones. This is a content-dependence measurement, not an
+   information-theoretic one; it does not license a claim that "pose
+   information" shrinks by a factor.
 3. **It is not purely scene identity.** `neighbour` (same scene and subject,
    different pose) still costs +65 mm on train, so the model does read
-   frame-specific content — but the transferable remainder on test is +11.6 mm.
+   frame-specific content — but on test that content-dependence is down to
+   +11.6 mm.
 
 The generalization gap makes the same point directly:
 
@@ -400,6 +436,13 @@ the generalization gap. With 11,334 training frames drawn from 34 actor-sequence
 of one dataset, 196 frozen ViT patch tokens are enough capacity to fit those
 scenes' appearance-to-pose mapping, and that mapping does not survive a change of
 subject, clothing and background.
+
+Two confounds are recorded rather than argued away. First, F0 is also a
+*smaller* model (1,652,227 vs 2,427,139 trainable parameters, no cross-attention
+sublayer), so the F0-vs-F1/F2 gap mixes an observation change with an
+architecture change — see Section 14.1. Second, the diagnosis above is
+consistent with the scene-fitting explanation but does not prove it is the only
+one; a parameter-matched geometry-only control was not trained in this batch.
 
 This is a **data-regime and fusion-regularisation** finding, not proof that RGB
 lacks the evidence. The distinction matters for what should be tried next and is
@@ -421,16 +464,40 @@ nothing here was used to pick a candidate.
 **Case C**, with the mechanism of Case E.
 
 - F1 ~ F0 and F2 ~ F0 was the Case C hypothesis; the measured outcome is
-  stronger and must be stated as measured: **both RGB candidates are worse than
-  geometry-only**, on validation (the split selection used) and on test, on every
-  metric, in every stratum, and in 37 of 37 test sequences.
+  stronger and must be stated as measured: **both tested visual-fusion
+  architectures are worse than the tested geometry-only architecture**, on
+  validation (the split selection used) and on test, on every metric, in every
+  stratum, and in 37 of 37 test sequences.
 - The Case E signature is present: the visual candidates fit training frames far
   better (15.3 / 14.0 mm vs F0's 25.6) and generalize far worse.
 - Case D (helps some sources, damages others) cannot be evaluated — only one
   source in this repository carries paired RGB, and that limitation is reported
   rather than papered over.
 
-Per Case C, **no VLM fine-tuning was started.**
+Per Case C, **no fine-tuning of the visual tower was started.**
+
+### 14.1 What the F0 comparison is and is not causal about
+
+F0 is not only a different observation; it is a different, smaller model
+(1,652,227 vs 2,427,139 trainable parameters, no cross-attention sublayer, no
+image projection). The measured comparison therefore supports:
+
+```
+valid:    "the tested visual-fusion architectures generalize worse than the
+           tested geometry-only architecture, on this bank and this data regime"
+
+invalid:  "RGB evidence itself damages pose estimation"
+```
+
+Making F0-vs-F1/F2 causal about information alone would need a parameter-matched
+geometry-only control — the same block count and the same cross-attention
+sublayer reading a learned constant instead of image tokens. That control has
+**not** been trained, and this batch does not train it.
+
+**F1 vs F2 remains a clean architecture-matched comparison**: same ViT-B/16
+geometry, same 224x224 input, same 14x14x768 token grid, same normalization,
+both frozen, and a parameter-identical trainable model. A difference between
+those two is attributable to pretraining objective.
 
 **Does lightweight VLM pretraining help beyond ordinary visual pretraining?**
 No consistent advantage. F2 beats F1 by 5.40 mm mean on test, and that advantage

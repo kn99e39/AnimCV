@@ -30,6 +30,12 @@ from pose.pose_lifter import H36M_NAMES
 # samples come back with `UNRECORDED` provenance and the `unlabeled` regime,
 # which is never assigned to a newly built bank.
 BANK_SCHEMA = "animcv_frame_pose_bank_v2"
+# Domain separator for `FrameBank.content_digest`. It names what the digest
+# *covers*, not what version the index metadata is at, so adding metadata (such
+# as the v2 observation contract) cannot move a digest that feature caches and
+# experiment reports are keyed to. Change it only if the covered content
+# changes.
+CONTENT_DIGEST_DOMAIN = "animcv_frame_pose_bank_content_v1"
 LEGACY_BANK_SCHEMAS = ("animcv_frame_pose_bank_v1",)
 SAMPLE_SCHEMA = "animcv_frame_pose_sample_v2"
 
@@ -302,7 +308,7 @@ class FrameBank:
         while a genuinely different observation still does.
         """
         digest = hashlib.sha256()
-        digest.update(BANK_SCHEMA.encode("utf-8"))
+        digest.update(CONTENT_DIGEST_DOMAIN.encode("utf-8"))
         for sample in self.samples:
             digest.update(f"{sample.sample_id}|{sample.split}|{sample.source}".encode("utf-8"))
         for key in _ARRAY_KEYS:

@@ -153,3 +153,19 @@ def test_evaluation_reports_carry_the_regime_label(tmp_path):
     assert report["observation_regime"] == [REGIME_ORACLE]
     assert report["observation"]["backends"] == {BACKEND_DATASET_DETECTOR: len(positions)}
     assert report["frames"][0]["observation_backend"] == BACKEND_DATASET_DETECTOR
+
+
+def test_content_digest_is_pinned_against_metadata_schema_drift(tmp_path):
+    """The digest covers frames, not the index schema label.
+
+    Bumping the bank schema to carry observation provenance once moved this
+    digest, which silently invalidated every feature cache and experiment
+    report keyed to it. The literal below pins the covered content so a future
+    metadata change cannot repeat that.
+    """
+    from framepose.contract import CONTENT_DIGEST_DOMAIN
+
+    bank, _ = _bank(tmp_path)
+    assert CONTENT_DIGEST_DOMAIN == "animcv_frame_pose_bank_content_v1"
+    assert bank.content_digest() == (
+        "49bb6333bea310418ee77ecf50b24716bfe1a823f0d3f91fb70a2cd1e8bc36ce")

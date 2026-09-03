@@ -1,13 +1,36 @@
 # Architecture v3 — Frame-First Pose Core
 
-## Status
+## Status and precedence
 
-This document supersedes `Architecture_v2.md` **only for the learning core**.
-Everything `Architecture_v2.md` says about video intake, rig parsing, bone
-mapping, keyframe collapse and Blender export is unchanged and still binding.
+This document is **normative** for AnimCV's perception stage. Where it and
+`Architecture_v2.md` disagree, **this document wins**, and `Architecture_v2.md`
+is to be read as historical for those subjects.
 
-What changes here is the primary supervised abstraction of AnimCV's perception
-stage.
+`Architecture_v3_FramePose.md` supersedes `Architecture_v2.md` for:
+
+| Subject | v3 ruling |
+| --- | --- |
+| Perception ownership | The Frame Pose Core (`src/framepose/`) is the primary perception contract. |
+| 2D pose observation | MMPose is the **Geometry Observation Layer** and nothing else (section 5). |
+| Frame-pose learning | `one frame -> one root-relative canonical 17-joint 3D pose` (Layer A). |
+| Role of temporal lifting | The temporal lifter is the Legacy Temporal Pose Baseline, not the primary core (section 1.3). |
+| Visual / VLM evidence fusion | Complementary visual evidence fused into joint queries; never a replacement for explicit geometry (sections 8-9). |
+
+`Architecture_v2.md` **remains authoritative**, unchanged, for everything this
+document does not replace:
+
+```
+video/image intake and frame extraction
+rig parsing and RigProfile
+bone mapping and mapping profiles
+Motion Graph and MotionPoint contracts
+keyframe importance and collapse
+Blender isolation boundary and export
+retargeting boundaries and downstream animation contracts
+```
+
+There is exactly one normative primary perception pipeline in this repository,
+and it is the one described here.
 
 ## 1. What was demoted, and why
 
@@ -39,10 +62,17 @@ controlled runs, that:
   readout and temporal effects were entangled to the point that single-hypothesis
   attribution required a dedicated diagnostic script per candidate.
 
-None of these are tuning failures. They are **information** failures. A stream
-of 2D joint coordinates does not contain the evidence needed to disambiguate
-which shoulder is nearer the camera. That evidence exists in the RGB frame and
-was discarded before the model ever saw it:
+What the experiments support — and what they do not — matters here, because the
+whole migration rests on it.
+
+**Supported by the evidence:** the current temporal 2D lifter, under the current
+data regime, did not resolve the orientation and forward-depth generalization
+problem, and repeated loss-side attempts to make it do so either failed to move
+the tail or damaged pose geometry.
+
+**Also true, independent of those experiments:** the 2D-joint-only observation
+contract *discards* appearance evidence that is present in the RGB frame and
+bears directly on the ambiguous quantity:
 
 ```
 foreshortening, self-occlusion, limb overlap, body-facing cues, silhouette,
@@ -50,8 +80,16 @@ clothing/body contour, near/far limb ordering, shading and other monocular
 depth cues
 ```
 
-Adding more temporal context does not create this evidence; it averages over
-frames that are each individually ambiguous.
+**Not claimed:** that a temporal 2D sequence can never carry additional
+orientation or depth evidence. It plainly can — motion parallax, occlusion
+ordering over time and limb-swing phase are real cues in a 2D sequence. The
+measured claim is narrower: *this* temporal architecture on *this* data did not
+extract enough of it. Temporal context therefore remains a valid future source
+of additional evidence, as Layer B.
+
+What changes is the **primary research contract**: frame-level pose correctness
+comes first, and temporal context is evaluated later as an addition to a frame
+that is already geometrically right.
 
 ### 1.3 The temporal lifter's new role
 
@@ -131,7 +169,7 @@ Motion IR, RigProfile, IK / retarget, editable keyframes. This is where
 
 ## 4. Frame sample contract
 
-Schema `animcv_frame_pose_bank_v1`. One sample is independently addressable by a
+Schema `animcv_frame_pose_bank_v2`. One sample is independently addressable by a
 stable identity:
 
 ```
@@ -150,6 +188,7 @@ Every sample preserves:
 | `split` | `train` / `validation` / `test` |
 | `image_size` | source pixel dimensions |
 | `modality` | `has_rgb`, `has_2d`, `has_3d`, `has_camera` |
+| `observation` | 2D provenance: `backend`, `observation_type`, `regime`, sensor `detail` (section 5.1) |
 | `image_reference` | `{root_key, relative_path}` — never inlined pixels |
 | `neighbors` | `{previous, next}` sample ids (Layer B reservation) |
 | `strata` | analysis strata, GT-derived, evaluation/diagnostic use only |
@@ -158,10 +197,89 @@ Numeric arrays live beside the JSON index in one `.npz` companion, aligned by
 sample order: `input_2d (N,17,3)`, `input_valid (N,17)`, `target_3d (N,17,3)`,
 `target_valid (N,17)`. Both files are SHA-256 fingerprinted together.
 
+`content_digest` covers sample identity, split, source and those arrays under a
+fixed domain separator (`CONTENT_DIGEST_DOMAIN`). It deliberately excludes
+metadata such as observation provenance and the index schema label: adding
+metadata must not invalidate feature caches and experiment reports keyed to the
+frames, while a genuinely different sensor — which moves `input_2d` — still
+does.
+
 Frame-first does **not** discard sequence identity. `sequence_id` and
 `frame_index` are mandatory, and splits are isolated at sequence granularity.
 
-## 5. Modality availability is explicit, never fabricated
+## 5. MMPose is the Geometry Observation Layer
+
+AnimCV's production perception flow is two sensors feeding one core:
+
+```
+RGB frame
+   |
+   +--> MMPose (pose/mmpose_adapter.py)  ->  2D joints + confidence + validity
+   |         RTMDet person detector -> RTMPose top-down keypoints
+   |         canonical_v1 landmark schema
+   |
+   +--> optional frozen visual encoder  ->  spatial visual evidence
+   |
+   v
+Frame Pose Core (src/framepose/)
+   |
+   v
+canonical root-relative 3D pose (17 x 3, +X right / +Y forward / +Z up)
+```
+
+**MMPose owns exactly one box: the 2D Geometry Observation Layer.** It is not
+the 3D Pose Core, not the temporal solver, and not the RGB reasoning layer.
+
+Two consequences are binding:
+
+1. `pose/pose_lifter.py`'s `VideoPose3DLifter` — MMPose's own temporal
+   2D->3D lifter, reached by the `lift-pose3d` CLI command — is **legacy and
+   reference only**. It is preserved and still runs, but MMPose is not AnimCV's
+   3D solver. The two 3D paths that remain architecturally live are the Frame
+   Pose Core (primary) and the Legacy Temporal Pose Baseline (`lift-supervised-3d`).
+2. MMPose stays behind its adapter. No `framepose` module imports `mmpose`,
+   `mmdet` or `mmengine`, and a test enforces it, so the geometry-only runtime
+   never pulls the OpenMMLab stack. The real-observation regime is therefore a
+   two-stage flow across two environments: the `pose` extra
+   (`Dockerfile.pose`) produces observations, the `frame-pose` extra
+   (`Dockerfile.framepose`) consumes them.
+
+### 5.1 Two evaluation regimes, always labelled
+
+Every frame sample records where its 2D geometry came from
+(`framepose/observations.py`), and every bank, training report and evaluation
+report is labelled with exactly one regime.
+
+| Regime | 2D source | Purpose |
+| --- | --- | --- |
+| `oracle_geometry` | dataset-provided 2D — projected ground truth, dataset-shipped detections, or synthetic projection | isolate the 3D reconstruction architecture from 2D sensor error |
+| `real_observation` | AnimCV's own MMPose sensor with its detector, checkpoint and preprocessing | measure actual AnimCV perception behaviour end to end |
+
+Results from the two regimes are **not comparable without the label**, and
+dataset-provided geometry is never described as "the MMPose pipeline". A
+frame set that mixes regimes is refused rather than pooled.
+
+The provenance record distinguishes, at minimum:
+
+```
+dataset_ground_truth   projected_ground_truth_2d      (MPI-INF-3DHP)
+dataset_detector       dataset_shipped_detector_2d    (3DPW's own released keypoints)
+synthetic_projection   synthetic_virtual_camera_2d    (AMASS)
+mmpose                 estimated_2d                   (AnimCV's Geometry Observation Layer)
+```
+
+For an estimated observation the record carries model, checkpoint, detector,
+preprocessing and version, and its `cache_key` changes when any of those change;
+`observation_cache_key` additionally binds the exact input frame. A cached
+MMPose observation is therefore invalidated by a change of model, weights,
+config, preprocessing or input image.
+
+**Current measured status: every result in this repository is
+`oracle_geometry`.** No MMPose observations exist for the research bank, so the
+Real Observation regime is implemented as a contract and reported as *not yet
+measured*. No such data is fabricated.
+
+## 6. Modality availability is explicit, never fabricated
 
 | Source | has_2d | has_3d | has_rgb | has_camera |
 | --- | --- | --- | --- | --- |
@@ -175,7 +293,7 @@ on a **paired-modality subset** where every candidate sees exactly the same
 frames — in this repository that is 3DPW, because it is the only intaken source
 with real imagery.
 
-## 6. Coordinate and skeleton contract (unchanged)
+## 7. Coordinate and skeleton contract (unchanged)
 
 - Canonical 17 joints, `pose.pose_lifter.H36M_NAMES` order. Unchanged.
 - Canonical camera frame: `+X = right`, `+Y = forward/depth`, `+Z = up`.
@@ -186,7 +304,7 @@ with real imagery.
 
 No new skeleton and no new axis semantics are introduced by Layer A.
 
-## 7. Model interface
+## 8. Model interface
 
 ```
 FramePoseEstimator(geometry, image_tokens?) -> (B, 17, 3)
@@ -207,7 +325,7 @@ FramePoseEstimator(geometry, image_tokens?) -> (B, 17, 3)
 Explicitly excluded from the inference contract: natural-language generation,
 text decoding, autoregressive sampling, any language decoder in the hot path.
 
-## 8. Observation backends
+## 9. Observation backends
 
 Three candidates over the same paired frames, the same fusion contract, the same
 pose head, the same loss, the same optimizer, the same evaluator:
@@ -215,13 +333,50 @@ pose head, the same loss, the same optimizer, the same evaluator:
 | Candidate | Visual evidence | Purpose |
 | --- | --- | --- |
 | **F0** | none | what one frame's explicit 2D geometry alone can recover |
-| **F1** | conventional lightweight pretrained vision encoder | does restoring RGB monocular evidence help |
-| **F2** | one lightweight vision-language pretrained representation | does language-aligned pretraining add orientation/depth priors beyond ordinary vision pretraining |
+| **F1** | frozen ImageNet-pretrained ViT-B/16 patch tokens | does a conventional visual representation help |
+| **F2** | frozen **vision-language-pretrained visual tower** (SigLIP ViT-B/16 image tower) patch tokens | does vision-language pretraining add orientation/depth priors beyond ordinary vision pretraining |
 
 Backbones are frozen first. Parameter-efficient adaptation is conditional on
 frozen F2 showing real frame-level benefit; full fine-tuning is not performed.
 
-## 9. Portability
+### 9.1 What each comparison can and cannot establish
+
+**F1 vs F2 is the clean, architecture-matched comparison.** Both are ViT-B/16 at
+224x224 emitting a 14x14x768 patch grid with the same normalization, both frozen,
+and the trainable model is parameter-identical (2,427,139 each). Only the
+pretraining objective differs, so a difference between them is attributable to
+pretraining.
+
+**F0 vs F1/F2 is not a pure information-only comparison.** F0 has no
+cross-attention sublayer and no image projection, so it is a different model
+(1,652,227 trainable parameters) as well as a different observation. A result
+comparing them is a statement about *the tested architectures*:
+
+```
+valid:    "the tested visual-fusion architectures generalize worse than the
+           tested geometry-only architecture"
+
+invalid:  "RGB evidence itself damages pose estimation"
+```
+
+A parameter-matched geometry-only control (same block count, cross-attention
+into a learned constant) would be needed to make F0-vs-F1/F2 causal about
+information alone. It has not been trained.
+
+### 9.2 F2 scope
+
+F2 loads the SigLIP **image tower only**. No text encoder, no multimodal
+projector, no language decoder and no autoregressive generation are present in
+the pose path, and the feature cache records
+`text_encoder_loaded=false`, `language_decoder_loaded=false`,
+`autoregressive_generation_used=false`.
+
+F2 is therefore a test of a **vision-language-pretrained visual tower's
+representation**. It is *not* a test of full VLM reasoning, of multimodal
+decoder reasoning, or of a fine-tuned VLM. Its result is scoped to the
+representation actually used.
+
+## 10. Portability
 
 Dataset-specific code terminates at `src/framepose/sources.py` adapters. The
 core consumes only the Frame Pose Contract plus modality metadata. Onboarding a
@@ -235,29 +390,34 @@ and no change to `bank.py`, `model.py`, `losses.py`, `train.py` or
 `evaluate.py`. Image roots are referenced by key, not absolute path, so a bank
 built on one machine is usable on another by remapping the key.
 
-## 10. Measured status of the observation backends
+## 11. Measured status of the observation backends
 
 The controlled F0/F1/F2 comparison was executed on the 21,817-frame 3DPW paired
 bank (docs/23). Result, on validation and on test, on every metric and in 37 of
-37 test sequences: **F0 (geometry only) wins.** Both RGB candidates fit the
-training frames far better and generalize far worse, and a token-substitution
-diagnosis shows the visual path is used heavily but carries ~4.6x less
-transferable pose information on unseen scenes than on seen ones.
+37 test sequences: **the tested geometry-only architecture (F0) wins.** Both
+visual-fusion candidates fit the training frames far better and generalize far
+worse. A token-substitution diagnosis shows the visual path is heavily depended
+on, but that substituting an unrelated frame's tokens costs far less error on
+unseen splits than on train — consistent with the fusion having fitted
+scene-specific appearance rather than a transferable appearance-to-depth cue.
 
 Consequences now binding on Layer A:
 
 - The Frame Pose Core's current primary configuration is **F0 — explicit 2D
   geometry only.** The visual path stays implemented and tested but is not the
   default.
-- The frozen-F2 precondition for parameter-efficient VLM adaptation
-  (section 8) is **unmet**; that branch is stopped, not deferred.
+- The frozen-F2 precondition for parameter-efficient adaptation of the
+  vision-language tower (section 9) is **unmet**; that branch is stopped, not
+  deferred.
+- The F0-vs-F1/F2 gap is a statement about the tested architectures, not about
+  RGB evidence as such (section 9.1).
 - Restoring RGB evidence remains the right hypothesis about the *information*;
   it is the data regime and the visual-path regularisation, not the fusion
   interface, that this batch found wanting. Any retry needs a substantially
   larger or more scene-diverse paired corpus, and should re-run exactly this
   comparison.
 
-## 11. What Layer A deliberately does not do
+## 12. What Layer A deliberately does not do
 
 Animation stabilization, contact, root motion, IK, retargeting, Motion Graph
 work, temporal smoothing and temporal losses are out of scope for the frame

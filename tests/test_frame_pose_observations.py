@@ -166,6 +166,6 @@ def test_content_digest_is_pinned_against_metadata_schema_drift(tmp_path):
     from framepose.contract import CONTENT_DIGEST_DOMAIN
 
     bank, _ = _bank(tmp_path)
-    assert CONTENT_DIGEST_DOMAIN == "animcv_frame_pose_bank_content_v1"
+    assert CONTENT_DIGEST_DOMAIN == "animcv_frame_pose_bank_v1"
     assert bank.content_digest() == (
-        "49bb6333bea310418ee77ecf50b24716bfe1a823f0d3f91fb70a2cd1e8bc36ce")
+        "0d9c5213b8153260534ca7fadc4b9bf0182676c9eeb1493f1cdb042b623ab27f")

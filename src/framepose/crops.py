@@ -70,9 +70,13 @@ def geometry_in_crop(input_2d: np.ndarray, input_valid: np.ndarray,
                      image_size: tuple[int, int], box: CropBox) -> np.ndarray:
     """`(17, 4)` geometry token features: `x, y in [-1, 1]`, confidence, validity.
 
-    Identical for every candidate — F0 receives exactly the geometry F1 and F2
-    receive, so the manipulated variable is only the presence and kind of
-    visual evidence.
+    The geometry input is held identical across candidates: F0 receives exactly
+    the geometry F1 and F2 receive.
+
+    That alone does **not** make F0 vs F1/F2 an information-only or
+    capacity-matched comparison. F0 also has no image projection and no
+    cross-attention sublayer, and so a different trainable parameter count. Only
+    F1 vs F2 is architecture-matched; see Architecture_v3 section 9.1.
     """
     width, height = float(image_size[0]), float(image_size[1])
     pixels = np.asarray(input_2d, dtype=np.float64)[:, :2] * np.asarray([width, height])

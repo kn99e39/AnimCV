@@ -1,10 +1,14 @@
 """Optional-dependency isolation for the Frame Pose Core.
 
 Layer A's contract, bank, strata and evaluation paths must import without the
-heavy optional backends. MMPose in particular is the Geometry Observation Layer,
-reached through `pose.mmpose_adapter`; it must not become an import-time
-requirement of the frame core, and the frame core must not become a way to
-smuggle it into the geometry-only runtime.
+heavy optional backends. MMPose + RTMDet in particular is the current Real
+AnimCV backend of the Geometry Observation Layer (the layer is the abstraction,
+not the library), reached through `pose.mmpose_adapter`; it must not become an
+import-time requirement of the frame core, and the frame core must not become a
+way to smuggle it into the geometry-only runtime.
+
+The invariant under test: `framepose` imports no OpenMMLab runtime at import
+time.
 """
 
 import subprocess
@@ -63,9 +67,10 @@ def test_mmpose_stays_behind_its_adapter():
 def test_frame_core_never_imports_the_geometry_sensor_package():
     """framepose may *name* MMPose as provenance; it may never import it.
 
-    The Geometry Observation Layer is reached through `pose.mmpose_adapter`,
-    which owns the lazy import. A direct `import mmpose` anywhere in framepose
-    would make the geometry-only runtime depend on the whole OpenMMLab stack.
+    The Real AnimCV observation backend is reached through
+    `pose.mmpose_adapter`, which owns the lazy import. A direct `import mmpose`
+    anywhere in framepose would make the geometry-only runtime depend on the
+    whole OpenMMLab stack.
     """
     for path in sorted((_ROOT / "src" / "framepose").glob("*.py")):
         source = path.read_text(encoding="utf-8")

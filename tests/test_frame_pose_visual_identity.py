@@ -20,7 +20,10 @@ from framepose.features import (
     CACHE_SCHEMA, LEGACY_CACHE_SCHEMAS, WEIGHT_VERIFICATION, cache_directory, load_feature_cache,
     sample_order_digest,
 )
-from framepose.observations import image_content_digest, mmpose_observation, observation_cache_key
+from framepose.observations import (
+    BACKEND_MMPOSE, IMAGE_GENERATED_BACKENDS, REGIME_REAL_ANIMCV, image_content_digest,
+    mmpose_observation, observation_cache_key, resolve_dataset_observation,
+)
 from framepose.visual_input import (
     image_content_digests, image_content_summary, preprocessing_identity, visual_input_fingerprint,
     visual_input_identity,
@@ -105,10 +108,51 @@ def test_observation_cache_key_binds_image_bytes_not_the_path(tmp_path):
 def test_observation_cache_key_refuses_a_path(tmp_path):
     provenance = mmpose_observation(pose_config="a.py", pose_checkpoint="b.pth",
                                     visibility_threshold=0.3)
-    for wrong in ("seq/image_00000.jpg", "image_00000.jpg", "abc123"):
+    for wrong in ("seq/image_00000.jpg", "image_00000.jpg", "abc123", "0" * 63, "0" * 65,
+                  "A" * 64):
         with pytest.raises(ValueError, match="SHA-256 of the image bytes"):
             observation_cache_key(provenance, wrong)
-    assert observation_cache_key(provenance, None)
+
+
+def test_real_animcv_observation_cannot_be_cached_without_the_image(tmp_path):
+    """A Real AnimCV observation is produced by reading an RGB frame.
+
+    An identity that omits which frame is not an identity: it would let a cache
+    built from one set of pixels be reused for another.
+    """
+    provenance = mmpose_observation(pose_config="a.py", pose_checkpoint="b.pth",
+                                    visibility_threshold=0.3)
+    assert provenance.backend in IMAGE_GENERATED_BACKENDS
+    assert provenance.regime == REGIME_REAL_ANIMCV
+
+    with pytest.raises(ValueError, match="must bind the exact image bytes"):
+        observation_cache_key(provenance, None)
+
+    path = tmp_path / "frame.jpg"
+    path.write_bytes(b"pixels")
+    key = observation_cache_key(provenance, image_content_digest(path))
+    assert len(key) == 64
+
+
+def test_non_image_generated_observations_may_omit_the_image_digest():
+    """Optionality is a documented semantic, not a missing check.
+
+    Ground truth and synthetic projection are derived from known 3D, and 3DPW's
+    detector keypoints are consumed as a distributed artifact rather than
+    regenerated from RGB by AnimCV, so none of the three reads pixels here.
+    """
+    for kind in ("dataset_ground_truth_2d", "synthetic_virtual_camera_gt_2d",
+                 "official_3dpw_2d_detection"):
+        provenance = resolve_dataset_observation(kind)
+        assert provenance.backend not in IMAGE_GENERATED_BACKENDS, kind
+        assert len(observation_cache_key(provenance, None)) == 64, kind
+    # And they still bind an image digest when one is meaningfully available.
+    oracle = resolve_dataset_observation("dataset_ground_truth_2d")
+    assert observation_cache_key(oracle, "a" * 64) != observation_cache_key(oracle, None)
+
+
+def test_only_the_real_animcv_backend_is_image_generated():
+    assert IMAGE_GENERATED_BACKENDS == (BACKEND_MMPOSE,)
 
 
 # ------------------------------------------------- visual input fingerprint --

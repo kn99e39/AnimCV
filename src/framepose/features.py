@@ -5,9 +5,14 @@ patch tokens are a pure function of `(frame, crop contract, backbone weights)`.
 Materialising them once removes *backbone inference* from the training loop
 entirely; it does not make a visual candidate as cheap as the geometry-only one,
 because the fusion model still runs cross-attention over 196 image tokens per
-frame (measured: 6,903 frames/s for F0 against ~1,040 for F1/F2). The cache is
-keyed to the bank's content digest and to the backbone's weight digest, and
-refuses to be used with either changed, so candidate replay stays exact.
+frame (measured: 6,903 frames/s for F0 against ~1,040 for F1/F2).
+
+The guarantee is **immutable cache provenance**, not current-backbone equality:
+the cache is the artifact, and its metadata records the exact weight digest,
+visual-input identity and crop contract that generated it. Loading refuses a
+cache whose recorded identity does not match the bank and visual input it is
+being paired with — but it never re-downloads or re-hashes a current tower to
+prove that tower is still the recorded one. See `WEIGHT_VERIFICATION`.
 """
 
 from __future__ import annotations

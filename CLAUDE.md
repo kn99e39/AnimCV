@@ -66,8 +66,10 @@ shipped detector keypoints, e.g. 3DPW — detector error already present),
 benchmark detector is not an oracle. Everything measured so far is
 `benchmark_detector_observation`.
 
-Visual feature caches are keyed to a `visual_input_fingerprint` binding
-image bytes, bank geometry, the crop contract and backbone preprocessing.
+A Real AnimCV (MMPose) observation cache identity must bind the SHA-256 of
+the exact image bytes; building one without it is refused. Visual feature
+caches are keyed to a `visual_input_fingerprint` binding image bytes, bank
+geometry, the crop contract and backbone preprocessing.
 Historical v1 caches recorded none of that and are readable only with an
 explicit legacy flag, labelled `historical_v1`.
 

@@ -322,6 +322,15 @@ passing a path is rejected rather than hashed. A cached observation is therefore
 invalidated by a change of model, weights, config, preprocessing **or image
 content**.
 
+**For an image-generated observation the image digest is mandatory, not
+optional.** The Real AnimCV backend produces its keypoints by reading an RGB
+frame, so an identity that omits which frame is not an identity;
+`observation_cache_key` refuses to build one. The digest stays optional only
+where the observation is not produced from pixels — projected ground truth,
+synthetic projection, and dataset-distributed detector keypoints that AnimCV
+consumes as artifacts rather than regenerating. That optionality is a documented
+semantic (`IMAGE_GENERATED_BACKENDS`), not a missing check.
+
 **Migration.** A historical artifact is resolved deterministically from its
 recorded backend, which is unambiguous — 3DPW samples once labelled
 `oracle_geometry` become `benchmark_detector_observation`, while ground-truth

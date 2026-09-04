@@ -24,9 +24,10 @@ the keypoints happened to ship with a dataset:
     fixed, externally defined observation.
 
 `real_animcv_observation`
-    AnimCV's own Geometry Observation Layer — MMPose (`pose/mmpose_adapter.py`)
-    with its detector, checkpoint and preprocessing. Purpose: measure actual
-    AnimCV perception behaviour end to end.
+    AnimCV's current Real Observation backend of the Geometry Observation Layer
+    — MMPose + RTMDet (`pose/mmpose_adapter.py`) with its detector, checkpoint
+    and preprocessing. The layer is the abstraction; MMPose is one backend of
+    it. Purpose: measure actual AnimCV perception behaviour end to end.
 
 Results from different regimes are never comparable without the label,
 dataset-shipped detector output is never called oracle geometry, and
@@ -78,6 +79,21 @@ BACKENDS = (BACKEND_DATASET_GROUND_TRUTH, BACKEND_DATASET_DETECTOR,
 # produced an observation determines whether a learned detector is in its error.
 # This table is the invariant, and it is enforced rather than inferred from
 # whether the provider was "a dataset".
+# Backends whose observations are produced by *reading RGB pixels*. Their cache
+# identity must bind the exact image bytes, because the same sensor run over
+# different pixels is a different observation.
+#
+# The other backends do not read an image to produce their keypoints:
+#   dataset_ground_truth   projected from the dataset's own 3D annotation
+#   synthetic_projection   projected from mocap through a virtual camera
+#   dataset_detector       consumed as a distributed keypoint artifact; AnimCV
+#                          never re-runs that detector, so the identity source
+#                          is the annotation artifact (already covered by the
+#                          bank's content digest), not an image AnimCV read
+# so an image digest is optional for them and its absence is meaningful rather
+# than a missing check.
+IMAGE_GENERATED_BACKENDS = (BACKEND_MMPOSE,)
+
 BACKEND_REGIME = {
     BACKEND_DATASET_GROUND_TRUTH: REGIME_ORACLE,
     BACKEND_SYNTHETIC_PROJECTION: REGIME_ORACLE,
@@ -137,8 +153,20 @@ class ObservationProvenance:
 
         Covers the backend identity plus, for an estimated observation, its
         model, weights, config and preprocessing. It deliberately does not cover
-        the input image: an image change is covered per sample by
-        `observation_cache_key`, and bank-wide by `FrameBank.content_digest`.
+        the input image; that is `observation_cache_key`'s job.
+
+        The four identities and what each is responsible for:
+
+        `FrameBank.content_digest`        numeric bank identity: frames, split,
+                                          source, arrays. It does **not** cover
+                                          image bytes, so it cannot detect an
+                                          in-place JPEG replacement.
+        `FrameBank.provenance_fingerprint`  recorded observation and modality
+                                          provenance, and image *references*.
+        `observation_cache_key`           this key plus the exact image bytes,
+                                          wherever the sensor consumes RGB.
+        `visual_input.visual_input_fingerprint`  exact visual-input identity for
+                                          frozen-feature caches.
         """
         payload = {"backend": self.backend, "observation_type": self.observation_type,
                    "regime": self.regime, "detail": self.detail}
@@ -168,7 +196,23 @@ def observation_cache_key(provenance: ObservationProvenance, image_digest: str |
     `image_digest` must be an `image_content_digest` value, never a path. A path
     is rejected rather than hashed, because hashing a path binds the filename
     and not the pixels the sensor actually saw.
+
+    For an **image-generated** observation (`IMAGE_GENERATED_BACKENDS` — today
+    the MMPose + RTMDet Real AnimCV backend) the digest is **mandatory**. A
+    Real AnimCV observation is produced by reading an RGB frame, so an identity
+    that omits which frame is not an identity at all; omitting it would let a
+    cache built from one set of pixels be reused for another.
+
+    It stays optional only where the observation is not produced from pixels:
+    projected ground truth, synthetic projection, and dataset-distributed
+    detector keypoints that AnimCV consumes as artifacts rather than
+    regenerating.
     """
+    if provenance.backend in IMAGE_GENERATED_BACKENDS and image_digest is None:
+        raise ValueError(
+            f"{provenance.backend} observations are produced by reading an RGB frame, so their "
+            "cache identity must bind the exact image bytes; pass "
+            "framepose.observations.image_content_digest(path)")
     if image_digest is not None and not _CONTENT_DIGEST_PATTERN.match(image_digest):
         raise ValueError(
             "observation_cache_key expects a 64-character SHA-256 of the image bytes "
@@ -234,7 +278,8 @@ def mmpose_observation(*, pose_config: str, pose_checkpoint: str,
                        pose_weights_sha256: str | None = None,
                        detector_weights_sha256: str | None = None,
                        extra: dict[str, Any] | None = None) -> ObservationProvenance:
-    """Provenance for AnimCV's own Geometry Observation Layer.
+    """Provenance for the current Real AnimCV backend of the Geometry Observation
+    Layer — MMPose + RTMDet.
 
     Every argument that changes the produced keypoints is part of `cache_key`,
     so a cached observation bank is invalidated by a change of model, weights,

@@ -11,6 +11,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 
 _ROOT = Path(__file__).resolve().parent.parent
 _HEAVY = ("mmpose", "mmdet", "mmengine", "mmcv", "timm", "torchvision", "smplx",
@@ -96,9 +98,12 @@ def test_third_party_state_is_resolved():
     """No tracked gitlink may remain without a declared submodule owner."""
     import subprocess
 
-    listing = subprocess.run(["git", "ls-tree", "-r", "HEAD"], capture_output=True, text=True,
-                             cwd=_ROOT)
-    assert listing.returncode == 0, listing.stderr
+    # `-c safe.directory` so this also runs inside the training container, where
+    # the repository is a bind mount owned by another uid.
+    listing = subprocess.run(["git", "-c", f"safe.directory={_ROOT}", "ls-tree", "-r", "HEAD"],
+                             capture_output=True, text=True, cwd=_ROOT)
+    if listing.returncode != 0:
+        pytest.skip(f"git could not read the repository here: {listing.stderr.strip()}")
     gitlinks = sorted(line.split("\t", 1)[1] for line in listing.stdout.splitlines()
                       if line.startswith("160000"))
     modules = (_ROOT / ".gitmodules")

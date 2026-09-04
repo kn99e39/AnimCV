@@ -8,6 +8,12 @@ and requires them back *bitwise*.
 
 It also closes the asymmetry the docs/24 audit named: the loss side had an
 equality test, the evaluator side did not. Both sides are checked here.
+
+One exception to bitwise: `similarity_align` calls `numpy.linalg.svd`, whose
+last mantissa bits depend on the platform LAPACK (measured: macOS Accelerate and
+Linux OpenBLAS differ by a few ULPs on the same input). Bitwise equality is not
+technically available there, so that one comparison uses a strict float64
+tolerance and the observed magnitude is recorded. Everything else is exact.
 """
 
 import json
@@ -29,6 +35,10 @@ import training.temporal_lifter as temporal_lifter
 
 _FIXTURE = json.loads((Path(__file__).parent / "fixtures" /
                        "canonical_pose_reference_v1.json").read_text(encoding="utf-8"))
+
+# LAPACK-dependent last bits only; measured cross-platform difference is a few
+# ULPs (~1e-16 relative on order-1 values). Anything larger is a real change.
+SVD_PLATFORM_TOLERANCE = 1e-12
 
 
 def _bits(value) -> str:
@@ -82,7 +92,10 @@ def test_evaluator_mathematics_matches_the_pre_refactor_values_bitwise():
     indices = np.flatnonzero(valid)
 
     aligned = canonical_pose.similarity_align(estimate[indices], reference[indices])
-    assert [_bits(v) for v in aligned.reshape(-1)] == expected["similarity_align"]["bits"]
+    want = _array(expected["similarity_align"])
+    # Strict float64 tolerance rather than bitwise: see the module docstring.
+    assert aligned.shape == want.shape
+    assert np.allclose(aligned, want, rtol=SVD_PLATFORM_TOLERANCE, atol=SVD_PLATFORM_TOLERANCE)
     assert _bits(canonical_pose.root_yaw_error_degrees(estimate, reference, valid)) == \
         expected["root_yaw_error_degrees"]
     produced = canonical_pose.hinge_errors(estimate, reference, valid)

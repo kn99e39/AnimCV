@@ -166,8 +166,14 @@ M  tests/test_frame_pose_dependency_isolation.py   docstring only; behaviour unt
 
 | Suite | Environment | Result |
 | --- | --- | --- |
-| Full regression | macOS authoring venv (`.venv`, torch 2.13.0) | see §14.1 |
-| Non-GUI regression | `animcv-framepose:cuda118` on LabServer63 (torch 2.1.2+cu118) | see §14.1 |
+| Full regression | macOS authoring venv (`.venv`, torch 2.13.0) | **573 passed, 1 skipped** (skip = timm-gated backbone test) |
+| Non-GUI regression | `animcv-framepose:cuda118` on LabServer63 (torch 2.1.2+cu118, timm 1.0.29) | **525 passed** (GUI suites excluded — that image has no tkinter) |
+
+Focused suites inside those totals: `test_frame_pose_visual_identity.py` **17
+passed** (up from 14 — the three new image-binding contracts),
+`test_frame_pose_dependency_isolation.py` **8 passed**,
+`test_canonical_pose_parity.py` **7 passed**,
+`test_frame_pose_observations.py` **23 passed**.
 
 No remote CI exists for this repository and none was claimed. No training run,
 no feature-cache rebuild.

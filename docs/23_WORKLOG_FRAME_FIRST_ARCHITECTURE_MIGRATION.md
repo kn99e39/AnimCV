@@ -1,10 +1,17 @@
 # Worklog — Frame-First Architecture Migration (2026-09-02)
 
-> **Evaluation regime: `oracle_geometry` throughout.** Every number in this
-> document was measured on dataset-provided 2D geometry (3DPW's own released
-> keypoints), not on AnimCV's MMPose Geometry Observation Layer. The Real
-> Observation regime is contract-only and not yet measured
-> (`Architecture_v3_FramePose.md` section 5.1).
+> **Evaluation regime: `benchmark_detector_observation` throughout.** Every
+> number in this document was measured on 3DPW's own shipped OpenPose-format
+> detector keypoints — **not** on ground-truth geometry and **not** on AnimCV's
+> MMPose Geometry Observation Layer. Detector error is therefore already present
+> in every result, so these runs compare 3D reconstruction architectures under
+> one fixed external observation; they do *not* isolate the 3D core from 2D
+> observation error. The Real AnimCV Observation regime is contract-only and not
+> yet measured (`Architecture_v3_FramePose.md` section 5.1).
+>
+> (An earlier revision of this document labelled these runs `oracle_geometry`.
+> That was wrong: dataset-shipped detector output is not oracle geometry. The
+> measured numbers are unchanged; only the label is corrected — docs/25.)
 >
 > Architecture migration batch, executed on branch `arch/single_frame_first`
 > (branched from `On_Work` at `4b676fc`). The Legacy Temporal Pose Baseline

@@ -1,0 +1,11 @@
+# Depth Anything V2 has no PyPI distribution: `pose/depth_estimator.py` imports
+# `depth_anything_v2.dpt` from this source checkout, and its ImportError points
+# users at this directory's requirements.txt. The checkout is therefore the
+# installation mechanism for that optional legacy feature, not a convenience
+# copy, so the pin is recorded properly here.
+#
+# Owner: pose/depth_estimator.py (LEGACY/OPTIONAL — not part of Frame Pose
+# Layer A; see Architecture_v3_FramePose.md section 13).
+[submodule "third_party/Depth-Anything-V2"]
+	path = third_party/Depth-Anything-V2
+	url = https://github.com/DepthAnything/Depth-Anything-V2.git

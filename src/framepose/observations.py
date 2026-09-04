@@ -6,19 +6,30 @@ detail of the ingest script. Without it a bank of dataset-shipped annotations
 and a bank of AnimCV's own MMPose output are indistinguishable, and a number
 measured on one would silently be read as a number about the other.
 
-Two evaluation regimes are therefore named explicitly:
+Three evaluation regimes are named explicitly. The distinction that matters is
+**whether a learned 2D detector is part of the observation error**, not whether
+the keypoints happened to ship with a dataset:
 
 `oracle_geometry`
-    dataset-provided 2D (projected ground truth, dataset-shipped detections, or
-    synthetic projection). Purpose: isolate the 3D reconstruction architecture
-    from 2D sensor error.
+    annotated/projected ground-truth 2D, or deterministic synthetic projection
+    from known 3D. No learned detector contributes error. Purpose: isolate the
+    3D reconstruction architecture from 2D sensor error.
 
-`real_observation`
+`benchmark_detector_observation`
+    a fixed external detector's output distributed with a benchmark — 3DPW's
+    shipped OpenPose-format keypoints are the case here. Detector error is
+    already present, so this regime does **not** isolate the 3D core from 2D
+    observation error; but the observation is not produced by AnimCV's current
+    sensor either. Purpose: compare 3D reconstruction architectures under one
+    fixed, externally defined observation.
+
+`real_animcv_observation`
     AnimCV's own Geometry Observation Layer — MMPose (`pose/mmpose_adapter.py`)
     with its detector, checkpoint and preprocessing. Purpose: measure actual
     AnimCV perception behaviour end to end.
 
-Results from the two regimes are never comparable without the label, and
+Results from different regimes are never comparable without the label,
+dataset-shipped detector output is never called oracle geometry, and
 dataset-provided geometry is never described as "the MMPose pipeline".
 """
 
@@ -33,11 +44,25 @@ from typing import Any
 OBSERVATION_SCHEMA = "animcv_frame_pose_observation_provenance_v1"
 
 REGIME_ORACLE = "oracle_geometry"
-REGIME_REAL = "real_observation"
-# Reserved for artifacts written before this contract existed; never assigned
-# to a newly built bank.
-REGIME_UNLABELED = "unlabeled"
-REGIMES = (REGIME_ORACLE, REGIME_REAL, REGIME_UNLABELED)
+REGIME_BENCHMARK_DETECTOR = "benchmark_detector_observation"
+REGIME_REAL_ANIMCV = "real_animcv_observation"
+# For artifacts whose provenance cannot be determined. Never assigned to a newly
+# built bank, and any interpretation that depends on observation quality must
+# refuse it (`assert_quality_interpretable`).
+REGIME_HISTORICAL_UNKNOWN = "historical_unknown"
+# A bank label only, never a sample label: a deliberately multi-regime bank
+# built with the explicit opt-in. No single sample is ever "mixed".
+REGIME_MIXED = "mixed"
+REGIMES = (REGIME_ORACLE, REGIME_BENCHMARK_DETECTOR, REGIME_REAL_ANIMCV, REGIME_HISTORICAL_UNKNOWN)
+
+# Regimes in which a claim about 2D observation quality is meaningful.
+INTERPRETABLE_REGIMES = (REGIME_ORACLE, REGIME_BENCHMARK_DETECTOR, REGIME_REAL_ANIMCV)
+
+# Historical regime spellings, mapped forward deterministically on load.
+# `oracle_geometry` is deliberately absent: an old artifact carrying it is not
+# resolved by the label alone, only by its backend (see `migrate_regime`).
+_LEGACY_REGIME_RENAMES = {"real_observation": REGIME_REAL_ANIMCV,
+                          "unlabeled": REGIME_HISTORICAL_UNKNOWN}
 
 BACKEND_DATASET_GROUND_TRUTH = "dataset_ground_truth"
 BACKEND_DATASET_DETECTOR = "dataset_detector"
@@ -46,6 +71,18 @@ BACKEND_MMPOSE = "mmpose"
 BACKEND_UNRECORDED = "unrecorded"
 BACKENDS = (BACKEND_DATASET_GROUND_TRUTH, BACKEND_DATASET_DETECTOR,
             BACKEND_SYNTHETIC_PROJECTION, BACKEND_MMPOSE, BACKEND_UNRECORDED)
+
+# Backend and regime stay separate concepts, but they are not independent: what
+# produced an observation determines whether a learned detector is in its error.
+# This table is the invariant, and it is enforced rather than inferred from
+# whether the provider was "a dataset".
+BACKEND_REGIME = {
+    BACKEND_DATASET_GROUND_TRUTH: REGIME_ORACLE,
+    BACKEND_SYNTHETIC_PROJECTION: REGIME_ORACLE,
+    BACKEND_DATASET_DETECTOR: REGIME_BENCHMARK_DETECTOR,
+    BACKEND_MMPOSE: REGIME_REAL_ANIMCV,
+    BACKEND_UNRECORDED: REGIME_HISTORICAL_UNKNOWN,
+}
 
 
 @dataclass(frozen=True)
@@ -62,11 +99,12 @@ class ObservationProvenance:
             raise ValueError(f"unknown observation backend {self.backend!r}; known: {list(BACKENDS)}")
         if self.regime not in REGIMES:
             raise ValueError(f"unknown observation regime {self.regime!r}; known: {list(REGIMES)}")
-        if self.backend == BACKEND_MMPOSE and self.regime != REGIME_REAL:
-            raise ValueError("an MMPose observation belongs to the real_observation regime")
-        if self.backend in (BACKEND_DATASET_GROUND_TRUTH, BACKEND_DATASET_DETECTOR,
-                            BACKEND_SYNTHETIC_PROJECTION) and self.regime != REGIME_ORACLE:
-            raise ValueError(f"{self.backend} is dataset-provided geometry and belongs to oracle_geometry")
+        expected = BACKEND_REGIME[self.backend]
+        if self.regime != expected:
+            raise ValueError(
+                f"backend {self.backend!r} always belongs to regime {expected!r}, not {self.regime!r}; "
+                "in particular, detector output is never oracle geometry merely because it shipped "
+                "with a dataset")
 
     def to_dict(self) -> dict[str, Any]:
         return {"schema": OBSERVATION_SCHEMA, "backend": self.backend,
@@ -75,10 +113,22 @@ class ObservationProvenance:
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any] | None) -> "ObservationProvenance":
+        """Load provenance, migrating a historical artifact deterministically.
+
+        An artifact written before the three-way taxonomy may carry a regime
+        that no longer means what it says -- most importantly 3DPW's shipped
+        detector keypoints were labelled `oracle_geometry`. `migrate_regime`
+        resolves those from the recorded backend, which is unambiguous, and
+        refuses to guess when it is not.
+        """
         if not payload:
             return UNRECORDED
-        return cls(str(payload["backend"]), str(payload["observation_type"]),
-                   str(payload["regime"]), dict(payload.get("detail") or {}))
+        backend = str(payload["backend"])
+        regime = migrate_regime(backend, str(payload["regime"]))
+        detail = dict(payload.get("detail") or {})
+        if regime != payload["regime"]:
+            detail = {**detail, "migrated_from_regime": payload["regime"]}
+        return cls(backend, str(payload["observation_type"]), regime, detail)
 
     def cache_key(self) -> str:
         """Digest of everything that makes a cached observation stale.
@@ -102,8 +152,31 @@ def observation_cache_key(provenance: ObservationProvenance, image_relative_path
     return digest.hexdigest()
 
 
+def migrate_regime(backend: str, recorded: str) -> str:
+    """Resolve a recorded regime label onto the current taxonomy.
+
+    The backend wins whenever it is known, because it determines the regime by
+    definition (`BACKEND_REGIME`). An unknown backend with an unrecognised label
+    is not guessed at -- it becomes `historical_unknown`.
+    """
+    if backend in BACKEND_REGIME:
+        return BACKEND_REGIME[backend]
+    if recorded in REGIMES:
+        return recorded
+    return _LEGACY_REGIME_RENAMES.get(recorded, REGIME_HISTORICAL_UNKNOWN)
+
+
+def assert_quality_interpretable(regime: str) -> str:
+    """Refuse a claim about observation quality on an unresolvable artifact."""
+    if regime not in INTERPRETABLE_REGIMES:
+        raise ValueError(
+            f"regime {regime!r} carries no resolvable 2D observation provenance; any interpretation "
+            "that depends on observation quality must not be made from this artifact")
+    return regime
+
+
 UNRECORDED = ObservationProvenance(
-    backend=BACKEND_UNRECORDED, observation_type="unrecorded", regime=REGIME_UNLABELED,
+    backend=BACKEND_UNRECORDED, observation_type="unrecorded", regime=REGIME_HISTORICAL_UNKNOWN,
     detail={"note": "artifact predates the observation-provenance contract"},
 )
 
@@ -116,7 +189,7 @@ DATASET_OBSERVATIONS: dict[str, ObservationProvenance] = {
         detail={"note": "dataset ground-truth 3D projected with the dataset's own calibration"}),
     "official_3dpw_2d_detection": ObservationProvenance(
         backend=BACKEND_DATASET_DETECTOR, observation_type="dataset_shipped_detector_2d",
-        regime=REGIME_ORACLE,
+        regime=REGIME_BENCHMARK_DETECTOR,
         detail={"note": "2D keypoints shipped inside the 3DPW release (OpenPose-format, 18 joints); "
                         "detector output, but not produced by AnimCV and not MMPose"}),
     "synthetic_virtual_camera_gt_2d": ObservationProvenance(
@@ -155,7 +228,7 @@ def mmpose_observation(*, pose_config: str, pose_checkpoint: str,
     }
     detail.update(extra or {})
     return ObservationProvenance(
-        backend=BACKEND_MMPOSE, observation_type="estimated_2d", regime=REGIME_REAL, detail=detail)
+        backend=BACKEND_MMPOSE, observation_type="estimated_2d", regime=REGIME_REAL_ANIMCV, detail=detail)
 
 
 def resolve_dataset_observation(input_kind: str | None) -> ObservationProvenance:
@@ -187,5 +260,6 @@ def assert_single_regime(provenances: list[ObservationProvenance]) -> str:
     if len(present) != 1:
         raise ValueError(
             "frame set mixes evaluation regimes " + str(present) +
-            "; oracle_geometry and real_observation results are not comparable without a label")
+            "; oracle geometry, benchmark detector output and real AnimCV observations are not "
+            "comparable without a label")
     return present[0]

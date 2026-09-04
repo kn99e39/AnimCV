@@ -54,6 +54,9 @@ def main() -> int:
                         help="Build the paired-modality subset: only frames with real, existing imagery")
     parser.add_argument("--no-verify-images", action="store_true",
                         help="Skip on-disk existence checks (not recommended)")
+    parser.add_argument("--allow-mixed-regime", action="store_true",
+                        help="Deliberately pool sources from different observation regimes "
+                             "(oracle geometry / benchmark detector / real AnimCV). Refused by default.")
     args = parser.parse_args()
 
     stride = {"train": args.train_stride, "validation": args.validation_stride, "test": args.test_stride}
@@ -62,6 +65,7 @@ def main() -> int:
         image_roots=_image_roots(args.image_root),
         require_rgb=args.require_rgb,
         verify_images=not args.no_verify_images,
+        allow_mixed_regime=args.allow_mixed_regime,
     )
     index_path, array_path = bank.save(args.out)
     fingerprint = bank.fingerprint(index_path)
@@ -72,7 +76,8 @@ def main() -> int:
                       "sequence_counts": report["sequence_counts"],
                       "observation_regime": report["regime"],
                       "observation": report["observation"],
-                      "content_digest": report["content_digest"]}, indent=2, sort_keys=True))
+                      "content_digest": report["content_digest"],
+                      "provenance_fingerprint": report["provenance_fingerprint"]}, indent=2, sort_keys=True))
     return 0
 
 

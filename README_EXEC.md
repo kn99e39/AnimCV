@@ -44,7 +44,7 @@ pip install -e ".[dev]"
 pip install -e ".[pose]"   # mmpose, mmcv, mmengine, mmdet (매우 무거움 — PyTorch 포함)
 ```
 
-추가로 MMPose 모델 설정 파일(config)과 체크포인트(checkpoint)가 필요합니다. `third_party/mmpose/configs`에서 원하는 모델 config를 찾고, 해당 체크포인트를 MMPose 모델 zoo에서 받아와야 합니다.
+추가로 MMPose 모델 설정 파일(config)과 체크포인트(checkpoint)가 필요합니다. config는 설치된 `mmpose` 패키지 안 `.mim/configs`에 들어 있고(`pose/default_model.py`가 기본 RTMPose-tiny config를 바로 거기서 찾습니다), 해당 체크포인트는 MMPose 모델 zoo에서 받아옵니다.
 
 **macOS에서는 `pip install -e ".[pose]"` 한 줄로 끝나지 않습니다.** OpenMMLab은 mmcv의 macOS용 prebuilt wheel을 아예 배포하지 않아 항상 소스 빌드가 필요하고, 그 소스 빌드가 최신 setuptools/pip 툴체인과 충돌합니다(아래 "Mac 지원" 항목의 `mac/setup_mac.command` 참고). Linux/Windows에서 prebuilt wheel을 쓸 수 있는 환경이라면 이 한 줄로 충분합니다.
 
@@ -170,7 +170,7 @@ python -m app.cli estimate-pose \
 ```
 
 - `--frames`: `extract-frames`로 만든 프레임 디렉터리 (필수)
-- `--pose-config` / `--pose-checkpoint`: MMPose 모델 설정/체크포인트 (**선택사항** — 생략하면 RTMPose-tiny 기본 모델을 씁니다: config는 설치된 `mmpose` 패키지에 이미 들어있는 파일을 그대로 쓰고, 체크포인트는 OpenMMLab 공식 model zoo에서 최초 1회 `~/.cache/animcv/models`로 내려받아 캐싱합니다(~13MB). 직접 받은 다른 모델을 쓰려면 두 옵션을 그대로 지정하면 됩니다 — `pose/default_model.py` 참고). 예: `--pose-config third_party/mmpose/configs/.../some_config.py --pose-checkpoint /path/to/checkpoint.pth`
+- `--pose-config` / `--pose-checkpoint`: MMPose 모델 설정/체크포인트 (**선택사항** — 생략하면 RTMPose-tiny 기본 모델을 씁니다: config는 설치된 `mmpose` 패키지에 이미 들어있는 파일을 그대로 쓰고, 체크포인트는 OpenMMLab 공식 model zoo에서 최초 1회 `~/.cache/animcv/models`로 내려받아 캐싱합니다(~13MB). 직접 받은 다른 모델을 쓰려면 두 옵션을 그대로 지정하면 됩니다 — `pose/default_model.py` 참고). 예: `--pose-config <설치된 mmpose>/.mim/configs/.../some_config.py --pose-checkpoint /path/to/checkpoint.pth`
 - `--device`: `cpu` 또는 `cuda` (기본값 `cpu`)
 - `--visibility-threshold`: 이 신뢰도 미만인 랜드마크는 "안 보임" 처리 (기본값 0.3)
 - `--depth-checkpoint`: **선택사항**. 지정하면 Depth Anything V2로 프레임마다 깊이를 추정하고, 각 랜드마크 픽셀 위치에서 깊이값을 샘플링해 `pose.json`에 함께 저장합니다. 이후 `retarget`이 이 깊이 정보를 자동으로 감지해서 2D 평면 근사 대신 실제 3D 회전을 계산합니다.

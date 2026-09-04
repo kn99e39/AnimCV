@@ -70,3 +70,42 @@ def test_frame_core_never_imports_the_geometry_sensor_package():
         for forbidden in ("import mmpose", "from mmpose", "import mmdet", "from mmdet",
                           "import mmengine", "from mmengine"):
             assert forbidden not in source, f"{path.name} must not {forbidden}"
+
+
+def test_the_frame_core_does_not_import_the_legacy_temporal_lifter():
+    """Ownership direction: canonical pose math is shared, not borrowed.
+
+    `framepose` must reach `common.canonical_pose`, never
+    `training.temporal_lifter`. The reverse edge is what the docs/24 audit
+    flagged as architecturally inverted.
+    """
+    for path in sorted((_ROOT / "src" / "framepose").glob("*.py")):
+        source = path.read_text(encoding="utf-8")
+        for forbidden in ("from training.temporal_lifter import",
+                          "import training.temporal_lifter",
+                          "from training import temporal_lifter"):
+            assert forbidden not in source, f"{path.name} must not {forbidden}"
+
+
+def test_canonical_pose_math_imports_without_torch_or_any_backend():
+    pulled = _import_check("import common.canonical_pose")
+    assert pulled == set(), f"canonical pose math must not import {sorted(pulled)}"
+
+
+def test_third_party_state_is_resolved():
+    """No tracked gitlink may remain without a declared submodule owner."""
+    import subprocess
+
+    listing = subprocess.run(["git", "ls-tree", "-r", "HEAD"], capture_output=True, text=True,
+                             cwd=_ROOT)
+    assert listing.returncode == 0, listing.stderr
+    gitlinks = sorted(line.split("\t", 1)[1] for line in listing.stdout.splitlines()
+                      if line.startswith("160000"))
+    modules = (_ROOT / ".gitmodules")
+    declared = modules.read_text(encoding="utf-8") if modules.is_file() else ""
+    for path in gitlinks:
+        assert f"path = {path}" in declared, f"{path} is a gitlink with no .gitmodules entry"
+        assert "url = " in declared
+    # MMPose is installed through pip/mim, not from a source checkout.
+    assert "third_party/mmpose" not in gitlinks
+    assert "third_party/mmpose" not in declared

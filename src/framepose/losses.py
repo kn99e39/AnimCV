@@ -6,10 +6,11 @@ Temporal Pose Baseline's established stable geometry objective (A5/A9:
 coordinate smooth-L1 + bone 0.25 + torso 0.15 + hinge 0.15), evaluated on single
 frames instead of window centres.
 
-The structural terms are imported from `training.temporal_lifter` rather than
-reimplemented: those helpers are already `(B, 17, 3)`-shaped and frame-local, so
-reusing them is what makes "the same objective as A9" a checkable statement
-rather than a claim. Nothing in the legacy module is modified.
+The structural terms come from `common.canonical_pose`, the neutral owner of
+AnimCV's canonical pose mathematics, which the Legacy Temporal Pose Baseline
+also consumes. Sharing one implementation is what makes "the same objective as
+A9" a checkable statement rather than a claim, without the Frame Pose Core
+depending on the legacy module.
 
 Candidate isolation: a loss contract is a property of a *run*, never of a frame.
 Two contracts are compared by training two candidates on the same frames, never
@@ -22,9 +23,7 @@ from __future__ import annotations
 from dataclasses import dataclass, asdict
 from typing import Any
 
-from training.temporal_lifter import (
-    BONE_INDICES, TORSO_INDICES, _hinge_loss, _vector_loss,
-)
+from common.canonical_pose import BONE_INDICES, TORSO_INDICES, hinge_loss, vector_loss
 
 
 LOSS_SCHEMA = "animcv_frame_pose_loss_contract_v1"
@@ -85,11 +84,11 @@ def loss_components(torch, prediction, target, mask) -> dict[str, Any]:
     valid = mask.squeeze(-1).bool()
     return {
         "coordinate": coordinate_loss(torch, prediction, target, mask),
-        "bone": _vector_loss(torch, prediction, target, valid, BONE_INDICES,
+        "bone": vector_loss(torch, prediction, target, valid, BONE_INDICES,
                              lambda first, second: first - second),
-        "torso": _vector_loss(torch, prediction, target, valid, TORSO_INDICES,
+        "torso": vector_loss(torch, prediction, target, valid, TORSO_INDICES,
                               lambda first, second: second - first),
-        "hinge": _hinge_loss(torch, prediction, target, valid),
+        "hinge": hinge_loss(torch, prediction, target, valid),
     }
 
 

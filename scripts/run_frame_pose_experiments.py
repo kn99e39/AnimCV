@@ -25,6 +25,7 @@ from common.serialization import write_json
 from framepose.bank import load_bank
 from framepose.evaluate import compare, evaluate_predictions
 from framepose.features import load_feature_cache
+from framepose.observations import assert_quality_interpretable
 from framepose.train import CandidateConfig, geometry_tensor, predict, train_candidate
 
 
@@ -54,9 +55,11 @@ def main() -> int:
 
     bank = load_bank(args.bank)
     bank.assert_split_isolation()
-    # Oracle-geometry and real-observation frames must not be pooled into one
-    # measurement; `regime()` raises rather than letting them mix silently.
-    regime = bank.regime()
+    # Frames from different observation regimes must not be pooled into one
+    # measurement, and a bank whose provenance cannot be resolved cannot support
+    # any claim that depends on observation quality. Both raise here rather than
+    # producing a number whose meaning is unknown.
+    regime = assert_quality_interpretable(bank.regime())
     geometry = geometry_tensor(bank)
     args.out.mkdir(parents=True, exist_ok=True)
 

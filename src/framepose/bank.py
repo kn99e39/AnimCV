@@ -17,7 +17,7 @@ import numpy as np
 
 from framepose import strata as strata_module
 from framepose.contract import FrameBank, FrameSample, assert_split_isolation, modality_summary
-from framepose.observations import REGIME_UNLABELED
+from framepose.observations import REGIME_HISTORICAL_UNKNOWN, REGIME_MIXED
 from framepose.sources import frames_from_prepared_dataset, load_prepared_dataset, resolve_spec
 
 
@@ -36,12 +36,20 @@ class BankRequest:
 
 
 def build_bank(requests: list[BankRequest], *, image_roots: dict[str, str | Path] | None = None,
-               require_rgb: bool = False, verify_images: bool = True) -> tuple[FrameBank, dict[str, Any]]:
+               require_rgb: bool = False, verify_images: bool = True,
+               allow_mixed_regime: bool = False) -> tuple[FrameBank, dict[str, Any]]:
     """Assemble, filter, stratify and validate a frame bank.
 
     `require_rgb=True` builds the paired-modality subset used for the controlled
     F0/F1/F2 comparison: every retained sample has real imagery that actually
     exists on disk, so all three candidates see exactly the same frames.
+
+    Sources whose 2D geometry belongs to different observation regimes are
+    refused by default -- pooling oracle geometry with benchmark detector output
+    silently changes what a number means. `allow_mixed_regime=True` is the
+    explicit opt-in for a deliberately multi-regime bank; it records the
+    breakdown and labels the bank `mixed`, and downstream interpretation must
+    still handle that rather than assume one regime.
     """
     if not requests:
         raise ValueError("at least one bank request is required")
@@ -86,16 +94,27 @@ def build_bank(requests: list[BankRequest], *, image_roots: dict[str, str | Path
         "require_rgb": require_rgb,
         "content_digest": bank.content_digest(),
         "observation": bank.observation_summary(),
-        # A newly built bank must land in exactly one labelled regime; the
-        # oracle/real distinction is what makes its numbers readable at all.
-        "regime": bank.regime(),
+        "provenance_fingerprint": bank.provenance_fingerprint(),
+        # A newly built bank must land in a labelled regime; the oracle /
+        # benchmark-detector / real-AnimCV distinction is what makes its numbers
+        # readable at all.
+        "regime": _bank_regime(bank, allow_mixed_regime),
     })
-    if report["regime"] == REGIME_UNLABELED:
+    if REGIME_HISTORICAL_UNKNOWN in report["observation"]["regimes"]:
         raise ValueError(
-            "bank construction produced unlabelled 2D observation provenance; register the prepared "
+            "bank construction produced unresolvable 2D observation provenance; register the prepared "
             "dataset's input_kind in framepose.observations.DATASET_OBSERVATIONS")
     bank.metadata.update(report)
     return bank, report
+
+
+def _bank_regime(bank: FrameBank, allow_mixed_regime: bool) -> str:
+    try:
+        return bank.regime()
+    except ValueError:
+        if not allow_mixed_regime:
+            raise
+        return REGIME_MIXED
 
 
 def _filter(samples: list[FrameSample], image_roots: dict[str, Path], *,

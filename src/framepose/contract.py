@@ -12,6 +12,7 @@ Both files are fingerprinted together.
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -235,6 +236,37 @@ class FrameBank:
         """No sequence may appear in two splits.  Guards against test leakage."""
         assert_split_isolation(self.samples)
 
+    def provenance_fingerprint(self) -> str:
+        """Digest of the metadata *about* the frames, kept out of `content_digest`.
+
+        Two digests with two distinct jobs, deliberately not overloaded onto one:
+
+        `content_digest`      frame identity, split, source and the numeric
+                              arrays. Governs feature-cache validity: a cache is
+                              reusable exactly while these are unchanged.
+        `provenance_fingerprint`  observation provenance, modality and image
+                              references. Detects a provenance change -- including
+                              a corrected regime label -- without invalidating a
+                              cache whose frames, crops and images did not move.
+
+        A real sensor change moves both, because different keypoints change
+        `input_2d`. A corrected human-readable regime label moves only this one.
+        """
+        digest = hashlib.sha256()
+        digest.update(b"animcv_frame_pose_bank_provenance_v1")
+        for sample in self.samples:
+            digest.update(sample.sample_id.encode("utf-8"))
+            digest.update(b"|")
+            digest.update(sample.observation.cache_key().encode("utf-8"))
+            digest.update(b"|")
+            digest.update(json.dumps(sample.modality.to_dict(), sort_keys=True).encode("utf-8"))
+            digest.update(b"|")
+            reference = sample.image_reference
+            digest.update(((reference.root_key + "/" + reference.relative_path)
+                           if reference else "").encode("utf-8"))
+            digest.update(b"\n")
+        return digest.hexdigest()
+
     def observation_summary(self) -> dict[str, Any]:
         return summarize_observations([sample.observation for sample in self.samples])
 
@@ -297,6 +329,7 @@ class FrameBank:
         }
         report["split_counts"] = {name: int(len(self.indices(name))) for name in SPLITS}
         report["observation"] = self.observation_summary()
+        report["provenance_fingerprint"] = self.provenance_fingerprint()
         return report
 
     def content_digest(self) -> str:

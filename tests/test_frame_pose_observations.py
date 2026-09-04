@@ -7,9 +7,11 @@ from common.serialization import read_json, write_json
 from framepose.bank import BankRequest, build_bank
 from framepose.contract import BANK_SCHEMA, FrameBank
 from framepose.observations import (
-    BACKEND_DATASET_DETECTOR, BACKEND_MMPOSE, DATASET_OBSERVATIONS, REGIME_ORACLE, REGIME_REAL,
-    REGIME_UNLABELED, ObservationProvenance, UNRECORDED, assert_single_regime, mmpose_observation,
-    observation_cache_key, resolve_dataset_observation,
+    BACKEND_DATASET_DETECTOR, BACKEND_DATASET_GROUND_TRUTH, BACKEND_MMPOSE,
+    BACKEND_SYNTHETIC_PROJECTION, DATASET_OBSERVATIONS, INTERPRETABLE_REGIMES,
+    REGIME_BENCHMARK_DETECTOR, REGIME_HISTORICAL_UNKNOWN, REGIME_ORACLE, REGIME_REAL_ANIMCV,
+    ObservationProvenance, UNRECORDED, assert_quality_interpretable, assert_single_regime,
+    migrate_regime, mmpose_observation, observation_cache_key, resolve_dataset_observation,
 )
 from framepose.sources import SOURCE_SPECS, frames_from_prepared_dataset, load_prepared_dataset, resolve_spec
 from framepose_fixtures import prepared_dataset, write_images
@@ -43,7 +45,8 @@ def test_dataset_observations_are_read_from_the_prepared_artifact(tmp_path):
     # The fixture writes no input_kind, so the SourceSpec default applies.
     samples, _ = frames_from_prepared_dataset(payload, spec=resolve_spec("3DPW"), split="train")
     assert samples[0].observation.backend == BACKEND_DATASET_DETECTOR
-    assert samples[0].observation.regime == REGIME_ORACLE
+    # 3DPW ships detector output, not ground truth: it must not be oracle.
+    assert samples[0].observation.regime == REGIME_BENCHMARK_DETECTOR
 
     # An artifact that declares its own input_kind wins over the table default.
     payload["sequences"][0]["source"] = {"dataset": "3DPW", "input_kind": "dataset_ground_truth_2d"}
@@ -52,12 +55,54 @@ def test_dataset_observations_are_read_from_the_prepared_artifact(tmp_path):
 
 
 def test_every_declared_source_maps_to_a_registered_observation():
+    expected = {"3DPW": REGIME_BENCHMARK_DETECTOR, "MPI-INF-3DHP": REGIME_ORACLE,
+                "AMASS": REGIME_ORACLE}
     for name, spec in SOURCE_SPECS.items():
         assert spec.default_input_kind in DATASET_OBSERVATIONS, name
         provenance = resolve_dataset_observation(spec.default_input_kind)
-        assert provenance.regime == REGIME_ORACLE
+        assert provenance.regime == expected[name], name
         # Dataset-provided geometry must never be labelled as AnimCV's own sensor.
         assert provenance.backend != BACKEND_MMPOSE
+
+
+def test_a_detector_is_never_oracle_and_ground_truth_always_is():
+    detector = resolve_dataset_observation("official_3dpw_2d_detection")
+    assert detector.backend == BACKEND_DATASET_DETECTOR
+    assert detector.regime == REGIME_BENCHMARK_DETECTOR
+    assert detector.regime != REGIME_ORACLE
+    for kind in ("dataset_ground_truth_2d", "synthetic_virtual_camera_gt_2d"):
+        assert resolve_dataset_observation(kind).regime == REGIME_ORACLE
+    assert resolve_dataset_observation("dataset_ground_truth_2d").backend == BACKEND_DATASET_GROUND_TRUTH
+    assert resolve_dataset_observation("synthetic_virtual_camera_gt_2d").backend == BACKEND_SYNTHETIC_PROJECTION
+    # The invariant is enforced, not merely conventional.
+    with pytest.raises(ValueError, match="never oracle geometry"):
+        ObservationProvenance(BACKEND_DATASET_DETECTOR, "dataset_shipped_detector_2d", REGIME_ORACLE)
+
+
+def test_regime_migration_resolves_from_the_backend_and_refuses_to_guess():
+    # A v2 artifact that mislabelled 3DPW detector output as oracle resolves
+    # deterministically to the benchmark-detector regime.
+    assert migrate_regime(BACKEND_DATASET_DETECTOR, "oracle_geometry") == REGIME_BENCHMARK_DETECTOR
+    # Ground truth and synthetic projection stay oracle -- not every old
+    # oracle_geometry label maps to the same new regime.
+    assert migrate_regime(BACKEND_DATASET_GROUND_TRUTH, "oracle_geometry") == REGIME_ORACLE
+    assert migrate_regime(BACKEND_SYNTHETIC_PROJECTION, "oracle_geometry") == REGIME_ORACLE
+    assert migrate_regime(BACKEND_MMPOSE, "real_observation") == REGIME_REAL_ANIMCV
+    # An unrecognised backend and label is not guessed at.
+    assert migrate_regime("some_future_sensor", "who_knows") == REGIME_HISTORICAL_UNKNOWN
+
+    loaded = ObservationProvenance.from_dict(
+        {"backend": BACKEND_DATASET_DETECTOR, "observation_type": "dataset_shipped_detector_2d",
+         "regime": "oracle_geometry", "detail": {}})
+    assert loaded.regime == REGIME_BENCHMARK_DETECTOR
+    assert loaded.detail["migrated_from_regime"] == "oracle_geometry"
+
+
+def test_quality_interpretation_is_refused_for_unresolvable_artifacts():
+    for regime in INTERPRETABLE_REGIMES:
+        assert assert_quality_interpretable(regime) == regime
+    with pytest.raises(ValueError, match="no resolvable 2D observation provenance"):
+        assert_quality_interpretable(REGIME_HISTORICAL_UNKNOWN)
 
 
 def test_unknown_input_kind_is_refused_rather_than_defaulted():
@@ -68,13 +113,13 @@ def test_unknown_input_kind_is_refused_rather_than_defaulted():
 def test_mmpose_observation_is_the_real_observation_regime():
     provenance = _mmpose()
     assert provenance.backend == BACKEND_MMPOSE
-    assert provenance.regime == REGIME_REAL
+    assert provenance.regime == REGIME_REAL_ANIMCV
     assert provenance.detail["adapter"] == "pose.mmpose_adapter.PoseEstimator"
     # A dataset backend may not claim the real-observation regime and vice versa.
     with pytest.raises(ValueError):
         ObservationProvenance(BACKEND_MMPOSE, "estimated_2d", REGIME_ORACLE)
     with pytest.raises(ValueError):
-        ObservationProvenance(BACKEND_DATASET_DETECTOR, "dataset_shipped_detector_2d", REGIME_REAL)
+        ObservationProvenance(BACKEND_DATASET_DETECTOR, "dataset_shipped_detector_2d", REGIME_REAL_ANIMCV)
 
 
 @pytest.mark.parametrize("field,value", [
@@ -102,16 +147,16 @@ def test_cached_observation_is_invalidated_by_the_input_image():
 
 def test_bank_is_labelled_with_exactly_one_regime(tmp_path):
     bank, report = _bank(tmp_path)
-    assert report["regime"] == REGIME_ORACLE
-    assert bank.regime() == REGIME_ORACLE
+    assert report["regime"] == REGIME_BENCHMARK_DETECTOR
+    assert bank.regime() == REGIME_BENCHMARK_DETECTOR
     assert report["observation"]["backends"] == {BACKEND_DATASET_DETECTOR: len(bank)}
-    assert report["intake"][0]["observation"]["regime"] == REGIME_ORACLE
+    assert report["intake"][0]["observation"]["regime"] == REGIME_BENCHMARK_DETECTOR
 
 
 def test_mixed_regime_frames_are_refused_as_one_measurement(tmp_path):
     bank, _ = _bank(tmp_path)
     provenances = [sample.observation for sample in bank.samples]
-    assert assert_single_regime(provenances) == REGIME_ORACLE
+    assert assert_single_regime(provenances) == REGIME_BENCHMARK_DETECTOR
     object.__setattr__(bank.samples[0], "observation", _mmpose())
     with pytest.raises(ValueError, match="mixes evaluation regimes"):
         bank.regime()
@@ -140,7 +185,7 @@ def test_a_pre_provenance_bank_still_loads_and_is_marked_unlabelled(tmp_path):
 
     legacy = FrameBank.load(index_path)
     assert legacy.samples[0].observation == UNRECORDED
-    assert legacy.regime() == REGIME_UNLABELED
+    assert legacy.regime() == REGIME_HISTORICAL_UNKNOWN
     assert legacy.content_digest() == bank.content_digest()
 
 
@@ -150,7 +195,7 @@ def test_evaluation_reports_carry_the_regime_label(tmp_path):
     bank, _ = _bank(tmp_path)
     positions = bank.indices("test")
     report = evaluate_predictions(bank, positions, bank.arrays["target_3d"][positions], candidate="oracle")
-    assert report["observation_regime"] == [REGIME_ORACLE]
+    assert report["observation_regime"] == [REGIME_BENCHMARK_DETECTOR]
     assert report["observation"]["backends"] == {BACKEND_DATASET_DETECTOR: len(positions)}
     assert report["frames"][0]["observation_backend"] == BACKEND_DATASET_DETECTOR
 
@@ -169,3 +214,31 @@ def test_content_digest_is_pinned_against_metadata_schema_drift(tmp_path):
     assert CONTENT_DIGEST_DOMAIN == "animcv_frame_pose_bank_v1"
     assert bank.content_digest() == (
         "0d9c5213b8153260534ca7fadc4b9bf0182676c9eeb1493f1cdb042b623ab27f")
+
+
+def test_provenance_fingerprint_and_content_digest_have_separate_jobs(tmp_path):
+    bank, report = _bank(tmp_path)
+    content = bank.content_digest()
+    provenance = bank.provenance_fingerprint()
+    assert report["provenance_fingerprint"] == provenance
+
+    # A provenance change moves the provenance fingerprint and leaves the
+    # content digest -- and therefore feature-cache validity -- alone.
+    object.__setattr__(bank.samples[0], "observation", _mmpose())
+    assert bank.content_digest() == content
+    assert bank.provenance_fingerprint() != provenance
+
+    # A change to the frames themselves moves the content digest.
+    moved = bank.provenance_fingerprint()
+    bank.arrays["input_2d"][0, 0, 0] += 0.01
+    assert bank.content_digest() != content
+    assert bank.provenance_fingerprint() == moved
+
+
+def test_bank_fingerprint_reports_both_digests(tmp_path):
+    bank, _ = _bank(tmp_path)
+    index_path, _ = bank.save(tmp_path / "bank.json")
+    fingerprint = bank.fingerprint(index_path)
+    assert fingerprint["content_digest"] == bank.content_digest()
+    assert fingerprint["provenance_fingerprint"] == bank.provenance_fingerprint()
+    assert fingerprint["content_digest"] != fingerprint["provenance_fingerprint"]

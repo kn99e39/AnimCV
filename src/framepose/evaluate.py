@@ -21,10 +21,12 @@ from framepose.contract import (
 )
 from framepose.observations import summarize as summarize_observations
 from framepose.strata import stratum_names
-# The historical similarity alignment and root-yaw definitions are reused
-# verbatim so a frame-first number is comparable with the Legacy Temporal Pose
-# Baseline's reports rather than being a differently defined metric.
-from training.temporal_lifter import _root_yaw_error_degrees, _similarity_align, _bend_direction
+# The similarity alignment, root-yaw and bend-direction definitions come from
+# the neutral canonical-pose owner that the Legacy Temporal Pose Baseline also
+# consumes, so a frame-first number is comparable with its reports instead of
+# being a differently defined metric -- and the Frame Pose Core does not depend
+# on the legacy module to say so.
+from common.canonical_pose import bend_direction, root_yaw_error_degrees, similarity_align
 
 
 EVALUATION_SCHEMA = "animcv_frame_pose_evaluation_v1"
@@ -70,7 +72,7 @@ def evaluate_predictions(bank: FrameBank, positions: Sequence[int], prediction: 
         aligned = None
         if len(indices) >= 3:
             aligned = float(np.linalg.norm(
-                _similarity_align(estimate[indices], reference[indices]) - reference[indices], axis=1).mean() * 1000.0)
+                similarity_align(estimate[indices], reference[indices]) - reference[indices], axis=1).mean() * 1000.0)
         record = {
             "sample_id": sample.sample_id,
             "sequence_id": sample.sequence_id,
@@ -82,7 +84,7 @@ def evaluate_predictions(bank: FrameBank, positions: Sequence[int], prediction: 
             "mpjpe_mm": float(errors.mean()) if len(errors) else None,
             "max_joint_error_mm": float(errors.max()) if len(errors) else None,
             "pa_mpjpe_mm": aligned,
-            "root_yaw_error_degrees": _root_yaw_error_degrees(estimate, reference, frame_valid),
+            "root_yaw_error_degrees": root_yaw_error_degrees(estimate, reference, frame_valid),
             "hinge_direction_mae_degrees": _hinge_direction_error(estimate, reference, frame_valid),
             "strata": {name: sample.strata.get(name, "unknown") for name in stratum_names()},
         }
@@ -192,8 +194,8 @@ def _hinge_direction_error(estimate: np.ndarray, reference: np.ndarray, valid: n
         indices = (JOINT_INDEX[proximal], JOINT_INDEX[joint], JOINT_INDEX[distal])
         if not all(valid[index] for index in indices):
             continue
-        predicted = _bend_direction(estimate[indices[1]], estimate[indices[0]], estimate[indices[2]])
-        actual = _bend_direction(reference[indices[1]], reference[indices[0]], reference[indices[2]])
+        predicted = bend_direction(estimate[indices[1]], estimate[indices[0]], estimate[indices[2]])
+        actual = bend_direction(reference[indices[1]], reference[indices[0]], reference[indices[2]])
         if predicted is None or actual is None:
             continue
         cosine = float(np.clip(np.dot(predicted, actual), -1.0, 1.0))

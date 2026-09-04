@@ -244,29 +244,45 @@ Two consequences are binding:
    (`Dockerfile.pose`) produces observations, the `frame-pose` extra
    (`Dockerfile.framepose`) consumes them.
 
-### 5.1 Two evaluation regimes, always labelled
+### 5.1 Three evaluation regimes, always labelled
 
 Every frame sample records where its 2D geometry came from
 (`framepose/observations.py`), and every bank, training report and evaluation
-report is labelled with exactly one regime.
+report is labelled. The distinction that matters is **whether a learned 2D
+detector contributes to the observation error** — not whether the keypoints
+happened to ship with a dataset.
 
-| Regime | 2D source | Purpose |
-| --- | --- | --- |
-| `oracle_geometry` | dataset-provided 2D — projected ground truth, dataset-shipped detections, or synthetic projection | isolate the 3D reconstruction architecture from 2D sensor error |
-| `real_observation` | AnimCV's own MMPose sensor with its detector, checkpoint and preprocessing | measure actual AnimCV perception behaviour end to end |
+| Regime | 2D source | Detector error present? | Purpose |
+| --- | --- | :-: | --- |
+| `oracle_geometry` | annotated/projected ground truth, or deterministic synthetic projection from known 3D | no | isolate the 3D reconstruction architecture from 2D sensor error |
+| `benchmark_detector_observation` | a fixed external detector's output distributed with a benchmark (3DPW's shipped OpenPose-format keypoints) | **yes** | compare 3D reconstruction architectures under one fixed, externally defined observation |
+| `real_animcv_observation` | AnimCV's own MMPose + RTMDet sensor with its checkpoints and preprocessing | **yes** | measure actual AnimCV perception behaviour end to end |
 
-Results from the two regimes are **not comparable without the label**, and
-dataset-provided geometry is never described as "the MMPose pipeline". A
-frame set that mixes regimes is refused rather than pooled.
+A fourth value, `historical_unknown`, exists only for artifacts whose provenance
+cannot be resolved; any interpretation that depends on observation quality must
+refuse it (`assert_quality_interpretable`).
 
-The provenance record distinguishes, at minimum:
+Backend, observation type and regime are separate fields, but they are not
+independent: what produced an observation determines whether a detector is in
+its error, so the mapping is enforced rather than inferred from "did a dataset
+provide it".
 
 ```
-dataset_ground_truth   projected_ground_truth_2d      (MPI-INF-3DHP)
-dataset_detector       dataset_shipped_detector_2d    (3DPW's own released keypoints)
-synthetic_projection   synthetic_virtual_camera_2d    (AMASS)
-mmpose                 estimated_2d                   (AnimCV's Geometry Observation Layer)
+backend                 observation_type              regime
+dataset_ground_truth    projected_ground_truth_2d     oracle_geometry                 (MPI-INF-3DHP)
+synthetic_projection    synthetic_virtual_camera_2d   oracle_geometry                 (AMASS)
+dataset_detector        dataset_shipped_detector_2d   benchmark_detector_observation  (3DPW)
+mmpose                  estimated_2d                  real_animcv_observation         (AnimCV)
 ```
+
+**Detector output is never oracle geometry.** Constructing that combination
+raises.
+
+Results from different regimes are **not comparable without the label**, and
+dataset-provided geometry is never described as "the MMPose pipeline". A frame
+set that mixes regimes is refused unless a bank is built with the explicit
+`allow_mixed_regime` opt-in, which labels it `mixed`; the experiment runner
+still refuses to interpret one.
 
 For an estimated observation the record carries model, checkpoint, detector,
 preprocessing and version, and its `cache_key` changes when any of those change;
@@ -274,10 +290,29 @@ preprocessing and version, and its `cache_key` changes when any of those change;
 MMPose observation is therefore invalidated by a change of model, weights,
 config, preprocessing or input image.
 
-**Current measured status: every result in this repository is
-`oracle_geometry`.** No MMPose observations exist for the research bank, so the
-Real Observation regime is implemented as a contract and reported as *not yet
-measured*. No such data is fabricated.
+**Migration.** A historical artifact is resolved deterministically from its
+recorded backend, which is unambiguous — 3DPW samples once labelled
+`oracle_geometry` become `benchmark_detector_observation`, while ground-truth
+and synthetic sources stay `oracle_geometry`. Not every old `oracle_geometry`
+label maps to the same new regime, and an artifact that cannot be resolved
+becomes `historical_unknown` rather than being guessed at.
+
+**Current measured status:** every result in this repository is
+`benchmark_detector_observation` (3DPW's shipped keypoints). No MMPose
+observations exist for the research bank, so the Real AnimCV Observation regime
+is implemented as a contract and reported as *not yet measured*. No such data is
+fabricated.
+
+### 5.2 Two digests, two jobs
+
+| Digest | Covers | Job |
+| --- | --- | --- |
+| `content_digest` | sample identity, split, source, and the numeric arrays, under a frozen domain separator | governs feature-cache validity — a cache is reusable exactly while these are unchanged |
+| `provenance_fingerprint` | observation provenance, modality, image references | detects a provenance change, including a corrected regime label, **without** invalidating a cache whose frames, crops and images did not move |
+
+A real sensor change moves both, because different keypoints change `input_2d`.
+Correcting a human-readable regime label moves only the second. Neither digest
+is overloaded with the other's responsibility.
 
 ## 6. Modality availability is explicit, never fabricated
 
@@ -393,7 +428,17 @@ built on one machine is usable on another by remapping the key.
 ## 11. Measured status of the observation backends
 
 The controlled F0/F1/F2 comparison was executed on the 21,817-frame 3DPW paired
-bank (docs/23). Result, on validation and on test, on every metric and in 37 of
+bank (docs/23), in the **`benchmark_detector_observation`** regime — 3DPW's own
+shipped detector keypoints. The valid reading is therefore:
+
+```
+valid:    "F0/F1/F2 compare 3D reconstruction architectures under the SAME fixed
+           3DPW dataset-shipped detector observations"
+
+invalid:  "F0/F1/F2 isolate the 3D core from 2D observation error"
+```
+
+Result, on validation and on test, on every metric and in 37 of
 37 test sequences: **the tested geometry-only architecture (F0) wins.** Both
 visual-fusion candidates fit the training frames far better and generalize far
 worse. A token-substitution diagnosis shows the visual path is heavily depended
@@ -422,3 +467,88 @@ Consequences now binding on Layer A:
 Animation stabilization, contact, root motion, IK, retargeting, Motion Graph
 work, temporal smoothing and temporal losses are out of scope for the frame
 core and are not implemented here.
+
+
+## 13. Canonical pose mathematics ownership
+
+The canonical 17-joint geometry both learning cores need — bone/torso/hinge
+indices, the vector and hinge objectives, similarity alignment, root-yaw and
+bend-direction metrics — is owned by **`src/common/canonical_pose.py`**, a
+neutral module that knows nothing about temporal windows, training configs,
+FramePose, experiment identifiers or dataset sources.
+
+```
+        common.canonical_pose      (single owner of the mathematics)
+             /              \
+   Frame Pose Core     Legacy Temporal Pose Baseline
+```
+
+Not:
+
+```
+   Frame Pose Core  ->  Legacy Temporal Pose Baseline
+```
+
+`training/temporal_lifter.py` re-exports the moved names as **direct aliases**,
+so every historical caller, script and test keeps working and no second formula
+can drift from the one A9–A16 and F0–F2 were measured with.
+
+This was an ownership move, never a redesign. Reductions, masks, epsilons and
+dtype behaviour are unchanged, and `tests/test_canonical_pose_parity.py` pins
+them **bitwise** against values captured before the move
+(`tests/fixtures/canonical_pose_reference_v1.json`). Both sides are checked: the
+Frame Pose Core's objective is bitwise identical to the historical
+`_supervision_loss`, and its evaluator uses the historical metric mathematics.
+
+## 14. FramePose execution policy
+
+`torch.compile` over forward + loss (backward and the optimizer step stay eager)
+is the accepted execution path, and it is verified compatible with the FramePose
+graph on the training host.
+
+- **Historical F0/F1/F2 remain eager runs.** Their reports and checkpoints record
+  `execution_backend: "eager"`, and that provenance is not rewritten.
+- **Future FramePose training uses the compiled path** unless an experiment
+  explicitly requires eager for a controlled comparison against a historical
+  eager result. Whichever is used is recorded in the training report, the
+  checkpoint and `experiment_matrix.json`.
+
+No compile mode is changed and no further benchmarking is performed here.
+
+## 15. The perception flow, in one picture
+
+```
+RGB frame
+    |
+    +--> Geometry Observation Layer            (explicit 2D joints + confidence + validity)
+    |        provider, always labelled by regime:
+    |            oracle / projected GT      -> oracle_geometry
+    |            benchmark detector         -> benchmark_detector_observation
+    |            AnimCV MMPose + RTMDet     -> real_animcv_observation
+    |
+    +--> optional visual evidence encoder      (frozen ViT patch tokens; complementary)
+             |
+             v
+       Frame Pose Core        (Layer A — src/framepose/)
+             |
+             v
+   canonical frame 3D pose    (17 x 3, root-relative, +X right / +Y forward / +Z up)
+             |
+             v
+   Layer B  optional temporal context   (not implemented)
+   Layer C  temporal stabilization      (not implemented)
+   Layer D  animation semantics         (not implemented)
+   Layer E  target-rig application      (Architecture_v2.md resumes here)
+```
+
+Four statements this document exists to make unambiguous:
+
+- **Observation provenance is not 3D reasoning.** Where the 2D came from is
+  recorded per sample and never inferred from a result.
+- **A benchmark detector is not an oracle.** Dataset-shipped detector keypoints
+  carry detector error and are labelled as such.
+- **MMPose is not the 3D solver in the primary path.** It is the Geometry
+  Observation Layer; `VideoPose3DLifter` / `lift-pose3d` is legacy and reference
+  only.
+- **The Temporal Lifter is not the owner of canonical pose mathematics.** It is
+  a consumer of `common.canonical_pose`, exactly as the Frame Pose Core is.

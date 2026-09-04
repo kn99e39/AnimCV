@@ -84,7 +84,15 @@ def test_geometry_only_source_is_excluded_from_the_paired_subset(tmp_path):
     paired, report = build_bank(requests, image_roots={"3dpw_images": images}, require_rgb=True)
     assert {sample.source for sample in paired.samples} == {"3DPW"}
     assert report["intake"][1]["retained_frames"] == 0
-    both, _ = build_bank(requests, image_roots={"3dpw_images": images}, require_rgb=False)
+    # 3DPW ships detector output and AMASS is a synthetic projection, so pooling
+    # them mixes observation regimes; that needs an explicit opt-in.
+    with pytest.raises(ValueError, match="mixes evaluation regimes"):
+        build_bank(requests, image_roots={"3dpw_images": images}, require_rgb=False)
+    both, mixed_report = build_bank(requests, image_roots={"3dpw_images": images},
+                                    require_rgb=False, allow_mixed_regime=True)
+    assert mixed_report["regime"] == "mixed"
+    assert set(mixed_report["observation"]["regimes"]) == {
+        "benchmark_detector_observation", "oracle_geometry"}
     assert {sample.source for sample in both.samples} == {"3DPW", "AMASS"}
     summary = modality_summary(both.samples)
     assert summary["AMASS"]["has_rgb"] == 0

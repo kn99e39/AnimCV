@@ -57,10 +57,20 @@ does not replace: video intake, rig parsing and RigProfile, bone mapping,
 Motion Graph, keyframe collapse, the Blender isolation boundary, and
 retargeting/downstream animation contracts.
 
-Results are labelled by evaluation regime — `oracle_geometry`
-(dataset-provided 2D) vs `real_observation` (AnimCV's own MMPose sensor).
-They are never compared without the label. Everything measured so far is
-`oracle_geometry`.
+Results are labelled by evaluation regime, and never compared without the
+label: `oracle_geometry` (annotated/projected GT or synthetic projection —
+no detector error), `benchmark_detector_observation` (a benchmark's own
+shipped detector keypoints, e.g. 3DPW — detector error already present),
+`real_animcv_observation` (AnimCV's own MMPose + RTMDet sensor). A
+benchmark detector is not an oracle. Everything measured so far is
+`benchmark_detector_observation`.
+
+Canonical pose mathematics (bone/torso/hinge geometry, similarity
+alignment, root-yaw and bend-direction metrics) is owned by
+`src/common/canonical_pose.py`. Both the Frame Pose Core and the Legacy
+Temporal Pose Baseline consume it; neither owns it. Its formulas are
+pinned bitwise by `tests/test_canonical_pose_parity.py` because A9-A16 and
+F0-F2 are defined by exactly those expressions — do not "clean up" one.
 
 ## Branch layout
 

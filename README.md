@@ -49,7 +49,9 @@ Blender is optional at this stage — the project must run without it
 `estimate-pose`; install it with `pip install -e ".[pose]"` (heavy:
 pulls in mmcv/mmengine/mmdet/torch). `estimate-pose` also needs a model
 config and checkpoint (`--pose-config` / `--pose-checkpoint`) from the
-MMPose model zoo — see `third_party/mmpose/configs`.
+MMPose model zoo — configs ship inside the installed `mmpose` package under
+its `.mim/configs` directory (`pose/default_model.py` resolves the default
+RTMPose-tiny config from exactly there).
 
 `parse-rig` needs `pyassimp` plus the native `assimp` shared library
 installed on your system (not just `pip install pyassimp` — that only
@@ -318,7 +320,8 @@ macOS-specific build workarounds) into a normal `.venv`.
 `third_party/` holds reference checkouts of upstream repos used as
 implementation references (not installed as dependencies):
 
-- `third_party/mmpose` — pose estimation (S-Tier dependency, section 3.2)
-- `third_party/Depth-Anything-V2` — used by `pose/depth_estimator.py`
+- `third_party/Depth-Anything-V2` — a pinned submodule, and the actual
+  installation mechanism for `pose/depth_estimator.py` (Depth Anything V2 has
+  no PyPI distribution). Used by `pose/depth_estimator.py`
   for optional 3D-aware retargeting (see "Beyond v2" above); v2 itself
   excludes it (section 1.3, 14.1), used here on explicit instruction

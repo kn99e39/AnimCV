@@ -16,6 +16,7 @@ from typing import Any
 
 import numpy as np
 
+from common import canonical_pose
 from common.serialization import read_json, write_json
 from pose.pose_lifter import H36M_NAMES, LiftedPoseSequence
 from pose.pose_lifter import LiftedPoseFrame, LiftedPosePoint
@@ -25,54 +26,21 @@ from pose.pose_types import PoseSequence
 SCHEMA = "animcv_supervised_3d_lifter_dataset_v2"
 LEGACY_SCHEMA = "animcv_supervised_3d_lifter_dataset_v1"
 
-# Parent-to-child segments in the canonical 17-joint contract.  These losses
-# constrain shape and orientation without tying the lifter to an FBX rig.
-BONES = (
-    ("pelvis", "left_hip"), ("left_hip", "left_knee"), ("left_knee", "left_ankle"),
-    ("pelvis", "right_hip"), ("right_hip", "right_knee"), ("right_knee", "right_ankle"),
-    ("pelvis", "spine"), ("spine", "thorax"), ("thorax", "neck"), ("neck", "head"),
-    ("thorax", "left_shoulder"), ("left_shoulder", "left_elbow"), ("left_elbow", "left_wrist"),
-    ("thorax", "right_shoulder"), ("right_shoulder", "right_elbow"), ("right_elbow", "right_wrist"),
-)
-HINGE_CHAINS = (
-    ("left_shoulder", "left_elbow", "left_wrist"), ("right_shoulder", "right_elbow", "right_wrist"),
-    ("left_hip", "left_knee", "left_ankle"), ("right_hip", "right_knee", "right_ankle"),
-)
-# The limb-chain terminals -- the same joints scripts/*constraint_target*
-# already call "end_effector" for IK retargeting. Matching their position
-# closely matters more than any interior joint's angle: an IK solve is judged
-# by where the hand/foot lands, not by the elbow/knee angle that got it there.
-END_EFFECTOR_NAMES = ("left_wrist", "right_wrist", "left_ankle", "right_ankle")
-
-# Resolve the immutable skeleton schema once. These helpers run on every CUDA
-# batch, so repeated string lookups and scalar-controlled Python loops are an
-# avoidable throughput cost.
-BONE_INDICES = tuple((H36M_NAMES.index(first), H36M_NAMES.index(second)) for first, second in BONES)
-TORSO_INDICES = tuple((H36M_NAMES.index(first), H36M_NAMES.index(second)) for first, second in (
-    ("left_shoulder", "right_shoulder"), ("left_hip", "right_hip"),
-))
-HINGE_INDICES = tuple(tuple(H36M_NAMES.index(name) for name in chain) for chain in HINGE_CHAINS)
-END_EFFECTOR_INDICES = tuple(H36M_NAMES.index(name) for name in END_EFFECTOR_NAMES)
-YAW_INDICES = tuple((H36M_NAMES.index(left), H36M_NAMES.index(right)) for left, right in (
-    ("left_shoulder", "right_shoulder"), ("left_hip", "right_hip"),
-))
-
-# The existing angular yaw helper uses this same fixed guard when a bilateral
-# span is nearly collapsed.  It is a numerical safeguard, not a tunable
-# training hyperparameter; keep the direction-only counterfactual on the same
-# convention.
-VECTOR_NORMALIZATION_EPS = 1e-6
-
-# AnimCV's canonical camera frame is (+X right, +Y forward/depth, +Z up) --
-# see pose_lifter._to_lifted_points. The bilateral forward-depth candidate
-# (docs/10 A14) must read the actual forward/depth column, not canonical Z.
-FORWARD_DEPTH_AXIS = 1
-# Orthonormal-basis normalization for a bilateral pair: with
-# common = (y_R + y_L) / sqrt(2) and q = (y_R - y_L) / sqrt(2), [common, q] is
-# an orthonormal transform of [y_R, y_L], so q keeps the same physical
-# Cartesian scale as the endpoint coordinates it is built from. This constant
-# is a basis normalization, not a tunable auxiliary weight.
-BILATERAL_DEPTH_NORMALIZATION = 1.0 / math.sqrt(2.0)
+# Canonical pose mathematics is owned by `common.canonical_pose`, not by this
+# module (Architecture_v3_FramePose.md section 13). These names are re-exported
+# unchanged so every historical caller, script and test keeps working and the
+# A9-A16 mathematics stays defined by exactly one implementation.
+BONES = canonical_pose.BONES
+HINGE_CHAINS = canonical_pose.HINGE_CHAINS
+END_EFFECTOR_NAMES = canonical_pose.END_EFFECTOR_NAMES
+BONE_INDICES = canonical_pose.BONE_INDICES
+TORSO_INDICES = canonical_pose.TORSO_INDICES
+HINGE_INDICES = canonical_pose.HINGE_INDICES
+END_EFFECTOR_INDICES = canonical_pose.END_EFFECTOR_INDICES
+YAW_INDICES = canonical_pose.YAW_INDICES
+VECTOR_NORMALIZATION_EPS = canonical_pose.VECTOR_NORMALIZATION_EPS
+FORWARD_DEPTH_AXIS = canonical_pose.FORWARD_DEPTH_AXIS
+BILATERAL_DEPTH_NORMALIZATION = canonical_pose.BILATERAL_DEPTH_NORMALIZATION
 
 
 def build_dataset(
@@ -543,68 +511,6 @@ def _view_label(source: dict[str, Any]) -> str | None:
     return None
 
 
-def _similarity_align(estimate: np.ndarray, reference: np.ndarray) -> np.ndarray:
-    mean_estimate, mean_reference = estimate.mean(0), reference.mean(0)
-    centered_estimate, centered_reference = estimate - mean_estimate, reference - mean_reference
-    estimate_norm, reference_norm = np.linalg.norm(centered_estimate), np.linalg.norm(centered_reference)
-    if estimate_norm <= 1e-12 or reference_norm <= 1e-12:
-        return estimate
-    source, destination = centered_estimate / estimate_norm, centered_reference / reference_norm
-    u, _, vt = np.linalg.svd(source.T @ destination)
-    rotation = u @ vt
-    if np.linalg.det(rotation) < 0:
-        vt[-1] *= -1
-        rotation = u @ vt
-    return (source @ rotation) * reference_norm + mean_reference
-
-
-def _root_yaw_error_degrees(estimate: np.ndarray, reference: np.ndarray, valid: np.ndarray) -> float | None:
-    pairs = (("left_shoulder", "right_shoulder"), ("left_hip", "right_hip"))
-    angles = []
-    for left, right in pairs:
-        left_index, right_index = H36M_NAMES.index(left), H36M_NAMES.index(right)
-        if not (valid[left_index] and valid[right_index]):
-            continue
-        predicted_axis = estimate[right_index, :2] - estimate[left_index, :2]
-        target_axis = reference[right_index, :2] - reference[left_index, :2]
-        if min(np.linalg.norm(predicted_axis), np.linalg.norm(target_axis)) <= 1e-6:
-            continue
-        angles.append(abs(_angle_delta(np.arctan2(predicted_axis[1], predicted_axis[0]),
-                                       np.arctan2(target_axis[1], target_axis[0]))) * 180.0 / np.pi)
-    return float(np.mean(angles)) if angles else None
-
-
-def _hinge_errors(estimate: np.ndarray, reference: np.ndarray, valid: np.ndarray) -> list[dict[str, Any]]:
-    chains = (("left_elbow", "left_shoulder", "left_wrist"), ("right_elbow", "right_shoulder", "right_wrist"),
-              ("left_knee", "left_hip", "left_ankle"), ("right_knee", "right_hip", "right_ankle"))
-    output = []
-    for joint, proximal, distal in chains:
-        indexes = [H36M_NAMES.index(name) for name in (joint, proximal, distal)]
-        if not valid[indexes].all():
-            continue
-        predicted = _bend_direction(estimate[indexes[0]], estimate[indexes[1]], estimate[indexes[2]])
-        target = _bend_direction(reference[indexes[0]], reference[indexes[1]], reference[indexes[2]])
-        if predicted is None or target is None:
-            continue
-        cosine = float(np.clip(np.dot(predicted, target), -1.0, 1.0))
-        output.append({"joint": joint, "error_degrees": float(np.degrees(np.arccos(cosine))), "flipped": cosine < 0})
-    return output
-
-
-def _bend_direction(joint: np.ndarray, proximal: np.ndarray, distal: np.ndarray) -> np.ndarray | None:
-    axis = distal - proximal
-    axis_squared = float(np.dot(axis, axis))
-    if axis_squared <= 1e-12:
-        return None
-    bend = joint - (proximal + axis * (np.dot(joint - proximal, axis) / axis_squared))
-    magnitude = float(np.linalg.norm(bend))
-    return bend / magnitude if magnitude > 1e-6 else None
-
-
-def _angle_delta(a: float, b: float) -> float:
-    return (a - b + np.pi) % (2 * np.pi) - np.pi
-
-
 def infer(pose: PoseSequence, checkpoint_path: str | Path, image_size: tuple[int, int], device: str = "cpu") -> LiftedPoseSequence:
     """Run a trained own-data baseline and emit AnimCV's standard 3D artifact."""
     torch, nn = _torch()
@@ -712,6 +618,21 @@ def _predict_batched(model, x, offsets, batch_size: int, amp_enabled: bool):
     return torch.cat(predictions, dim=0)
 
 
+# The canonical implementations live in `common.canonical_pose`; these module
+# names are direct aliases, not wrappers, so no second formula can drift from
+# the one A9-A16 and F0-F2 were measured with.
+_masked_chain_mean = canonical_pose.masked_chain_mean
+_masked_mean = canonical_pose.masked_mean
+_bend_vectors = canonical_pose.bend_vectors
+_vector_loss = canonical_pose.vector_loss
+_hinge_loss = canonical_pose.hinge_loss
+_similarity_align = canonical_pose.similarity_align
+_root_yaw_error_degrees = canonical_pose.root_yaw_error_degrees
+_hinge_errors = canonical_pose.hinge_errors
+_bend_direction = canonical_pose.bend_direction
+_angle_delta = canonical_pose.angle_delta
+
+
 def _supervision_loss(torch, prediction, target, mask, config: TrainingConfig):
     """Coordinate loss plus canonical, rig-independent structural terms."""
     coordinate_sum = (torch.nn.functional.smooth_l1_loss(prediction, target, reduction="none") * mask).sum()
@@ -762,30 +683,6 @@ def _supervision_loss(torch, prediction, target, mask, config: TrainingConfig):
     if config.cartesian_torso_tail_loss_weight:
         total = total + config.cartesian_torso_tail_loss_weight * _cartesian_torso_tail_loss(torch, prediction, target, valid)
     return total
-
-
-def _vector_loss(torch, prediction, target, valid, pairs, vector):
-    """Average each segment equally without CUDA scalar control flow."""
-    # Retain the helper's former name-pair contract for callers/tests. The
-    # training path supplies pre-resolved integer pairs, so this compatibility
-    # conversion never occurs inside the performance-critical A8 loop.
-    if isinstance(pairs[0][0], str):
-        pairs = tuple((H36M_NAMES.index(first), H36M_NAMES.index(second)) for first, second in pairs)
-    first, second = zip(*pairs)
-    pair_valid = valid[:, first] & valid[:, second]
-    predicted_vectors = vector(prediction[:, first], prediction[:, second])
-    target_vectors = vector(target[:, first], target[:, second])
-    errors = torch.nn.functional.smooth_l1_loss(predicted_vectors, target_vectors, reduction="none").mean(dim=-1)
-    return _masked_chain_mean(torch, errors, pair_valid)
-
-
-def _hinge_loss(torch, prediction, target, valid):
-    proximal, joint, distal = zip(*HINGE_INDICES)
-    chain_valid = valid[:, proximal] & valid[:, joint] & valid[:, distal]
-    predicted_bends = _bend_vectors(prediction[:, proximal], prediction[:, joint], prediction[:, distal])
-    target_bends = _bend_vectors(target[:, proximal], target[:, joint], target[:, distal])
-    errors = torch.nn.functional.smooth_l1_loss(predicted_bends, target_bends, reduction="none").mean(dim=-1)
-    return _masked_chain_mean(torch, errors, chain_valid)
 
 
 def _yaw_axis_loss(torch, prediction, target, valid):
@@ -1032,23 +929,6 @@ def _end_effector_loss(torch, prediction, target, valid):
     joint_valid = valid[:, indices]
     errors = torch.nn.functional.smooth_l1_loss(prediction[:, indices], target[:, indices], reduction="none").mean(dim=-1)
     return _masked_mean(torch, errors, joint_valid)
-
-
-def _masked_chain_mean(torch, errors, valid):
-    """Match equal-per-chain reduction without synchronizing on CUDA scalars."""
-    counts = valid.sum(dim=0)
-    per_chain = (errors * valid).sum(dim=0) / counts.clamp_min(1)
-    return _masked_mean(torch, per_chain, counts > 0)
-
-
-def _masked_mean(torch, values, valid):
-    return (values * valid).sum() / valid.sum().clamp_min(1)
-
-
-def _bend_vectors(proximal, joint, distal):
-    axis = distal - proximal
-    projection = (joint - proximal).mul(axis).sum(-1, keepdim=True) / axis.square().sum(-1, keepdim=True).clamp_min(1e-8)
-    return joint - (proximal + projection * axis)
 
 
 def _initialize_model(torch, model, config: TrainingConfig, device):

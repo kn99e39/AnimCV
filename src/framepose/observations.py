@@ -37,7 +37,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 
@@ -143,12 +145,38 @@ class ObservationProvenance:
         return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode("utf-8")).hexdigest()
 
 
-def observation_cache_key(provenance: ObservationProvenance, image_relative_path: str | None) -> str:
-    """Per-sample invalidation key: sensor identity plus the exact input frame."""
+_CONTENT_DIGEST_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+
+
+def image_content_digest(path: str | Path) -> str:
+    """SHA-256 over the exact bytes of one image.
+
+    Content, not location: a file can be replaced while keeping its path, its
+    name and even its mtime, and an observation cached from the old pixels would
+    then be silently reused for the new ones.
+    """
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def observation_cache_key(provenance: ObservationProvenance, image_digest: str | None) -> str:
+    """Per-sample invalidation key: sensor identity plus exact image content.
+
+    `image_digest` must be an `image_content_digest` value, never a path. A path
+    is rejected rather than hashed, because hashing a path binds the filename
+    and not the pixels the sensor actually saw.
+    """
+    if image_digest is not None and not _CONTENT_DIGEST_PATTERN.match(image_digest):
+        raise ValueError(
+            "observation_cache_key expects a 64-character SHA-256 of the image bytes "
+            "(framepose.observations.image_content_digest), not a path or filename")
     digest = hashlib.sha256()
     digest.update(provenance.cache_key().encode("utf-8"))
     digest.update(b"|")
-    digest.update((image_relative_path or "").encode("utf-8"))
+    digest.update((image_digest or "").encode("utf-8"))
     return digest.hexdigest()
 
 

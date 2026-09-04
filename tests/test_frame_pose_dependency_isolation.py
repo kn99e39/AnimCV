@@ -15,7 +15,7 @@ import pytest
 
 
 _ROOT = Path(__file__).resolve().parent.parent
-_HEAVY = ("mmpose", "mmdet", "mmengine", "mmcv", "timm", "torchvision", "smplx",
+_HEAVY = ("mmpose", "mmdet", "mmengine", "mmcv", "timm", "torch", "torchvision", "smplx",
           "cv2", "bpy", "pyassimp", "transformers", "depth_anything_v2")
 
 
@@ -41,17 +41,17 @@ def test_frame_contract_and_bank_import_without_any_heavy_backend():
     assert pulled == set(), f"the frame bank path must not import {sorted(pulled)}"
 
 
-def test_model_and_loss_definitions_import_without_torch_backends():
+def test_model_and_loss_definitions_import_without_any_backend():
+    """Definitions are declarative; torch is reached lazily at construction time."""
     pulled = _import_check("import framepose.model, framepose.losses, framepose.evaluate")
-    assert "mmpose" not in pulled and "timm" not in pulled
-    assert "cv2" not in pulled
+    assert pulled == set(), f"model/loss/evaluate definitions must not import {sorted(pulled)}"
 
 
-def test_visual_backbone_registry_imports_without_timm():
-    """The registry is metadata; only instantiating a tower needs timm."""
+def test_visual_backbone_registry_imports_without_timm_or_torch():
+    """The registry is metadata; only instantiating a tower needs timm or torch."""
     pulled = _import_check("import framepose.backbones")
-    assert "timm" not in pulled and "torch" not in sys.modules or True
-    assert "timm" not in pulled
+    assert "timm" not in pulled, "the backbone registry must not import timm"
+    assert "torch" not in pulled, "the backbone registry must not import torch"
 
 
 def test_mmpose_stays_behind_its_adapter():

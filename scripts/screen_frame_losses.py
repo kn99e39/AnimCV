@@ -36,6 +36,8 @@ def main() -> int:
     parser.add_argument("--seed", type=int, default=1337)
     parser.add_argument("--batch-count", type=int, default=10)
     parser.add_argument("--batch-size", type=int, default=256)
+    parser.add_argument("--allow-legacy-feature-cache", action="store_true",
+                        help="Read a historical v1 feature cache (weaker recorded provenance)")
     args = parser.parse_args()
 
     bank = load_bank(args.bank)
@@ -44,7 +46,8 @@ def main() -> int:
     if args.backbone != "none":
         if args.features_root is None:
             raise ValueError("--features-root is required for a visual backbone")
-        cached, _ = load_feature_cache(args.features_root, args.backbone, bank)
+        cached, _ = load_feature_cache(args.features_root, args.backbone, bank,
+                                       allow_legacy=args.allow_legacy_feature_cache)
         features = np.asarray(cached)
 
     states = {}

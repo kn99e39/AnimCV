@@ -46,9 +46,10 @@ MPI-INF-3DHP annotations are inside the repo at
 ## Architecture precedence
 
 `Architecture_v3_FramePose.md` is normative for AnimCV's perception stage:
-perception ownership, 2D pose observation (MMPose is the Geometry
-Observation Layer and nothing else), frame-pose learning, the role of
-temporal lifting, and visual/VLM evidence fusion. Where it and
+perception ownership, 2D pose observation (the Geometry Observation Layer
+is the abstraction; MMPose + RTMDet is its current Real AnimCV backend, and
+a 2D one), frame-pose learning, the role of temporal lifting, and
+visual/VLM evidence fusion. Where it and
 `Architecture_v2.md` disagree on those subjects, v3 wins and v2 is
 historical.
 
@@ -64,6 +65,11 @@ shipped detector keypoints, e.g. 3DPW — detector error already present),
 `real_animcv_observation` (AnimCV's own MMPose + RTMDet sensor). A
 benchmark detector is not an oracle. Everything measured so far is
 `benchmark_detector_observation`.
+
+Visual feature caches are keyed to a `visual_input_fingerprint` binding
+image bytes, bank geometry, the crop contract and backbone preprocessing.
+Historical v1 caches recorded none of that and are readable only with an
+explicit legacy flag, labelled `historical_v1`.
 
 Canonical pose mathematics (bone/torso/hinge geometry, similarity
 alignment, root-yaw and bend-direction metrics) is owned by

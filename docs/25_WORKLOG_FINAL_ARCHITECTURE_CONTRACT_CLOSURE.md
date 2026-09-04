@@ -186,6 +186,12 @@ to agree with the historical per-chain errors on the same fixture.
 
 ## 9. Legacy Temporal Pose Baseline preservation
 
+`src/training/temporal_lifter.py` **was** mechanically modified in this batch:
+the canonical pose mathematics moved out to `common.canonical_pose`, which it now
+consumes and re-exports. The accurate statement is therefore *historical
+behaviour and mathematical semantics are preserved; implementation ownership of
+the shared mathematics changed*.
+
 - No checkpoint, prediction, metric, fingerprint or report altered.
 - `TrainingConfig` defaults, the training loop, the augmentation path, the
   telemetry snapshot, the A14/A16 branches and the evaluator's gate criteria are
@@ -203,9 +209,12 @@ to agree with the historical per-chain errors on the same fixture.
 
 ## 10. MMPose final ownership
 
-Unchanged from docs/24 and now stated in the closing diagram: MMPose is the **2D
-Geometry Observation Layer**. It is not the 3D Pose Core, not the temporal
-solver, not the RGB reasoning layer. `pose/pose_lifter.py`'s `VideoPose3DLifter`
+Refined: the **Geometry Observation Layer** is the abstraction, and MMPose +
+RTMDet is its *current Real AnimCV backend* — one provider alongside the oracle
+and benchmark-detector providers. MMPose is strictly a 2D observation backend:
+not the abstraction itself, not the 3D Pose Core, not the temporal solver, not
+the RGB reasoning layer. A future detector or whole-body estimator would be
+another backend of the layer. `pose/pose_lifter.py`'s `VideoPose3DLifter`
 (`lift-pose3d`), which uses MMPose's own 2D→3D lifter, remains **legacy and
 reference only**. No `framepose` module imports `mmpose`, `mmdet` or `mmengine`.
 
@@ -270,7 +279,7 @@ No entry remains UNRESOLVED.
 | `third_party/mmpose` | — | none | **RESOLVED — REMOVED** (pip/mim is the mechanism) |
 | transformers / any VLM runtime | — | not installed, not imported, not referenced | **NOT PRESENT** |
 | MediaPipe | — | absent everywhere | **NOT A DEPENDENCY** |
-| DWPose | — | named only in Architecture_v2 §1.3's exclusion list | **NOT A DEPENDENCY** — a future whole-body 2D model would sit under MMPose ownership |
+| DWPose | — | named only in Architecture_v2 §1.3's exclusion list | **NOT A DEPENDENCY** — a future whole-body 2D estimator would be another backend of the Geometry Observation Layer, not something owned by MMPose |
 | SAM2 | — | named only in Architecture_v2 §1.3's exclusion list | **NOT A DEPENDENCY** — plausible future owner for segmentation / occlusion / user-guided tracking |
 
 ## 14. Future FramePose execution policy

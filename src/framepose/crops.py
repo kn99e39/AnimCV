@@ -21,8 +21,10 @@ CROP_RESOLUTION = 224       # square, matches both backbones' pretraining size
 CROP_PAD_VALUE = 0          # constant black padding outside the source image
 CROP_RESAMPLE = "bilinear"
 
+CROP_CONTRACT_VERSION = "animcv_frame_pose_crop_contract_v1"
+
 CROP_CONTRACT: dict[str, Any] = {
-    "schema": "animcv_frame_pose_crop_contract_v1",
+    "schema": CROP_CONTRACT_VERSION,
     "definition": "square box centred on the valid-2D-joint bounding box",
     "margin": CROP_MARGIN,
     "margin_rule": "side = max(box_width, box_height) * (1 + 2 * margin), clamped to >= 32 px",
@@ -120,3 +122,16 @@ def _bilinear_sample(image: np.ndarray, grid_x: np.ndarray, grid_y: np.ndarray,
     # Outside the source image the accumulated weight is missing, which leaves
     # exactly the constant CROP_PAD_VALUE there.
     return np.clip(accumulator + CROP_PAD_VALUE * 0.0, 0, 255).astype(np.uint8)
+
+
+def crop_contract_digest() -> str:
+    """Stable identity of the crop contract in force.
+
+    A frozen visual feature is a function of the crop that produced it, so a
+    cache built under one crop contract must never be silently reused under
+    another. This digest is what binds that into the visual-input identity.
+    """
+    import hashlib
+    import json
+
+    return hashlib.sha256(json.dumps(CROP_CONTRACT, sort_keys=True).encode("utf-8")).hexdigest()

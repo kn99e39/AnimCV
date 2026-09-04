@@ -15,11 +15,15 @@
 >
 > Architecture migration batch, executed on branch `arch/single_frame_first`
 > (branched from `On_Work` at `4b676fc`). The Legacy Temporal Pose Baseline
-> (`src/training/temporal_lifter.py`, every A9–A16 checkpoint, fingerprint,
-> report, loss implementation, evaluator contract and diagnostic script) is
-> **untouched** — `git diff On_Work..HEAD` adds files and modifies only
-> `CLAUDE.md` and `pyproject.toml`. Nothing historical was renamed, rewritten
-> or re-measured.
+> (every A9–A16 checkpoint, fingerprint, report, loss implementation, evaluator
+> contract and diagnostic script) is **untouched by this batch** — `git diff
+> On_Work..HEAD` at the time added files and modified only `CLAUDE.md` and
+> `pyproject.toml`. Nothing historical was renamed, rewritten or re-measured.
+>
+> (Later, in docs/25, `src/training/temporal_lifter.py` was mechanically changed
+> so that canonical pose mathematics moved to `common.canonical_pose`, which it
+> now consumes. Its historical behaviour and mathematical semantics are
+> preserved and pinned bitwise; only implementation ownership moved.)
 
 ## 1. Why the temporal lifter was demoted from primary status
 

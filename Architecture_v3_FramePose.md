@@ -11,7 +11,7 @@ is to be read as historical for those subjects.
 | Subject | v3 ruling |
 | --- | --- |
 | Perception ownership | The Frame Pose Core (`src/framepose/`) is the primary perception contract. |
-| 2D pose observation | MMPose is the **Geometry Observation Layer** and nothing else (section 5). |
+| 2D pose observation | The **Geometry Observation Layer** is the abstraction; MMPose + RTMDet is its current Real AnimCV backend, and a 2D backend only (section 5). |
 | Frame-pose learning | `one frame -> one root-relative canonical 17-joint 3D pose` (Layer A). |
 | Role of temporal lifting | The temporal lifter is the Legacy Temporal Pose Baseline, not the primary core (section 1.3). |
 | Visual / VLM evidence fusion | Complementary visual evidence fused into joint queries; never a replacement for explicit geometry (sections 8-9). |
@@ -93,18 +93,30 @@ that is already geometrically right.
 
 ### 1.3 The temporal lifter's new role
 
-The temporal lifter is **preserved unchanged** and reclassified as the
-**Legacy Temporal Pose Baseline**:
+The temporal lifter is reclassified as the **Legacy Temporal Pose Baseline**.
+Its *historical behaviour and mathematical semantics are preserved*; its source
+file was mechanically changed once, when canonical pose mathematics moved to
+`common.canonical_pose` (section 13), which it now consumes and re-exports:
 
 1. a reproducible historical baseline (A9 remains the fingerprinted reference);
 2. a future temporal-context provider for Layer B;
 3. a future temporal-refinement component for Layer C;
 4. a diagnostic comparison for any frame-first result.
 
-No historical checkpoint, fingerprint, report, loss implementation, evaluator
-contract or diagnostic script is renamed, rewritten or re-measured by this
-document. `src/training/temporal_lifter.py` and every `scripts/*` diagnostic
-built on it stay exactly as executed.
+No historical checkpoint, metric, fingerprint, report or diagnostic script is
+renamed, rewritten or re-measured.
+
+Precisely:
+
+**Preserved** — historical checkpoints and metrics; `TrainingConfig` behaviour
+and defaults; the training loop; the public and private compatibility names
+historical scripts import; the loss mathematics; the evaluator mathematics; A9–A16
+numerical semantics (pinned bitwise by `tests/test_canonical_pose_parity.py`).
+
+**Changed** — implementation *ownership* of the shared canonical pose
+mathematics, which moved to `common.canonical_pose`. `temporal_lifter.py`
+re-exports those definitions as direct aliases, so exactly one implementation
+exists and no formula can drift.
 
 ## 2. The new primary abstraction
 
@@ -207,16 +219,30 @@ does.
 Frame-first does **not** discard sequence identity. `sequence_id` and
 `frame_index` are mandatory, and splits are isolated at sequence granularity.
 
-## 5. MMPose is the Geometry Observation Layer
+## 5. The Geometry Observation Layer
 
-AnimCV's production perception flow is two sensors feeding one core:
+The **Geometry Observation Layer** is an abstraction, not a library. It is the
+stage that turns an RGB frame into explicit 2D joints with confidence and
+validity. It has several providers, and MMPose is one of them:
+
+```
+Geometry Observation Layer
+    |
+    +-- Oracle Geometry provider          annotated/projected GT, synthetic projection
+    |
+    +-- Benchmark Detector provider       a benchmark's own distributed detector output
+    |
+    +-- MMPose + RTMDet                   = the current Real AnimCV backend
+                                            (pose/mmpose_adapter.py, canonical_v1 schema)
+```
+
+The production perception flow is therefore:
 
 ```
 RGB frame
    |
-   +--> MMPose (pose/mmpose_adapter.py)  ->  2D joints + confidence + validity
-   |         RTMDet person detector -> RTMPose top-down keypoints
-   |         canonical_v1 landmark schema
+   +--> Geometry Observation Layer  ->  2D joints + confidence + validity
+   |        (current real backend: RTMDet person detector -> RTMPose keypoints)
    |
    +--> optional frozen visual encoder  ->  spatial visual evidence
    |
@@ -227,8 +253,10 @@ Frame Pose Core (src/framepose/)
 canonical root-relative 3D pose (17 x 3, +X right / +Y forward / +Z up)
 ```
 
-**MMPose owns exactly one box: the 2D Geometry Observation Layer.** It is not
-the 3D Pose Core, not the temporal solver, and not the RGB reasoning layer.
+**MMPose is strictly a 2D observation backend of that layer.** It is not the
+abstraction itself, not the 3D Pose Core, not the temporal solver, and not the
+RGB reasoning layer. A future detector or whole-body estimator would be *another
+backend of the Geometry Observation Layer*, not something owned by MMPose.
 
 Two consequences are binding:
 
@@ -237,12 +265,13 @@ Two consequences are binding:
    reference only**. It is preserved and still runs, but MMPose is not AnimCV's
    3D solver. The two 3D paths that remain architecturally live are the Frame
    Pose Core (primary) and the Legacy Temporal Pose Baseline (`lift-supervised-3d`).
-2. MMPose stays behind its adapter. No `framepose` module imports `mmpose`,
-   `mmdet` or `mmengine`, and a test enforces it, so the geometry-only runtime
-   never pulls the OpenMMLab stack. The real-observation regime is therefore a
-   two-stage flow across two environments: the `pose` extra
+2. The backend stays behind its adapter. No `framepose` module imports
+   `mmpose`, `mmdet` or `mmengine`, and a test enforces it, so the geometry-only
+   runtime never pulls the OpenMMLab stack. The real-observation regime is
+   therefore a two-stage flow across two environments: the `pose` extra
    (`Dockerfile.pose`) produces observations, the `frame-pose` extra
-   (`Dockerfile.framepose`) consumes them.
+   (`Dockerfile.framepose`) consumes them. Swapping the Real AnimCV backend
+   later changes that adapter and the recorded provenance, not the layer.
 
 ### 5.1 Three evaluation regimes, always labelled
 
@@ -285,10 +314,13 @@ set that mixes regimes is refused unless a bank is built with the explicit
 still refuses to interpret one.
 
 For an estimated observation the record carries model, checkpoint, detector,
-preprocessing and version, and its `cache_key` changes when any of those change;
-`observation_cache_key` additionally binds the exact input frame. A cached
-MMPose observation is therefore invalidated by a change of model, weights,
-config, preprocessing or input image.
+preprocessing and version, and its `cache_key` changes when any of those change.
+`observation_cache_key` additionally binds **the SHA-256 of the exact image
+bytes** — not the path. A file can be replaced while keeping its name, so a
+path-keyed cache would silently reuse observations taken from different pixels;
+passing a path is rejected rather than hashed. A cached observation is therefore
+invalidated by a change of model, weights, config, preprocessing **or image
+content**.
 
 **Migration.** A historical artifact is resolved deterministically from its
 recorded backend, which is unambiguous — 3DPW samples once labelled
@@ -297,22 +329,72 @@ and synthetic sources stay `oracle_geometry`. Not every old `oracle_geometry`
 label maps to the same new regime, and an artifact that cannot be resolved
 becomes `historical_unknown` rather than being guessed at.
 
-**Current measured status:** every result in this repository is
-`benchmark_detector_observation` (3DPW's shipped keypoints). No MMPose
-observations exist for the research bank, so the Real AnimCV Observation regime
-is implemented as a contract and reported as *not yet measured*. No such data is
-fabricated.
+**Current measured status of the FramePose lineage:** the executed F0/F1/F2
+measurements (docs/23) are `benchmark_detector_observation` — 3DPW's shipped
+keypoints. This statement is scoped to that lineage; it says nothing about the
+repository's other historical experiments, which predate this taxonomy and are
+not relabelled by it. No MMPose observations exist for the research bank, so the
+Real AnimCV Observation regime is implemented as a contract and reported as *not
+yet measured*. No such data is fabricated.
 
-### 5.2 Two digests, two jobs
+### 5.2 Three identities, three jobs
 
-| Digest | Covers | Job |
+Each digest answers exactly one question. None is allowed to grow a second
+responsibility, because that is how a cache silently outlives its inputs.
+
+| Identity | Covers | Answers |
 | --- | --- | --- |
-| `content_digest` | sample identity, split, source, and the numeric arrays, under a frozen domain separator | governs feature-cache validity — a cache is reusable exactly while these are unchanged |
-| `provenance_fingerprint` | observation provenance, modality, image references | detects a provenance change, including a corrected regime label, **without** invalidating a cache whose frames, crops and images did not move |
+| `FrameBank.content_digest` | sample identity, split, source, and the numeric arrays, under a frozen domain separator | "are these the same frames and the same numbers?" |
+| `FrameBank.provenance_fingerprint` | observation provenance, modality, image **references** | "did the recorded provenance change?" — including a corrected regime label, without invalidating anything |
+| `visual_input.visual_input_fingerprint` | image **content** digests, bank content digest, sample order, crop-contract digest, crop resolution, backbone preprocessing | "is this the same visual input the features were computed from?" |
 
-A real sensor change moves both, because different keypoints change `input_2d`.
-Correcting a human-readable regime label moves only the second. Neither digest
-is overloaded with the other's responsibility.
+Boundaries that matter:
+
+- Raw image bytes are **not** hashed into `content_digest`. That digest is about
+  the bank's numeric content; putting pixel identity there to solve visual
+  caching would make every image touch invalidate the numeric bank.
+- `provenance_fingerprint` binds image *paths*, not image *bytes*. Pixel
+  identity is `visual_input_fingerprint`'s job.
+- `visual_input_fingerprint` never contains a host path, so the same bank and
+  the same images produce the same fingerprint on any machine or image root.
+
+A real sensor change moves the first two, because different keypoints change
+`input_2d`. Replacing an image file in place moves only the third. Correcting a
+human-readable regime label moves only the second.
+
+### 5.3 Feature-cache provenance
+
+A frozen visual feature is a pure function of the exact image content, the
+geometry that built the crop, the crop contract and the backbone preprocessing —
+and of the backbone weights. A cache therefore records:
+
+```
+feature_cache_provenance = hash(
+    visual_input_fingerprint          image bytes + bank geometry + crop contract + preprocessing
+  + backbone identity                 key, timm model, token grid, width, resolution
+  + recorded weights_sha256           the checkpoint that actually produced these features
+)
+```
+
+Loading always checks the schema, the bank content digest, the sample order and
+the array shape and dtype. For a current (v2) cache it also checks the
+crop-contract digest **in force now**, the backbone key, and the presence of a
+recorded weight digest; and when a visual-input identity is supplied it checks
+that too, refusing a cache whose images, geometry, crop contract or preprocessing
+are not the ones it is being paired with.
+
+**What loading does not do, and never claims:** it does not re-download or
+re-hash a current backbone to prove it still matches the recorded digest. The
+guarantee is *immutable cache provenance* — the cache is the artifact, and its
+metadata records exactly which checkpoint produced it. `WEIGHT_VERIFICATION`
+states this in the metadata itself so no downstream report can overstate it.
+
+**Historical caches.** The v1 caches that produced the F0/F1/F2 lineage recorded
+no image-content digest and no crop-contract digest. They are refused unless a
+caller passes `allow_legacy=True`, and are then labelled
+`provenance_level="historical_v1"` with the specific guarantees they cannot
+provide listed in the returned metadata. They are not rewritten, not rebuilt,
+and never represented as having stronger provenance than they recorded.
 
 ## 6. Modality availability is explicit, never fabricated
 
@@ -398,7 +480,7 @@ A parameter-matched geometry-only control (same block count, cross-attention
 into a learned constant) would be needed to make F0-vs-F1/F2 causal about
 information alone. It has not been trained.
 
-### 9.2 F2 scope
+### 9.2 F2 scope and naming
 
 F2 loads the SigLIP **image tower only**. No text encoder, no multimodal
 projector, no language decoder and no autoregressive generation are present in
@@ -410,6 +492,13 @@ F2 is therefore a test of a **vision-language-pretrained visual tower's
 representation**. It is *not* a test of full VLM reasoning, of multimodal
 decoder reasoning, or of a fine-tuned VLM. Its result is scoped to the
 representation actually used.
+
+Naming follows that scope. New runs record
+`F2_vlpretrained_vision_geometry` and `F1_imagenet_vision_geometry`; the
+executed lineage's identifiers (`F2_vlm_geometry`, `F1_vision_geometry`) are
+kept as `historical_name` and reproducible with
+`--historical-candidate-names`. Historical output directories, checkpoints and
+reports are never renamed.
 
 ## 10. Portability
 
@@ -521,10 +610,11 @@ No compile mode is changed and no further benchmarking is performed here.
 RGB frame
     |
     +--> Geometry Observation Layer            (explicit 2D joints + confidence + validity)
-    |        provider, always labelled by regime:
+    |        providers, always labelled by regime:
     |            oracle / projected GT      -> oracle_geometry
     |            benchmark detector         -> benchmark_detector_observation
-    |            AnimCV MMPose + RTMDet     -> real_animcv_observation
+    |            MMPose + RTMDet            -> real_animcv_observation
+    |              = the current Real AnimCV backend, one provider of this layer
     |
     +--> optional visual evidence encoder      (frozen ViT patch tokens; complementary)
              |
@@ -547,8 +637,13 @@ Four statements this document exists to make unambiguous:
   recorded per sample and never inferred from a result.
 - **A benchmark detector is not an oracle.** Dataset-shipped detector keypoints
   carry detector error and are labelled as such.
-- **MMPose is not the 3D solver in the primary path.** It is the Geometry
-  Observation Layer; `VideoPose3DLifter` / `lift-pose3d` is legacy and reference
-  only.
+- **MMPose is a backend, not the layer.** It is the current Real AnimCV backend
+  of the Geometry Observation Layer, and a 2D one: `VideoPose3DLifter` /
+  `lift-pose3d` is legacy and reference only. A future estimator would be
+  another backend of the same layer.
+- **A cached feature is only valid for the input it was computed from.** Image
+  bytes, bank geometry, crop contract and preprocessing are bound into
+  `visual_input_fingerprint`, and a cache that cannot establish them is labelled
+  historical rather than trusted (section 5.3).
 - **The Temporal Lifter is not the owner of canonical pose mathematics.** It is
   a consumer of `common.canonical_pose`, exactly as the Frame Pose Core is.

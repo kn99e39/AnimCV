@@ -245,9 +245,12 @@ class FrameBank:
                               arrays. Governs feature-cache validity: a cache is
                               reusable exactly while these are unchanged.
         `provenance_fingerprint`  observation provenance, modality and image
-                              references. Detects a provenance change -- including
+                              *references*. Detects a provenance change -- including
                               a corrected regime label -- without invalidating a
                               cache whose frames, crops and images did not move.
+                              It binds image **paths**, not image bytes; exact
+                              pixel identity is the job of
+                              `framepose.visual_input.visual_input_fingerprint`.
 
         A real sensor change moves both, because different keypoints change
         `input_2d`. A corrected human-readable regime label moves only this one.

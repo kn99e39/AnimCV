@@ -45,7 +45,7 @@ M pyproject.toml   additive: the `frame-pose` optional-dependency group
 
 | docs/23 claim | Status |
 | --- | --- |
-| Historical files untouched | **Verified** (Section 1) |
+| Historical files untouched | **Verified as of this audit** (Section 1). Superseded by docs/25: `temporal_lifter.py` was later mechanically changed to consume `common.canonical_pose`, with historical behaviour and mathematics preserved. |
 | Bank 21,817 frames / 34+16+37 sequences / digest `75519e63…` | **Verified**; reproduced exactly on rebuild |
 | Frame-core loss equals the A5/A9 objective | **Verified**; enforced by an equality test against `_supervision_loss` |
 | F0 1,652,227 vs F1/F2 2,427,139 trainable parameters | **Verified** in code and in the run reports |
@@ -351,7 +351,7 @@ authoring venv; `animcv-train:cuda118`; `animcv-framepose:cuda118`).
 | **PyYAML** | `app/config.py` | config files | same | **KEEP** | none |
 | **Depth Anything V2** | `pose/depth_estimator.py` (lazy), `pose/depth_sampling.py`, `app/cli.py --depth-*`, `ui/gui_app.py`, `tests/test_depth.py` | out-of-v2-scope relative-depth hint feeding `MotionPoint.position_3d` | **overlaps the Frame Pose Core**; no distinct Layer A owner | **KEEP AS LEGACY/OPTIONAL** | classified only; live CLI/GUI/test owners, not removed |
 | **MediaPipe** | **absent** — no import, no extra, no mention anywhere | never integrated | — | **NOT A DEPENDENCY** | none |
-| **DWPose** | **absent** — named only in v2 §1.3's exclusion list | never integrated | plausible future whole-body 2D *under MMPose ownership* | **NOT A DEPENDENCY** | none |
+| **DWPose** | **absent** — named only in v2 §1.3's exclusion list | never integrated | a future whole-body 2D estimator would be *another backend of the Geometry Observation Layer* | **NOT A DEPENDENCY** | none |
 | **SAM2** | **absent** — named only in v2 §1.3's exclusion list | never integrated | plausible future owner: segmentation, occlusion, user-guided region tracking for arbitrary rigs | **NOT A DEPENDENCY** | none |
 | **openmim** | `Dockerfile.pose` only (installs the prebuilt `mmcv` wheel) | build tooling | same | **KEEP** (build tooling) | none |
 | `third_party/mmpose`, `third_party/Depth-Anything-V2` | **broken gitlinks**: recorded as submodule entries with **no `.gitmodules`**, directories empty; referenced in `pose/depth_estimator.py` docstrings as the API reference | reference checkouts | unclear | **UNRESOLVED** | reported, deliberately **not** removed |

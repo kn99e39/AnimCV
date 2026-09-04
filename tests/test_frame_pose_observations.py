@@ -137,12 +137,19 @@ def test_cached_observation_is_invalidated_by_model_weights_config_or_preprocess
     assert _mmpose().cache_key() == baseline, "the key must be stable for an unchanged sensor"
 
 
-def test_cached_observation_is_invalidated_by_the_input_image():
+def test_cached_observation_is_invalidated_by_the_input_image(tmp_path):
+    """Bound to image *bytes*: a replaced file at the same path must invalidate."""
+    from framepose.observations import image_content_digest
+
     provenance = _mmpose()
-    first = observation_cache_key(provenance, "seq/image_00000.jpg")
-    assert observation_cache_key(provenance, "seq/image_00001.jpg") != first
-    assert observation_cache_key(provenance, "seq/image_00000.jpg") == first
-    assert observation_cache_key(_mmpose(pose_checkpoint="x.pth"), "seq/image_00000.jpg") != first
+    path = tmp_path / "image_00000.jpg"
+    path.write_bytes(b"pixels-a")
+    first = observation_cache_key(provenance, image_content_digest(path))
+    path.write_bytes(b"pixels-b")
+    assert observation_cache_key(provenance, image_content_digest(path)) != first
+    path.write_bytes(b"pixels-a")
+    assert observation_cache_key(provenance, image_content_digest(path)) == first
+    assert observation_cache_key(_mmpose(pose_checkpoint="x.pth"), image_content_digest(path)) != first
 
 
 def test_bank_is_labelled_with_exactly_one_regime(tmp_path):

@@ -70,13 +70,24 @@ def main() -> int:
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--seed", type=int, default=1337)
+    parser.add_argument("--visual-input-identity", type=Path, default=None,
+                        help="Visual input identity JSON to verify the feature cache against")
+    parser.add_argument("--allow-legacy-feature-cache", action="store_true",
+                        help="Read a historical v1 cache, which recorded no image-content or "
+                             "crop-contract identity; the report labels the provenance level.")
     args = parser.parse_args()
 
     import torch
 
     bank = load_bank(args.bank)
     geometry = geometry_tensor(bank)
-    cached, cache_metadata = load_feature_cache(args.features_root, args.backbone, bank)
+    fingerprint = None
+    if args.visual_input_identity is not None:
+        from framepose.visual_input import load_identity
+        fingerprint = load_identity(args.visual_input_identity)["fingerprint"]
+    cached, cache_metadata = load_feature_cache(args.features_root, args.backbone, bank,
+                                                visual_input_fingerprint=fingerprint,
+                                                allow_legacy=args.allow_legacy_feature_cache)
     features = np.asarray(cached)
     device = torch.device(args.device if (args.device != "cuda" or torch.cuda.is_available()) else "cpu")
     model, payload = load_checkpoint(args.checkpoint, device=str(device))
@@ -108,6 +119,8 @@ def main() -> int:
         "backbone": payload["backbone"],
         "bank_content_digest": bank.content_digest(),
         "feature_cache_sample_order_digest": cache_metadata["sample_order_digest"],
+        "feature_cache_provenance_level": cache_metadata.get("provenance_level"),
+        "feature_cache_visual_input_verified": cache_metadata.get("visual_input_verified"),
         "seed": args.seed,
         "conditions": {
             "real": "the frame's own cached tokens",

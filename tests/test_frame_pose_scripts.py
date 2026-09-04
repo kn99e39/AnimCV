@@ -42,6 +42,11 @@ class _StubBackbone:
     def __init__(self, spec, device="cpu"):
         self.spec = spec
         self.calls = 0
+        # The visual-input identity binds the backbone's declared preprocessing.
+        self.mean = [0.5, 0.5, 0.5]
+        self.std = [0.5, 0.5, 0.5]
+        self.input_size = spec.input_resolution
+        self.prefix_tokens = 0
 
     def tokens(self, crops):
         self.calls += 1
@@ -142,12 +147,19 @@ def test_experiment_runner_produces_isolated_candidates_and_comparisons(paired, 
                 rng.normal(size=(len(bank), 196, 768)).astype(np.float16))
         from common.serialization import write_json
         from framepose.features import sample_order_digest
+        from framepose.crops import crop_contract_digest
         write_json(directory / "meta.json", {
-            "schema": "animcv_frame_pose_feature_cache_v1",
-            "backbone": {"key": key, "frozen": True},
-            "crop_contract": {}, "bank_content_digest": bank.content_digest(),
+            "schema": "animcv_frame_pose_feature_cache_v2",
+            "backbone": {"key": key, "frozen": True, "weights_sha256": f"{key}-digest",
+                         "embed_dim": 768, "token_count": 196, "input_resolution": 224},
+            "crop_contract": {}, "crop_contract_digest": crop_contract_digest(),
+            "bank_content_digest": bank.content_digest(),
             "sample_order_digest": sample_order_digest([s.sample_id for s in bank.samples]),
+            "visual_input_fingerprint": f"{key}-visual-input",
+            "feature_cache_provenance": f"{key}-provenance",
+            "provenance_level": "verified_v2",
             "sample_count": len(bank), "dtype": "float16",
+            "token_shape": [196, 768],
             "shape": [len(bank), 196, 768], "array": "tokens.npy"})
 
     module = _load("run_frame_pose_experiments")
@@ -231,12 +243,18 @@ def test_visual_usage_diagnostic_separates_token_conditions(paired, tmp_path, ca
     np.save(directory / "tokens.npy", rng.normal(size=(len(bank), 196, 768)).astype(np.float16))
     from common.serialization import write_json
     from framepose.features import sample_order_digest
+    from framepose.crops import crop_contract_digest
     write_json(directory / "meta.json", {
-        "schema": "animcv_frame_pose_feature_cache_v1", "backbone": {"key": "siglip", "frozen": True},
-        "crop_contract": {}, "bank_content_digest": bank.content_digest(),
+        "schema": "animcv_frame_pose_feature_cache_v2",
+        "backbone": {"key": "siglip", "frozen": True, "weights_sha256": "stub-digest",
+                     "embed_dim": 768, "token_count": 196, "input_resolution": 224},
+        "crop_contract": {}, "crop_contract_digest": crop_contract_digest(),
+        "bank_content_digest": bank.content_digest(),
         "sample_order_digest": sample_order_digest([s.sample_id for s in bank.samples]),
-        "sample_count": len(bank), "dtype": "float16", "shape": [len(bank), 196, 768],
-        "array": "tokens.npy"})
+        "visual_input_fingerprint": "stub-visual-input",
+        "feature_cache_provenance": "stub-provenance", "provenance_level": "verified_v2",
+        "sample_count": len(bank), "dtype": "float16", "token_shape": [196, 768],
+        "shape": [len(bank), 196, 768], "array": "tokens.npy"})
 
     checkpoint = tmp_path / "f2.pt"
     train_candidate(bank, CandidateConfig(name="unit", backbone="siglip", epochs=2, batch_size=16,

@@ -132,9 +132,14 @@ def train_candidate(bank: FrameBank, config: CandidateConfig, *,
     if config.sign_source == "none":
         if signs is not None:
             raise ValueError("an unconditioned candidate must not be given sign states")
+    elif signs is not None:
+        # An explicitly supplied array is always honoured, never re-derived from
+        # the source. Re-deriving silently discarded field masks and turned every
+        # attribution candidate into a full-oracle run evaluated on a subset.
+        signs = sign_module.validate_sign_array(
+            signs, expected_rows=len(bank), context=f"{config.sign_source} sign states")
     else:
-        signs = sign_tensor(bank, config.sign_source, signs) if (
-            signs is None or config.sign_source != "advisor") else np.asarray(signs, dtype=np.int8)
+        signs = sign_tensor(bank, config.sign_source)
     targets = bank.arrays["target_3d"]
     mask = bank.arrays["target_valid"].astype(np.float32)[..., None]
 

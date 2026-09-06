@@ -523,3 +523,42 @@ def test_isolated_prompt_is_verbatim_and_asks_exactly_one_question():
 
     with pytest.raises(ValueError, match="unknown sign field"):
         isolated_prompt_text("nose_direction")
+
+
+def test_an_explicitly_supplied_sign_array_is_never_re_derived(bank):
+    """Regression: field masks must survive into training.
+
+    The first attribution run re-derived the full oracle inside the trainer and
+    discarded the mask, so every candidate trained on all seven fields and was
+    then evaluated on one group — a train/evaluate mismatch that made correct
+    information look harmful.
+    """
+    pytest.importorskip("torch")
+
+    from framepose.signs import mask_fields
+    from framepose.train import CandidateConfig, train_candidate
+
+    oracle = oracle_sign_states(bank.arrays["target_3d"], bank.arrays["target_valid"])
+    masked = mask_fields(oracle, ["torso_facing"])
+    report = train_candidate(
+        bank,
+        CandidateConfig(name="unit_masked", sign_source="oracle", epochs=1, batch_size=16,
+                        device="cpu", mixed_precision=False, evaluate_every=1, seed=3),
+        signs=masked)
+
+    distribution = report["sign"]["distribution"]
+    active = distribution["torso_facing"]
+    assert active["positive"] + active["negative"] > 0, "the active field must carry information"
+    for name in SIGN_FIELD_NAMES:
+        if name == "torso_facing":
+            continue
+        assert distribution[name]["positive"] == 0 and distribution[name]["negative"] == 0, \
+            f"{name} must be fully UNKNOWN in a torso-only candidate"
+        assert distribution[name]["degenerate"] == len(bank)
+
+    # And an unmasked oracle run really is different, so the check has teeth.
+    full = train_candidate(
+        bank,
+        CandidateConfig(name="unit_full", sign_source="oracle", epochs=1, batch_size=16,
+                        device="cpu", mixed_precision=False, evaluate_every=1, seed=3))
+    assert full["sign"]["distribution"]["shoulder_forward_depth"]["degenerate"] < len(bank)

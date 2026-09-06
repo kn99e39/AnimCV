@@ -61,6 +61,10 @@ def evaluate_predictions(bank: FrameBank, positions: Sequence[int], prediction: 
     valid = bank.arrays["target_valid"][positions]
 
     frames: list[dict[str, Any]] = []
+    predicted_signs = np.stack([sign_state(prediction[order], valid[order])
+                                for order in range(len(positions))])
+    reference_signs = np.stack([sign_state(targets[order], valid[order])
+                                for order in range(len(positions))])
     joint_error_sum = np.zeros(len(JOINT_NAMES))
     joint_error_count = np.zeros(len(JOINT_NAMES))
     for order, position in enumerate(positions):
@@ -89,6 +93,12 @@ def evaluate_predictions(bank: FrameBank, positions: Sequence[int], prediction: 
             "hinge_direction_mae_degrees": _hinge_direction_error(estimate, reference, frame_valid),
             "hinge_flip_rate": _hinge_flip_rate(estimate, reference, frame_valid),
             "strata": {name: sample.strata.get(name, "unknown") for name in stratum_names()},
+            # The Sign Contract read back out of this frame's prediction and its
+            # ground truth, so a flip is traceable per frame and per field.
+            "sign_state": {name: int(value)
+                           for name, value in zip(SIGN_FIELD_NAMES, predicted_signs[order])},
+            "reference_sign_state": {name: int(value)
+                                     for name, value in zip(SIGN_FIELD_NAMES, reference_signs[order])},
         }
         record.update(_forward_depth_metrics(estimate, reference, frame_valid, "shoulder",
                                              _LEFT_SHOULDER, _RIGHT_SHOULDER))
@@ -109,10 +119,7 @@ def evaluate_predictions(bank: FrameBank, positions: Sequence[int], prediction: 
         # Discrete sign agreement between the predicted pose and ground truth,
         # read back out through the Sign Contract. Scored only where the
         # reference sign is non-degenerate.
-        "sign_agreement": sign_agreement(
-            np.stack([sign_state(prediction[order], valid[order]) for order in range(len(positions))]),
-            np.stack([sign_state(targets[order], valid[order]) for order in range(len(positions))]),
-        ),
+        "sign_agreement": sign_agreement(predicted_signs, reference_signs),
         "per_joint_mean_error_mm": {
             name: (float(joint_error_sum[index] / joint_error_count[index]) if joint_error_count[index] else None)
             for index, name in enumerate(JOINT_NAMES)

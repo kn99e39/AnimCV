@@ -17,6 +17,7 @@ from dataclasses import dataclass, asdict
 from typing import Any
 
 from framepose.contract import JOINT_COUNT
+from framepose.signs import SIGN_FIELD_COUNT, joint_field_matrix
 
 
 MODEL_SCHEMA = "animcv_frame_pose_estimator_v1"
@@ -30,11 +31,19 @@ DEFAULT_FEEDFORWARD_MULTIPLIER = 4
 # Geometry token features per joint: x, y (crop-normalized), confidence, validity.
 GEOMETRY_FEATURES = 4
 
+# A sign field takes three values (-1, 0, +1), so conditioning is one small
+# learned categorical embedding per (field, value). Fixed, never swept.
+SIGN_VALUE_COUNT = 3
+
 
 @dataclass(frozen=True)
 class ModelConfig:
     visual_dim: int | None = None
     visual_tokens: int = 0
+    # Discrete sign conditioning (Sign Contract). 0 disables it entirely; the
+    # S0 neutral control keeps it enabled and feeds every field UNKNOWN, so the
+    # control is capacity-matched by construction.
+    sign_fields: int = 0
     width: int = DEFAULT_WIDTH
     heads: int = DEFAULT_HEADS
     fusion_depth: int = DEFAULT_FUSION_DEPTH
@@ -49,13 +58,20 @@ class ModelConfig:
             raise ValueError("visual_dim and visual_tokens must be set together")
         if self.visual_dim is not None and self.visual_dim <= 0:
             raise ValueError("visual_dim must be positive when set")
+        if self.sign_fields not in (0, SIGN_FIELD_COUNT):
+            raise ValueError(f"sign_fields must be 0 or the contract's {SIGN_FIELD_COUNT}")
 
     @property
     def uses_vision(self) -> bool:
         return self.visual_dim is not None
 
+    @property
+    def uses_signs(self) -> bool:
+        return self.sign_fields > 0
+
     def to_dict(self) -> dict[str, Any]:
         return {"schema": MODEL_SCHEMA, **asdict(self), "uses_vision": self.uses_vision,
+                "uses_signs": self.uses_signs, "sign_value_count": SIGN_VALUE_COUNT,
                 "joint_count": JOINT_COUNT, "geometry_features": GEOMETRY_FEATURES}
 
 
@@ -99,6 +115,15 @@ def build_model(config: ModelConfig):
             self.geometry_projection = nn.Linear(GEOMETRY_FEATURES, config.width)
             self.joint_embedding = nn.Parameter(torch.zeros(JOINT_COUNT, config.width))
             nn.init.normal_(self.joint_embedding, std=0.02)
+            if config.uses_signs:
+                # One embedding per (sign field, value). Each field reaches only
+                # the joints the Sign Contract says it governs, so a changed
+                # sign is traceable to a changed pose component.
+                self.sign_embedding = nn.Parameter(
+                    torch.zeros(config.sign_fields, SIGN_VALUE_COUNT, config.width))
+                nn.init.normal_(self.sign_embedding, std=0.02)
+                self.register_buffer("sign_joint_mask",
+                                     torch.as_tensor(joint_field_matrix()), persistent=False)
             if config.uses_vision:
                 self.image_projection = nn.Linear(config.visual_dim, config.width)
                 self.image_norm = nn.LayerNorm(config.width)
@@ -109,11 +134,25 @@ def build_model(config: ModelConfig):
             self.head = nn.Sequential(
                 nn.Linear(config.width, config.width), nn.GELU(), nn.Linear(config.width, 3))
 
-        def forward(self, geometry, image_tokens=None):
-            """geometry: (B, 17, 4).  image_tokens: (B, T, visual_dim) or None."""
+        def forward(self, geometry, image_tokens=None, sign_state=None):
+            """geometry: (B, 17, 4).  image_tokens: (B, T, visual_dim) or None.
+            sign_state: (B, sign_fields) with values in {-1, 0, +1}, or None."""
             if geometry.shape[-2:] != (JOINT_COUNT, GEOMETRY_FEATURES):
                 raise ValueError(f"geometry must be (B, {JOINT_COUNT}, {GEOMETRY_FEATURES})")
             queries = self.geometry_projection(geometry) + self.joint_embedding
+            if self.config.uses_signs:
+                if sign_state is None:
+                    raise ValueError("this candidate requires a sign state")
+                if sign_state.shape[-1] != self.config.sign_fields:
+                    raise ValueError(f"sign_state must be (B, {self.config.sign_fields})")
+                # -1/0/+1 -> 0/1/2, then gather each field's value embedding and
+                # route it only to the joints that field governs.
+                indices = (sign_state.long() + 1).clamp(0, SIGN_VALUE_COUNT - 1)
+                fields = torch.arange(self.config.sign_fields, device=indices.device)
+                selected = self.sign_embedding[fields.unsqueeze(0), indices]
+                queries = queries + torch.einsum("jf,bfw->bjw", self.sign_joint_mask, selected)
+            elif sign_state is not None:
+                raise ValueError("this candidate must not receive a sign state")
             tokens = None
             if self.config.uses_vision:
                 if image_tokens is None:

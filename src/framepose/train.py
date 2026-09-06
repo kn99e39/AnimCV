@@ -26,9 +26,16 @@ from framepose.crops import CROP_CONTRACT, crop_box, geometry_in_crop
 from framepose.losses import LossContract, compute_loss, loss_components, resolve_contract
 from framepose.model import ModelConfig, build_model, parameter_report
 from framepose.observations import summarize as summarize_observations
+from framepose import signs as sign_module
 
 
 CHECKPOINT_SCHEMA = "animcv_frame_pose_checkpoint_v1"
+
+# "none"     no sign conditioning in the graph at all
+# "neutral"  conditioning present, every field UNKNOWN (the S0 capacity control)
+# "oracle"   conditioning present, signs derived from ground-truth 3D (S1)
+# "advisor"  conditioning present, signs supplied by an external advisor (S2)
+SIGN_SOURCES = ("none", "neutral", "oracle", "advisor")
 TRAINING_REPORT_SCHEMA = "animcv_frame_pose_training_v1"
 
 
@@ -38,6 +45,11 @@ class CandidateConfig:
 
     name: str
     backbone: str = "none"
+    # Discrete sign evidence (Sign Contract). "none" disables conditioning
+    # entirely; "neutral" and "oracle" share one graph and one parameter count
+    # and differ only in the information supplied, which is the whole point of
+    # the S0/S1 control.
+    sign_source: str = "none"
     loss_contract: str = "baseline_geometry_v1"
     epochs: int = 120
     batch_size: int = 256
@@ -62,6 +74,8 @@ class CandidateConfig:
             raise ValueError(
                 "parameter-efficient backbone adaptation is gated on frozen-F2 evidence "
                 "(Architecture_v3 section 8) and is not enabled in this batch")
+        if self.sign_source not in SIGN_SOURCES:
+            raise ValueError(f"sign_source must be one of {SIGN_SOURCES}")
         resolve_backbone(self.backbone)
         resolve_contract(self.loss_contract)
 
@@ -80,9 +94,32 @@ def geometry_tensor(bank: FrameBank) -> np.ndarray:
     return features
 
 
+def sign_tensor(bank: FrameBank, source: str, advisor: np.ndarray | None = None) -> np.ndarray | None:
+    """`(N, 7)` sign states for the whole bank, or None when unconditioned.
+
+    The oracle is derived from ground-truth 3D and is an architecture control,
+    never a production mechanism (`sign_source = "oracle"` is recorded).
+    """
+    if source == "none":
+        return None
+    if source == "neutral":
+        return sign_module.neutral_sign_states(len(bank))
+    if source == "oracle":
+        return sign_module.oracle_sign_states(bank.arrays["target_3d"], bank.arrays["target_valid"])
+    if source == "advisor":
+        if advisor is None:
+            raise ValueError("sign_source 'advisor' requires an externally supplied sign bank")
+        advisor = np.asarray(advisor, dtype=np.int8)
+        if advisor.shape != (len(bank), sign_module.SIGN_FIELD_COUNT):
+            raise ValueError(f"advisor signs must be ({len(bank)}, {sign_module.SIGN_FIELD_COUNT})")
+        return advisor
+    raise ValueError(f"unknown sign source {source!r}")
+
+
 def train_candidate(bank: FrameBank, config: CandidateConfig, *,
                     features: np.ndarray | None = None,
                     geometry: np.ndarray | None = None,
+                    signs: np.ndarray | None = None,
                     checkpoint_path: str | Path | None = None) -> dict[str, Any]:
     """Train one candidate and return its full provenance-bearing report."""
     torch = _torch()
@@ -94,6 +131,12 @@ def train_candidate(bank: FrameBank, config: CandidateConfig, *,
         raise ValueError(f"candidate {config.name} requires cached {config.backbone} features")
 
     geometry = geometry_tensor(bank) if geometry is None else geometry
+    if config.sign_source == "none":
+        if signs is not None:
+            raise ValueError("an unconditioned candidate must not be given sign states")
+    else:
+        signs = sign_tensor(bank, config.sign_source, signs) if (
+            signs is None or config.sign_source != "advisor") else np.asarray(signs, dtype=np.int8)
     targets = bank.arrays["target_3d"]
     mask = bank.arrays["target_valid"].astype(np.float32)[..., None]
 
@@ -107,12 +150,14 @@ def train_candidate(bank: FrameBank, config: CandidateConfig, *,
     model_config = ModelConfig(
         visual_dim=spec.embed_dim if spec.kind != "none" else None,
         visual_tokens=spec.token_count if spec.kind != "none" else 0,
+        sign_fields=0 if config.sign_source == "none" else sign_module.SIGN_FIELD_COUNT,
     )
     model = build_model(model_config).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=config.learning_rate,
                                   weight_decay=config.weight_decay)
 
     geometry_gpu = torch.as_tensor(geometry, device=device)
+    sign_gpu = None if signs is None else torch.as_tensor(np.asarray(signs, dtype=np.int64), device=device)
     target_gpu = torch.as_tensor(targets, device=device)
     mask_gpu = torch.as_tensor(mask, device=device)
     feature_source = None if features is None else np.ascontiguousarray(features)
@@ -123,8 +168,8 @@ def train_candidate(bank: FrameBank, config: CandidateConfig, *,
     else:  # PyTorch 2.1 -- the training host's build -- keeps it under torch.cuda.amp.
         scaler = torch.cuda.amp.GradScaler(enabled=amp_enabled)
 
-    def _forward_loss(geometry_batch, token_batch, target_batch, mask_batch):
-        prediction = model(geometry_batch, token_batch)
+    def _forward_loss(geometry_batch, token_batch, sign_batch, target_batch, mask_batch):
+        prediction = model(geometry_batch, token_batch, sign_batch)
         return prediction, compute_loss(torch, prediction, target_batch, mask_batch, contract)
 
     # docs/20 accepted torch.compile for the forward + loss graph; backward and
@@ -158,8 +203,10 @@ def train_candidate(bank: FrameBank, config: CandidateConfig, *,
             for group in optimizer.param_groups:
                 group["lr"] = _cosine_learning_rate(config, step, total_steps)
             optimizer.zero_grad(set_to_none=True)
+            signs_batch = None if sign_gpu is None else sign_gpu[index]
             with torch.amp.autocast("cuda", enabled=amp_enabled):
-                _, loss = forward_loss(geometry_gpu[index], tokens, target_gpu[index], mask_gpu[index])
+                _, loss = forward_loss(geometry_gpu[index], tokens, signs_batch,
+                                       target_gpu[index], mask_gpu[index])
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
@@ -175,7 +222,7 @@ def train_candidate(bank: FrameBank, config: CandidateConfig, *,
         if len(validation_positions) and (final_epoch or (epoch + 1) % config.evaluate_every == 0):
             record.update(_validation_snapshot(
                 torch, model, geometry_gpu, target_gpu, mask_gpu, feature_source,
-                validation_positions, device, amp_enabled, contract))
+                validation_positions, device, amp_enabled, contract, sign_gpu))
             if best["validation_mpjpe_mm"] is None or record["validation_mpjpe_mm"] < best["validation_mpjpe_mm"]:
                 best = {"epoch": epoch, "validation_mpjpe_mm": record["validation_mpjpe_mm"]}
                 best_state = {key: value.detach().clone() for key, value in model.state_dict().items()}
@@ -189,6 +236,11 @@ def train_candidate(bank: FrameBank, config: CandidateConfig, *,
         "candidate": config.to_dict(),
         "loss_contract": contract.to_dict(),
         "backbone": spec.to_dict(),
+        "sign": {"source": config.sign_source,
+                 "fields": list(sign_module.SIGN_FIELD_NAMES) if signs is not None else [],
+                 "distribution": sign_module.summarize(signs) if signs is not None else None,
+                 "oracle_is_an_architecture_control_not_a_production_mechanism":
+                     config.sign_source == "oracle"},
         "model": {**model_config.to_dict(), **parameter_report(model)},
         "crop_contract": CROP_CONTRACT,
         "bank": {"content_digest": bank.content_digest(),
@@ -236,7 +288,7 @@ def train_candidate(bank: FrameBank, config: CandidateConfig, *,
 
 def predict(model, torch, geometry: np.ndarray, features: np.ndarray | None,
             positions: Sequence[int], device, *, batch_size: int = 512,
-            amp_enabled: bool = False) -> np.ndarray:
+            amp_enabled: bool = False, signs: np.ndarray | None = None) -> np.ndarray:
     """Batched inference over an explicit list of bank positions."""
     positions = np.asarray(positions, dtype=np.int64)
     model.eval()
@@ -246,8 +298,10 @@ def predict(model, torch, geometry: np.ndarray, features: np.ndarray | None,
             batch = positions[start:start + batch_size]
             geometry_batch = torch.as_tensor(geometry[batch], device=device)
             tokens = _tokens(torch, features, batch, device)
+            sign_batch = None if signs is None else torch.as_tensor(
+                np.asarray(signs[batch], dtype=np.int64), device=device)
             with torch.amp.autocast("cuda", enabled=amp_enabled):
-                outputs.append(model(geometry_batch, tokens).float().cpu().numpy())
+                outputs.append(model(geometry_batch, tokens, sign_batch).float().cpu().numpy())
     return np.concatenate(outputs, axis=0)
 
 
@@ -258,6 +312,7 @@ def load_checkpoint(path: str | Path, device: str = "cpu"):
         raise ValueError(f"unsupported frame pose checkpoint: {payload.get('schema')!r}")
     stored = dict(payload["model_config"])
     config = ModelConfig(visual_dim=stored["visual_dim"], visual_tokens=stored["visual_tokens"],
+                         sign_fields=stored.get("sign_fields", 0),
                          width=stored["width"], heads=stored["heads"],
                          fusion_depth=stored["fusion_depth"],
                          feedforward_multiplier=stored["feedforward_multiplier"])
@@ -282,7 +337,8 @@ def _cosine_learning_rate(config: CandidateConfig, step: int, total: int) -> flo
 
 
 def _validation_snapshot(torch, model, geometry_gpu, target_gpu, mask_gpu, features,
-                         positions, device, amp_enabled, contract: LossContract) -> dict[str, Any]:
+                         positions, device, amp_enabled, contract: LossContract,
+                         sign_gpu=None) -> dict[str, Any]:
     """Validation-split MPJPE and raw loss components; no test data involved."""
     was_training = model.training
     model.eval()
@@ -296,7 +352,8 @@ def _validation_snapshot(torch, model, geometry_gpu, target_gpu, mask_gpu, featu
             index = torch.as_tensor(batch, device=device)
             tokens = _tokens(torch, features, batch, device)
             with torch.amp.autocast("cuda", enabled=amp_enabled):
-                prediction = model(geometry_gpu[index], tokens)
+                prediction = model(geometry_gpu[index], tokens,
+                                   None if sign_gpu is None else sign_gpu[index])
             prediction = prediction.float()
             target = target_gpu[index]
             mask = mask_gpu[index]

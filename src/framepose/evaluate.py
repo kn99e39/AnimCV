@@ -20,6 +20,7 @@ from framepose.contract import (
     BILATERAL_DEPTH_NORMALIZATION, FORWARD_DEPTH_AXIS, FrameBank, JOINT_INDEX, JOINT_NAMES,
 )
 from framepose.observations import summarize as summarize_observations
+from framepose.signs import SIGN_FIELD_NAMES, agreement as sign_agreement, sign_state
 from framepose.strata import stratum_names
 # The similarity alignment, root-yaw and bend-direction definitions come from
 # the neutral canonical-pose owner that the Legacy Temporal Pose Baseline also
@@ -86,6 +87,7 @@ def evaluate_predictions(bank: FrameBank, positions: Sequence[int], prediction: 
             "pa_mpjpe_mm": aligned,
             "root_yaw_error_degrees": root_yaw_error_degrees(estimate, reference, frame_valid),
             "hinge_direction_mae_degrees": _hinge_direction_error(estimate, reference, frame_valid),
+            "hinge_flip_rate": _hinge_flip_rate(estimate, reference, frame_valid),
             "strata": {name: sample.strata.get(name, "unknown") for name in stratum_names()},
         }
         record.update(_forward_depth_metrics(estimate, reference, frame_valid, "shoulder",
@@ -104,6 +106,13 @@ def evaluate_predictions(bank: FrameBank, positions: Sequence[int], prediction: 
         "observation": summarize_observations(observations),
         "frame_count": len(frames),
         "aggregate": aggregate(frames),
+        # Discrete sign agreement between the predicted pose and ground truth,
+        # read back out through the Sign Contract. Scored only where the
+        # reference sign is non-degenerate.
+        "sign_agreement": sign_agreement(
+            np.stack([sign_state(prediction[order], valid[order]) for order in range(len(positions))]),
+            np.stack([sign_state(targets[order], valid[order]) for order in range(len(positions))]),
+        ),
         "per_joint_mean_error_mm": {
             name: (float(joint_error_sum[index] / joint_error_count[index]) if joint_error_count[index] else None)
             for index, name in enumerate(JOINT_NAMES)
@@ -125,7 +134,7 @@ def aggregate(frames: Iterable[dict[str, Any]]) -> dict[str, Any]:
     frames = list(frames)
     summary: dict[str, Any] = {"frame_count": len(frames)}
     for key in ("mpjpe_mm", "pa_mpjpe_mm", "max_joint_error_mm", "root_yaw_error_degrees",
-                "hinge_direction_mae_degrees",
+                "hinge_direction_mae_degrees", "hinge_flip_rate",
                 "shoulder_forward_depth_residual_mm", "hip_forward_depth_residual_mm",
                 "shoulder_forward_depth_abs_residual_mm", "hip_forward_depth_abs_residual_mm"):
         summary[key] = _statistics([record.get(key) for record in frames])
@@ -186,6 +195,20 @@ def _forward_depth_metrics(estimate: np.ndarray, reference: np.ndarray, valid: n
             disagreement if abs(actual) >= STABLE_FORWARD_DEPTH_M else None),
         f"{label}_forward_depth_target_m": actual,
     }
+
+
+def _hinge_flip_rate(estimate: np.ndarray, reference: np.ndarray, valid: np.ndarray) -> float | None:
+    """Fraction of scorable hinge chains whose bend direction reversed.
+
+    The same `flipped` accounting the Legacy Temporal Pose Baseline's evaluator
+    uses (`common.canonical_pose.hinge_errors`), reported per frame.
+    """
+    from common.canonical_pose import hinge_errors
+
+    chains = hinge_errors(estimate, reference, valid)
+    if not chains:
+        return None
+    return float(sum(1 for chain in chains if chain["flipped"]) / len(chains))
 
 
 def _hinge_direction_error(estimate: np.ndarray, reference: np.ndarray, valid: np.ndarray) -> float | None:

@@ -343,7 +343,8 @@ def test_sign_experiment_runner_declares_its_comparison_semantics():
 
     assert {"S0", "S1", "S2", "O_TORSO", "O_BILATERAL", "O_HINGE", "O_ORIENTATION",
             "O_SHOULDER", "O_HIP", "O_ELBOWS", "O_KNEES", "O_LEFT_ELBOW", "O_RIGHT_ELBOW",
-            "O_LEFT_KNEE", "O_RIGHT_KNEE"} == set(module.CANDIDATES)
+            "O_LEFT_KNEE", "O_RIGHT_KNEE", "H_NO_LEFT_ELBOW", "H_NO_RIGHT_ELBOW",
+            "H_NO_LEFT_KNEE", "H_NO_RIGHT_KNEE"} == set(module.CANDIDATES)
     # Single-field candidates activate exactly one field, so a group result can
     # never stand in for an individual necessity claim.
     for key in ("O_TORSO", "O_SHOULDER", "O_HIP", "O_LEFT_ELBOW", "O_RIGHT_ELBOW",
@@ -621,3 +622,116 @@ def test_per_chain_hinge_metrics_are_reported(bank):
     frame = report["frames"][0]
     assert set(frame) >= {"left_elbow_bend_error_degrees", "right_elbow_bend_flipped",
                           "elbow_flip_rate", "knee_bend_error_degrees"}
+
+
+# ------------------------------------------------- leave-one-out contracts ----
+
+def test_three_of_four_hinge_masks_remove_exactly_one_field():
+    import importlib.util
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    sys.path.insert(0, str(root / "src"))
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "run_sign_experiments", root / "scripts" / "run_sign_experiments.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    finally:
+        sys.path.pop(0)
+
+    hinge = set(module.CANDIDATES["O_HINGE"]["fields"])
+    removed = {"H_NO_LEFT_ELBOW": "left_elbow_forward_bend",
+               "H_NO_RIGHT_ELBOW": "right_elbow_forward_bend",
+               "H_NO_LEFT_KNEE": "left_knee_forward_bend",
+               "H_NO_RIGHT_KNEE": "right_knee_forward_bend"}
+    for key, missing in removed.items():
+        fields = set(module.CANDIDATES[key]["fields"])
+        assert len(fields) == 3, key
+        assert fields == hinge - {missing}, key
+        # A leave-one-out must not quietly bring in an orientation field.
+        assert all(name.endswith("_forward_bend") for name in fields), key
+
+
+def test_leave_one_out_candidates_are_capacity_matched(bank):
+    pytest.importorskip("torch")
+
+    from framepose.signs import mask_fields
+    from framepose.train import CandidateConfig, train_candidate
+
+    oracle = oracle_sign_states(bank.arrays["target_3d"], bank.arrays["target_valid"])
+    full = summarize(oracle)
+    hinge = [name for name in SIGN_FIELD_NAMES if name.endswith("_forward_bend")]
+    counts = set()
+    for missing in hinge:
+        active = [name for name in hinge if name != missing]
+        report = train_candidate(
+            bank,
+            CandidateConfig(name=f"unit_no_{missing}", sign_source="oracle", epochs=1,
+                            batch_size=16, device="cpu", mixed_precision=False,
+                            evaluate_every=1, seed=5),
+            signs=mask_fields(oracle, active))
+        counts.add(report["model"]["trainable_parameter_count"])
+        distribution = report["sign"]["distribution"]
+        assert distribution[missing]["degenerate"] == len(bank), f"{missing} must stay UNKNOWN"
+        # The retained fields must carry exactly what the full oracle had, and
+        # every non-hinge field must be blanked.
+        for name in active:
+            assert distribution[name] == full[name], name
+        for name in SIGN_FIELD_NAMES:
+            if name not in active:
+                assert distribution[name]["degenerate"] == len(bank), name
+    assert len(counts) == 1, "leave-one-out candidates must be capacity-matched"
+
+
+def test_sign_influence_joint_grouping_partitions_the_skeleton():
+    import importlib.util
+    import sys
+    from pathlib import Path
+
+    from framepose.contract import JOINT_NAMES
+
+    root = Path(__file__).resolve().parent.parent
+    sys.path.insert(0, str(root / "src"))
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "diagnose_sign_influence", root / "scripts" / "diagnose_sign_influence.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    finally:
+        sys.path.pop(0)
+
+    assert module.HINGE_FIELDS == tuple(n for n in SIGN_FIELD_NAMES if n.endswith("_forward_bend"))
+    for field in module.HINGE_FIELDS:
+        groups = module._joint_groups(field, tuple(JOINT_NAMES))
+        members = groups["own_chain"] + groups["other_hinge_chains"] + groups["rest"]
+        assert sorted(members) == list(range(len(JOINT_NAMES))), "groups must partition the skeleton"
+        assert len(set(members)) == len(members), "groups must not overlap"
+        # The routed joint is the one the Sign Contract's mask governs.
+        joint = field[: -len("_forward_bend")]
+        assert groups["routed"] == [JOINT_NAMES.index(joint)]
+        assert groups["routed"][0] in groups["own_chain"]
+        assert JOINT_NAMES.index(joint) not in groups["other_hinge_chains"]
+
+
+def test_sign_toggle_is_deterministic_under_frozen_weights():
+    """The diagnostic's premise: same weights, same inputs, same output."""
+    torch = pytest.importorskip("torch")
+
+    from framepose.model import ModelConfig, build_model
+
+    torch.manual_seed(0)
+    model = build_model(ModelConfig(sign_fields=SIGN_FIELD_COUNT)).eval()
+    geometry = torch.randn(3, 17, 4)
+    state = torch.zeros(3, SIGN_FIELD_COUNT, dtype=torch.long)
+    with torch.no_grad():
+        first = model(geometry, None, state)
+        second = model(geometry, None, state)
+    assert torch.equal(first, second)
+
+    toggled = state.clone()
+    toggled[:, SIGN_FIELD_NAMES.index("left_elbow_forward_bend")] = 1
+    with torch.no_grad():
+        moved = model(geometry, None, toggled)
+    assert not torch.equal(first, moved), "a toggled sign must change the output"

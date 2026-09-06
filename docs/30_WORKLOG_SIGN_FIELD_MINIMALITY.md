@@ -202,9 +202,32 @@ NECESSARY
     cannot be read as evidence about individual fields.
 ```
 
-**The hinge contract does not reduce.** A sensor must answer all four bend
-questions or the pooled hinge benefit is lost — and answering only half is worse
-than answering none.
+**PROVISIONAL — corrected in docs/31.** This section originally read "the hinge
+contract does not reduce; a sensor must answer all four bend questions or none".
+That is stronger than the evidence here supports, for two reasons:
+
+- the direct 3-of-4 leave-one-out was not run, so no individual field had been
+  shown necessary even under this architecture;
+- the observed pattern (correct local sign improves its own chain, unrelated
+  chains regress, pooled metric does not improve) is equally consistent with the
+  *conditioning topology* leaking a local sign through global joint
+  self-attention as with a genuine joint information requirement.
+
+Read this section as:
+
+```
+ESTABLISHED
+    the all-four set is sufficient for the measured pooled hinge benefit
+    elbow-only and knee-only halves are not sufficient
+    several individual fields are locally useful
+
+UNRESOLVED
+    whether every one of the four fields is necessary
+    whether partial-sign failure reflects information necessity or
+    conditioning-topology leakage
+```
+
+docs/31 separates those two explanations.
 
 ## 14. Shuffled-image donor identity audit
 
@@ -290,8 +313,11 @@ ORIENTATION   one bilateral near/far sign is enough to capture most of the
               benefit; hip appears at least as good as shoulder; both is
               marginally better. torso_facing is not required.
 
-HINGE         all four elbow/knee bend signs, or none — half the family is
-              worse than nothing.
+HINGE         PROVISIONAL. The all-four set is sufficient and the halves are
+              not; whether all four are *required* — and whether the
+              all-or-none shape is a property of the information or of the
+              current conditioning topology — is unresolved here and is
+              settled in docs/31.
 ```
 
 No individual field is claimed necessary on group evidence, and every

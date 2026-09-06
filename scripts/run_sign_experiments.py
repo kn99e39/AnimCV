@@ -74,6 +74,20 @@ CANDIDATES = {
                     "fields": ["left_knee_forward_bend"]},
     "O_RIGHT_KNEE": {"name": "O_RIGHT_KNEE_oracle", "sign_source": "oracle",
                      "fields": ["right_knee_forward_bend"]},
+    # Direct 3-of-4 leave-one-out from the successful O_HINGE set. Necessity of
+    # a field can only be read from removing it from a set that works.
+    "H_NO_LEFT_ELBOW": {"name": "H_NO_LEFT_ELBOW_oracle", "sign_source": "oracle",
+                        "fields": [name for name in _HINGE_FIELDS
+                                   if name != "left_elbow_forward_bend"]},
+    "H_NO_RIGHT_ELBOW": {"name": "H_NO_RIGHT_ELBOW_oracle", "sign_source": "oracle",
+                         "fields": [name for name in _HINGE_FIELDS
+                                    if name != "right_elbow_forward_bend"]},
+    "H_NO_LEFT_KNEE": {"name": "H_NO_LEFT_KNEE_oracle", "sign_source": "oracle",
+                       "fields": [name for name in _HINGE_FIELDS
+                                  if name != "left_knee_forward_bend"]},
+    "H_NO_RIGHT_KNEE": {"name": "H_NO_RIGHT_KNEE_oracle", "sign_source": "oracle",
+                        "fields": [name for name in _HINGE_FIELDS
+                                   if name != "right_knee_forward_bend"]},
 }
 
 COMPARISON_SEMANTICS = {

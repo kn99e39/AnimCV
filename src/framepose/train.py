@@ -109,10 +109,8 @@ def sign_tensor(bank: FrameBank, source: str, advisor: np.ndarray | None = None)
     if source == "advisor":
         if advisor is None:
             raise ValueError("sign_source 'advisor' requires an externally supplied sign bank")
-        advisor = np.asarray(advisor, dtype=np.int8)
-        if advisor.shape != (len(bank), sign_module.SIGN_FIELD_COUNT):
-            raise ValueError(f"advisor signs must be ({len(bank)}, {sign_module.SIGN_FIELD_COUNT})")
-        return advisor
+        return sign_module.validate_sign_array(
+            advisor, expected_rows=len(bank), context="advisor sign bank")
     raise ValueError(f"unknown sign source {source!r}")
 
 
@@ -251,7 +249,9 @@ def train_candidate(bank: FrameBank, config: CandidateConfig, *,
         "selection": {"criterion": "validation_mpjpe_mm", "split": "validation",
                       "test_ground_truth_used": False, **best},
         "augmentation": {"enabled": False,
-                         "reason": "held constant across candidates; the manipulated variable is the observation backend"},
+                         "reason": ("held constant across candidates; the manipulated variable is "
+                                    "whatever the runner declares, not necessarily the observation "
+                                    "backend -- see the runner's comparison_semantics")},
         "execution": {
             "device": str(device),
             "mixed_precision": amp_enabled,

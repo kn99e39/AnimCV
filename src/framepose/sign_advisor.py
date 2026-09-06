@@ -123,40 +123,89 @@ class AdvisorResponse:
                 "reason": self.reason, "raw": self.raw}
 
 
-def _extract_object(text: str) -> dict[str, Any] | None:
-    match = re.search(r"\{.*\}", text, flags=re.DOTALL)
-    if match is None:
-        return None
-    try:
-        payload = json.loads(match.group(0))
-    except json.JSONDecodeError:
-        return None
-    return payload if isinstance(payload, dict) else None
-
-
-def parse_response(text: str) -> AdvisorResponse:
+def parse_response(text: str, *, fields: tuple[str, ...] | None = None) -> AdvisorResponse:
     """Validate a response against the schema.  Malformed output is rejected.
+
+    Strict, matching what the contract claims: the whole reply must be exactly
+    one JSON object with exactly the requested contract fields — no surrounding
+    prose, no second object, no extra keys, no missing keys, no non-string
+    answers, no unrecognised categorical values.
 
     A rejected response yields an all-`UNKNOWN` state, which is the neutral
     value the contract already defines — never a guessed branch.
     """
+    fields = fields or _FIELD_ORDER
     unknown = np.zeros(len(_FIELD_ORDER), dtype=np.int8)
-    payload = _extract_object(text or "")
-    if payload is None:
-        return AdvisorResponse(False, unknown, "no JSON object in response", text or "")
-    missing = [name for name in _FIELD_ORDER if name not in payload]
+    stripped = (text or "").strip()
+    if not stripped:
+        return AdvisorResponse(False, unknown, "empty response", text or "")
+    if not (stripped.startswith("{") and stripped.endswith("}")):
+        return AdvisorResponse(False, unknown, "response is not exactly one JSON object", text)
+    try:
+        payload = json.loads(stripped)
+    except json.JSONDecodeError as error:
+        return AdvisorResponse(False, unknown, f"invalid JSON: {error.msg}", text)
+    if not isinstance(payload, dict):
+        return AdvisorResponse(False, unknown, "top-level JSON value is not an object", text)
+    missing = [name for name in fields if name not in payload]
     if missing:
         return AdvisorResponse(False, unknown, f"missing fields: {missing}", text)
-    values = []
-    for name in _FIELD_ORDER:
+    extra = sorted(set(payload) - set(fields))
+    if extra:
+        return AdvisorResponse(False, unknown, f"unexpected fields: {extra}", text)
+    state = np.zeros(len(_FIELD_ORDER), dtype=np.int8)
+    for name in fields:
         answer = payload[name]
         if not isinstance(answer, str):
             return AdvisorResponse(False, unknown, f"{name} is not a string", text)
         key = answer.strip().lower()
         if key not in _ANSWERS[name]:
             return AdvisorResponse(False, unknown, f"{name} has unrecognised answer {answer!r}", text)
-        values.append(_ANSWERS[name][key])
-    return AdvisorResponse(True, np.asarray(values, dtype=np.int8), None, text)
+        state[_FIELD_ORDER.index(name)] = _ANSWERS[name][key]
+    return AdvisorResponse(True, state, None, text)
+
+
+ISOLATED_PROMPT_SCHEMA_VERSION = "isolated_question_v1"
+
+
+def isolated_prompt_text(field: str) -> str:
+    """One historical question, asked alone.
+
+    A control for prompt multiplexing, **not** a tuned prompt: the question
+    sentence and the allowed answers are copied verbatim from the frozen
+    seven-question prompt, and nothing is added — no reasoning instruction, no
+    example, no reordering.
+    """
+    if field not in _ANSWERS:
+        raise ValueError(f"unknown sign field {field!r}")
+    question = next(text for name, text, _ in _QUESTIONS if name == field)
+    options = " | ".join(key for key in _ANSWERS[field])
+    return "\n".join([
+        "You are looking at a cropped photograph of one person.",
+        "Answer ONLY about the orientation of that person's body relative to the camera.",
+        "Never estimate coordinates, distances, depths in metres, or joint positions.",
+        "",
+        "Answer this question. 'Their own left/right' means the person's own left and right,",
+        "not the left and right of the image. If you genuinely cannot tell, answer \"unclear\".",
+        "",
+        f"1. {field}: {question}",
+        f"   allowed answers: {options}",
+        "",
+        "Reply with a single JSON object and nothing else, using exactly this key:",
+        "{" + f'"{field}": "<allowed answer>"' + "}",
+    ])
+
+
+def isolated_prompt_provenance(field: str) -> dict[str, Any]:
+    return {
+        "schema_version": ISOLATED_PROMPT_SCHEMA_VERSION,
+        "derived_from": PROMPT_SCHEMA_VERSION,
+        "field": field,
+        "prompt": isolated_prompt_text(field),
+        "answer_mapping": dict(_ANSWERS[field]),
+        "verbatim_question": next(text for name, text, _ in _QUESTIONS if name == field),
+        "changed_relative_to_historical_prompt": "only the number of questions per request",
+    }
 
 
 def bank_metadata(*, model_id: str, revision: str | None, weights_sha256: str | None,
@@ -174,3 +223,61 @@ def bank_metadata(*, model_id: str, revision: str | None, weights_sha256: str | 
         "sample_count": int(sample_count),
         "separate_from": "the F1/F2 dense visual feature cache, which is not reused here",
     }
+
+
+# --------------------------------------------------------- model identity ----
+
+def weight_manifest(snapshot_dir: str | Any) -> dict[str, Any]:
+    """Deterministic identity of the exact local model artifact.
+
+    An ordered manifest of every weight/config file — name, byte size, SHA-256 —
+    hashed into one fingerprint. A repository id alone is not an experiment
+    identity: the same id resolves to different bytes over time.
+    """
+    import hashlib
+    from pathlib import Path
+
+    root = Path(snapshot_dir).resolve()
+    if not root.is_dir():
+        raise ValueError(f"model snapshot directory does not exist: {root}")
+    entries = []
+    digest = hashlib.sha256()
+    digest.update(b"animcv_sign_advisor_weight_manifest_v1")
+    for path in sorted(item for item in root.rglob("*") if item.is_file()):
+        file_digest = hashlib.sha256()
+        with path.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                file_digest.update(chunk)
+        entry = {"name": str(path.relative_to(root)), "byte_size": path.stat().st_size,
+                 "sha256": file_digest.hexdigest()}
+        entries.append(entry)
+        digest.update(f"{entry['name']}|{entry['byte_size']}|{entry['sha256']}\n".encode("utf-8"))
+    if not entries:
+        raise ValueError(f"model snapshot directory is empty: {root}")
+    return {"snapshot_dir": str(root), "file_count": len(entries),
+            "files": entries, "weight_fingerprint": digest.hexdigest()}
+
+
+def resolve_snapshot(model_id: str, cache_root: str | Any) -> dict[str, Any] | None:
+    """Locate the exact local HuggingFace snapshot for a model id.
+
+    Returns the resolved commit and manifest when exactly one snapshot is
+    present, and `None` when the snapshot cannot be identified unambiguously —
+    a revision is never guessed.
+    """
+    from pathlib import Path
+
+    root = Path(cache_root) / "hub" / ("models--" + model_id.replace("/", "--"))
+    snapshots = root / "snapshots"
+    if not snapshots.is_dir():
+        return None
+    candidates = sorted(item for item in snapshots.iterdir() if item.is_dir())
+    if len(candidates) != 1:
+        return None
+    refs = {}
+    reference_root = root / "refs"
+    if reference_root.is_dir():
+        refs = {item.name: item.read_text(encoding="utf-8").strip()
+                for item in reference_root.iterdir() if item.is_file()}
+    return {"model_id": model_id, "resolved_commit": candidates[0].name, "refs": refs,
+            **weight_manifest(candidates[0])}

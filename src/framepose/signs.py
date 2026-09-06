@@ -65,6 +65,7 @@ MIN_BEND_OFFSET_M = 0.02
 UNKNOWN = 0
 POSITIVE = 1
 NEGATIVE = -1
+ALLOWED_VALUES = (NEGATIVE, UNKNOWN, POSITIVE)
 
 
 @dataclass(frozen=True)
@@ -339,3 +340,50 @@ def summarize(states: Iterable[np.ndarray]) -> dict[str, dict[str, int]]:
             key = "positive" if value > 0 else "negative" if value < 0 else "degenerate"
             counts[name][key] += 1
     return counts
+
+
+def validate_sign_array(values: Any, *, expected_rows: int | None = None,
+                        context: str = "sign array") -> np.ndarray:
+    """The one canonical validation path for any sign array entering the system.
+
+    An out-of-domain value is **refused**, never clamped into a legal branch.
+    Silently coercing, say, `2` into `+1` would turn a broken advisor or a
+    corrupt bank into a confident wrong branch, which is exactly the failure the
+    Sign Contract exists to prevent.
+    """
+    array = np.asarray(values)
+    if array.dtype.kind not in "biu":
+        if array.dtype.kind != "f":
+            raise ValueError(f"{context} must hold integers, got dtype {array.dtype}")
+        if not np.all(np.isfinite(array)) or not np.all(array == np.round(array)):
+            raise ValueError(f"{context} holds non-integral values")
+        array = array.astype(np.int64)
+    array = array.astype(np.int64, copy=False)
+    if array.ndim != 2 or array.shape[1] != SIGN_FIELD_COUNT:
+        raise ValueError(f"{context} must have shape (n, {SIGN_FIELD_COUNT}), got {array.shape}")
+    if expected_rows is not None and array.shape[0] != expected_rows:
+        raise ValueError(f"{context} must have {expected_rows} rows, got {array.shape[0]}")
+    illegal = np.setdiff1d(np.unique(array), np.asarray(ALLOWED_VALUES))
+    if illegal.size:
+        raise ValueError(
+            f"{context} contains values outside the Sign Contract domain "
+            f"{list(ALLOWED_VALUES)}: {sorted(int(value) for value in illegal)}")
+    return array.astype(np.int8)
+
+
+def mask_fields(states: np.ndarray, active: Sequence[str]) -> np.ndarray:
+    """Keep the named fields, force every other field to UNKNOWN.
+
+    The instrument for sign-group attribution: the graph, the embedding tables
+    and the parameter count stay identical, and only which fields carry
+    information changes.
+    """
+    unknown = set(active) - set(SIGN_FIELD_NAMES)
+    if unknown:
+        raise ValueError(f"unknown sign fields: {sorted(unknown)}")
+    validated = validate_sign_array(states, context="sign states")
+    masked = np.zeros_like(validated)
+    for name in active:
+        index = SIGN_FIELD_NAMES.index(name)
+        masked[:, index] = validated[:, index]
+    return masked

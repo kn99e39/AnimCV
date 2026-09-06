@@ -146,8 +146,14 @@ def build_model(config: ModelConfig):
                 if sign_state.shape[-1] != self.config.sign_fields:
                     raise ValueError(f"sign_state must be (B, {self.config.sign_fields})")
                 # -1/0/+1 -> 0/1/2, then gather each field's value embedding and
-                # route it only to the joints that field governs.
-                indices = (sign_state.long() + 1).clamp(0, SIGN_VALUE_COUNT - 1)
+                # route it only to the joints that field governs. The domain is
+                # checked rather than clamped: clamping would turn an invalid
+                # value into a confident legal branch.
+                if not bool(((sign_state >= -1) & (sign_state <= 1)).all()):
+                    raise ValueError(
+                        "sign_state values must be -1, 0 or +1; out-of-domain values are refused, "
+                        "never clamped into a branch")
+                indices = sign_state.long() + 1
                 fields = torch.arange(self.config.sign_fields, device=indices.device)
                 selected = self.sign_embedding[fields.unsqueeze(0), indices]
                 queries = queries + torch.einsum("jf,bfw->bjw", self.sign_joint_mask, selected)

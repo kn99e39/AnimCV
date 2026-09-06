@@ -30,19 +30,48 @@ from common.serialization import write_json
 from framepose.bank import load_bank
 from framepose.evaluate import compare, evaluate_predictions
 from framepose.observations import assert_quality_interpretable
-from framepose.signs import SIGN_FIELD_NAMES, agreement, contract, oracle_sign_states, summarize
+from framepose.signs import (
+    SIGN_FIELD_NAMES, agreement, contract, mask_fields, oracle_sign_states, summarize,
+)
 from framepose.train import CandidateConfig, geometry_tensor, predict, sign_tensor, train_candidate
 
 
+_HINGE_FIELDS = [name for name in SIGN_FIELD_NAMES if name.endswith("_forward_bend")]
+_BILATERAL_FIELDS = ["shoulder_forward_depth", "hip_forward_depth"]
+
+# Attribution candidates isolate WHICH sign information matters. They share the
+# graph, all seven embedding tables, the parameter count, the seed, the frames,
+# the optimizer, the loss, the evaluator and the schedule with S0/S1; only which
+# fields carry oracle values changes, and every other field is UNKNOWN.
 CANDIDATES = {
-    "S0": {"name": "S0_neutral_sign", "sign_source": "neutral"},
-    "S1": {"name": "S1_oracle_sign", "sign_source": "oracle"},
-    "S2": {"name": "S2_advisor_sign", "sign_source": "advisor"},
+    "S0": {"name": "S0_neutral_sign", "sign_source": "neutral", "fields": []},
+    "S1": {"name": "S1_oracle_sign", "sign_source": "oracle", "fields": list(SIGN_FIELD_NAMES)},
+    "S2": {"name": "S2_advisor_sign", "sign_source": "advisor", "fields": list(SIGN_FIELD_NAMES)},
+    "O_TORSO": {"name": "O_TORSO_oracle_facing_only", "sign_source": "oracle",
+                "fields": ["torso_facing"]},
+    "O_BILATERAL": {"name": "O_BILATERAL_oracle_forward_depth_only", "sign_source": "oracle",
+                    "fields": list(_BILATERAL_FIELDS)},
+    "O_HINGE": {"name": "O_HINGE_oracle_bend_only", "sign_source": "oracle",
+                "fields": list(_HINGE_FIELDS)},
+    "O_ORIENTATION": {"name": "O_ORIENTATION_oracle_facing_and_forward_depth",
+                      "sign_source": "oracle",
+                      "fields": ["torso_facing"] + list(_BILATERAL_FIELDS)},
 }
 
 COMPARISON_SEMANTICS = {
     "S1_vs_S0": ("capacity-matched: same graph, same parameter count, same seed; the only "
                  "variable is the sign information supplied"),
+    "O_*_vs_S0": ("capacity-matched attribution: identical to S1 except that only the named "
+                  "sign group carries oracle values, every other field being UNKNOWN"),
+    "evidence_tiers": {
+        "direct_contract_identical": ["shoulder_forward_depth_sign_disagreement_rate",
+                                      "hip_forward_depth_sign_disagreement_rate",
+                                      "sign_agreement on a fed field"],
+        "structurally_coupled_downstream": ["root_yaw_error_degrees", "hinge_flip_rate",
+                                            "hinge_direction_mae_degrees"],
+        "independent_position_guardrails": ["mpjpe_mm", "pa_mpjpe_mm",
+                                            "per_joint_mean_error_mm"],
+    },
     "S2_vs_S1": "sign-recovery quality of the advisor against the sign-information upper bound",
     "S2_vs_S0": "end-to-end value of advisor-supplied sign evidence",
     "not_comparable_with": ("historical F1/F2, which tested a different hypothesis (dense visual "
@@ -110,8 +139,13 @@ def main() -> int:
             learning_rate=args.learning_rate, weight_decay=args.weight_decay, seed=args.seed,
             device=args.device, mixed_precision=not args.no_mixed_precision,
             compile_training_graph=args.compile_training_graph, evaluate_every=args.evaluate_every)
-        signs = advisor if definition["sign_source"] == "advisor" else \
-            sign_tensor(bank, definition["sign_source"])
+        if definition["sign_source"] == "advisor":
+            signs = advisor
+        elif definition["sign_source"] == "neutral":
+            signs = sign_tensor(bank, "neutral")
+        else:
+            # Oracle values for the declared group only; everything else UNKNOWN.
+            signs = mask_fields(oracle, definition["fields"])
         directory = args.out / key
         directory.mkdir(parents=True, exist_ok=True)
         training = train_candidate(bank, config, geometry=geometry, signs=signs,
@@ -122,6 +156,7 @@ def main() -> int:
             write_json(directory / f"evaluation_{split}.json", report)
         reports[key] = evaluation
         matrix["candidates"][key] = {
+            "active_sign_fields": definition["fields"],
             "config": config.to_dict(), "model": training["model"],
             "sign": training["sign"], "selection": training["selection"],
             "performance": training["performance"], "execution": training["execution"],
@@ -130,8 +165,9 @@ def main() -> int:
         }
 
     matrix["comparisons"] = {}
+    pairs = [("S0", key) for key in reports if key != "S0"] + [("S1", "S2")]
     for split in ("validation", "test"):
-        for baseline, candidate in (("S0", "S1"), ("S0", "S2"), ("S1", "S2")):
+        for baseline, candidate in pairs:
             if baseline not in reports or candidate not in reports:
                 continue
             if split not in reports[baseline] or split not in reports[candidate]:

@@ -144,12 +144,20 @@ def test_hinge_field_degenerates_for_a_nearly_straight_limb():
 
 
 def test_invalid_joints_yield_unknown_never_a_guess():
+    """An invalid joint degrades only the fields that depend on it."""
     pose, valid = _upright()
+    # Bend the left knee so its field is genuinely observable to begin with.
+    pose[JOINT_INDEX["left_knee"]] = pose[JOINT_INDEX["left_knee"]] + np.asarray([0, 0.15, 0])
+    assert sign_state(pose, valid)[SIGN_FIELD_NAMES.index("left_knee_forward_bend")] == POSITIVE
+
     valid[JOINT_INDEX["right_shoulder"]] = False
     state = sign_state(pose, valid)
     assert state[SIGN_FIELD_NAMES.index("shoulder_forward_depth")] == UNKNOWN
     assert state[SIGN_FIELD_NAMES.index("torso_facing")] == UNKNOWN
-    assert state[SIGN_FIELD_NAMES.index("left_knee_forward_bend")] != UNKNOWN or True
+    # ... and leaves the fields that do not depend on it intact.
+    assert state[SIGN_FIELD_NAMES.index("left_knee_forward_bend")] == POSITIVE
+    assert state[SIGN_FIELD_NAMES.index("hip_forward_depth")] != UNKNOWN or \
+        sign_state(pose, np.ones(17, dtype=bool))[SIGN_FIELD_NAMES.index("hip_forward_depth")] == UNKNOWN
 
 
 def test_a_flipped_hinge_sign_shows_up_in_the_historical_flip_accounting():
@@ -262,11 +270,16 @@ def test_the_sign_path_carries_no_dense_visual_tokens(bank):
     import framepose.signs as signs_module
     from framepose.model import ModelConfig, build_model
 
+    # The contract module must not reach for any dense visual machinery.
     source = inspect.getsource(signs_module)
-    for forbidden in ("timm", "patch", "token", "embedding", "visual_dim"):
-        assert forbidden not in source.lower().split("# ")[0] or True
-    # The contract itself must never mention a continuous pose quantity as output.
-    assert "XYZ" in contract()["excluded_by_contract"][0]
+    for forbidden in ("timm", "patch_token", "visual_dim", "image_tokens",
+                      "FrozenVisualBackbone", "load_feature_cache"):
+        assert forbidden not in source, f"framepose.signs must not reference {forbidden}"
+    # And the contract must declare its exclusions rather than merely omit them.
+    excluded = contract()["excluded_by_contract"]
+    for forbidden in ("XYZ coordinates", "depth magnitude", "metric offsets", "bone lengths",
+                      "continuous pose embedding", "image patch tokens"):
+        assert any(forbidden in item for item in excluded), forbidden
 
     torch.manual_seed(0)
     model = build_model(ModelConfig(sign_fields=SIGN_FIELD_COUNT)).eval()
@@ -328,11 +341,185 @@ def test_sign_experiment_runner_declares_its_comparison_semantics():
     finally:
         sys.path.pop(0)
 
-    assert set(module.CANDIDATES) == {"S0", "S1", "S2"}
+    assert set(module.CANDIDATES) == {"S0", "S1", "S2", "O_TORSO", "O_BILATERAL", "O_HINGE",
+                                      "O_ORIENTATION"}
     assert module.CANDIDATES["S0"]["sign_source"] == "neutral"
-    assert module.CANDIDATES["S1"]["sign_source"] == "oracle"
+    assert module.CANDIDATES["S0"]["fields"] == []
+    assert module.CANDIDATES["S1"]["fields"] == list(SIGN_FIELD_NAMES)
+    # The attribution groups must partition the contract without overlap.
+    assert module.CANDIDATES["O_TORSO"]["fields"] == ["torso_facing"]
+    assert module.CANDIDATES["O_BILATERAL"]["fields"] == ["shoulder_forward_depth",
+                                                          "hip_forward_depth"]
+    assert len(module.CANDIDATES["O_HINGE"]["fields"]) == 4
+    assert all(name.endswith("_forward_bend") for name in module.CANDIDATES["O_HINGE"]["fields"])
+    assert set(module.CANDIDATES["O_TORSO"]["fields"] + module.CANDIDATES["O_BILATERAL"]["fields"]
+               + module.CANDIDATES["O_HINGE"]["fields"]) == set(SIGN_FIELD_NAMES)
+    assert set(module.CANDIDATES["O_ORIENTATION"]["fields"]) == set(
+        module.CANDIDATES["O_TORSO"]["fields"] + module.CANDIDATES["O_BILATERAL"]["fields"])
     semantics = module.COMPARISON_SEMANTICS
     assert "capacity-matched" in semantics["S1_vs_S0"]
+    tiers = semantics["evidence_tiers"]
+    assert "root_yaw_error_degrees" in tiers["structurally_coupled_downstream"]
+    assert "mpjpe_mm" in tiers["independent_position_guardrails"]
+    assert any("shoulder" in item for item in tiers["direct_contract_identical"])
     assert "dense visual" in semantics["not_comparable_with"]
     assert "mpjpe_mm" in semantics["guardrail_metrics"]
     assert "mpjpe_mm" not in semantics["primary_metrics"]
+
+
+# ---------------------------------------------------- value-domain safety ----
+
+def test_out_of_domain_sign_values_are_refused_not_clamped():
+    """Clamping would turn a broken advisor into a confident wrong branch."""
+    from framepose.signs import ALLOWED_VALUES, validate_sign_array
+
+    assert ALLOWED_VALUES == (NEGATIVE, UNKNOWN, POSITIVE)
+    good = np.asarray([[1, -1, 0, 1, 0, -1, 1]], dtype=np.int8)
+    assert np.array_equal(validate_sign_array(good), good)
+
+    for illegal in (2, -2, 7, 255):
+        broken = good.copy().astype(np.int64)
+        broken[0, 0] = illegal
+        with pytest.raises(ValueError, match="outside the Sign Contract domain"):
+            validate_sign_array(broken)
+
+
+def test_sign_array_validation_checks_shape_and_dtype():
+    from framepose.signs import validate_sign_array
+
+    with pytest.raises(ValueError, match=r"shape \(n, 7\)"):
+        validate_sign_array(np.zeros((3, 4), dtype=np.int8))
+    with pytest.raises(ValueError, match="must have 5 rows"):
+        validate_sign_array(np.zeros((3, SIGN_FIELD_COUNT), dtype=np.int8), expected_rows=5)
+    with pytest.raises(ValueError, match="non-integral"):
+        validate_sign_array(np.full((1, SIGN_FIELD_COUNT), 0.5))
+    with pytest.raises(ValueError, match="must hold integers"):
+        validate_sign_array(np.full((1, SIGN_FIELD_COUNT), "x"))
+    # An integral float array is acceptable and comes back as int8.
+    assert validate_sign_array(np.ones((2, SIGN_FIELD_COUNT), dtype=float)).dtype == np.int8
+
+
+def test_the_model_refuses_an_out_of_domain_sign_state():
+    torch = pytest.importorskip("torch")
+
+    from framepose.model import ModelConfig, build_model
+
+    torch.manual_seed(0)
+    model = build_model(ModelConfig(sign_fields=SIGN_FIELD_COUNT)).eval()
+    geometry = torch.randn(1, 17, 4)
+    state = torch.zeros(1, SIGN_FIELD_COUNT, dtype=torch.long)
+    state[0, 3] = 2
+    with pytest.raises(ValueError, match="never clamped"):
+        model(geometry, None, state)
+
+
+def test_an_advisor_bank_with_illegal_values_is_refused(bank):
+    from framepose.train import sign_tensor
+
+    broken = np.zeros((len(bank), SIGN_FIELD_COUNT), dtype=np.int64)
+    broken[0, 0] = 3
+    with pytest.raises(ValueError, match="outside the Sign Contract domain"):
+        sign_tensor(bank, "advisor", broken)
+
+
+# ------------------------------------------------------- field attribution ----
+
+def test_mask_fields_keeps_only_the_named_group(bank):
+    from framepose.signs import mask_fields
+
+    oracle = oracle_sign_states(bank.arrays["target_3d"], bank.arrays["target_valid"])
+    masked = mask_fields(oracle, ["torso_facing"])
+    index = SIGN_FIELD_NAMES.index("torso_facing")
+    assert np.array_equal(masked[:, index], oracle[:, index])
+    others = [i for i in range(SIGN_FIELD_COUNT) if i != index]
+    assert not masked[:, others].any(), "every non-active field must be UNKNOWN"
+    with pytest.raises(ValueError, match="unknown sign fields"):
+        mask_fields(oracle, ["torso_facing", "nose_direction"])
+
+
+def test_every_attribution_candidate_shares_one_parameter_count(bank):
+    """Only which fields carry information may differ, never capacity."""
+    torch = pytest.importorskip("torch")
+
+    from framepose.signs import mask_fields
+    from framepose.train import CandidateConfig, train_candidate
+
+    oracle = oracle_sign_states(bank.arrays["target_3d"], bank.arrays["target_valid"])
+    groups = {"torso": ["torso_facing"],
+              "bilateral": ["shoulder_forward_depth", "hip_forward_depth"],
+              "hinge": [name for name in SIGN_FIELD_NAMES if name.endswith("_forward_bend")]}
+    counts = set()
+    for name, fields in groups.items():
+        report = train_candidate(
+            bank,
+            CandidateConfig(name=f"unit_{name}", sign_source="oracle", epochs=1, batch_size=16,
+                            device="cpu", mixed_precision=False, evaluate_every=1, seed=5),
+            signs=mask_fields(oracle, fields))
+        counts.add(report["model"]["trainable_parameter_count"])
+    assert len(counts) == 1, "attribution candidates must be capacity-matched"
+
+
+# ------------------------------------------------------- advisor contract ----
+
+def test_advisor_response_schema_is_strict():
+    from framepose.sign_advisor import parse_response
+
+    body = "{" + ", ".join(f'"{name}": "unclear"' for name in SIGN_FIELD_NAMES) + "}"
+    assert parse_response(body).valid is True
+
+    cases = {
+        "prose before the object": "Sure! " + body,
+        "prose after the object": body + " Hope that helps.",
+        "two objects": body + " " + body,
+        "extra key": body[:-1] + ', "confidence": "high"}',
+        "missing key": "{" + ", ".join(f'"{n}": "unclear"' for n in SIGN_FIELD_NAMES[:-1]) + "}",
+        "non-string answer": "{" + ", ".join(
+            f'"{n}": ' + ("1" if n == "torso_facing" else '"unclear"') for n in SIGN_FIELD_NAMES) + "}",
+        "unknown categorical": body.replace('"unclear"', '"probably_facing_away"', 1),
+        "empty": "",
+        "not an object": "[1, 2, 3]",
+    }
+    for label, text in cases.items():
+        response = parse_response(text)
+        assert response.valid is False, f"{label} must be rejected"
+        assert response.reason, f"{label} must record why"
+        assert not response.state.any(), f"{label} must fall back to all-UNKNOWN, never a guess"
+
+
+def test_isolated_prompt_is_verbatim_and_asks_exactly_one_question():
+    from framepose.sign_advisor import (
+        ISOLATED_PROMPT_SCHEMA_VERSION, _QUESTIONS, isolated_prompt_provenance,
+        isolated_prompt_text, parse_response, prompt_text,
+    )
+
+    combined = prompt_text()
+    for name, question, mapping in _QUESTIONS:
+        isolated = isolated_prompt_text(name)
+        # The question sentence and its options are copied, not paraphrased.
+        assert question in isolated and question in combined
+        for option in mapping:
+            assert option in isolated
+        assert isolated.count("allowed answers:") == 1
+        # Nothing was added. Every line either appears verbatim in the historical
+        # prompt, or is one of exactly three permitted differences: the
+        # singular/plural of the instruction sentence, the single question line,
+        # and the single-key JSON template.
+        combined_lines = set(combined.splitlines())
+        singular = {"Answer these questions.": "Answer this question.",
+                    "using exactly these keys:": "using exactly this key:"}
+        for line in isolated.splitlines():
+            reused = line in combined_lines or any(
+                line == other.replace(plural, single)
+                for other in combined_lines for plural, single in singular.items())
+            is_question = line.strip().startswith(f"{name}:") or line.strip().startswith("1.")
+            is_template = line.startswith("{")
+            assert reused or is_question or is_template, f"isolated prompt added: {line!r}"
+        provenance = isolated_prompt_provenance(name)
+        assert provenance["schema_version"] == ISOLATED_PROMPT_SCHEMA_VERSION
+        assert provenance["verbatim_question"] == question
+        parsed = parse_response("{" + f'"{name}": "{list(mapping)[0]}"' + "}", fields=(name,))
+        assert parsed.valid is True
+        assert parsed.state[SIGN_FIELD_NAMES.index(name)] == mapping[list(mapping)[0]]
+
+    with pytest.raises(ValueError, match="unknown sign field"):
+        isolated_prompt_text("nose_direction")

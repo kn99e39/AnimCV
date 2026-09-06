@@ -216,8 +216,14 @@ frames/s. Each record stores `sample_id`, split, bank position, image reference,
 correctness, validity and the raw response. It is a separate artifact; the F1/F2
 patch-token cache is not reused as VLM evidence.
 
-**Schema conformance was perfect: 0 malformed responses out of 1,200.** The
-parser and prompt work. What the model *says* is another matter.
+**0 of 1,200 responses were rejected by the parser in force at the time.**
+
+*Corrected in docs/29:* that parser was lenient — it extracted the first
+`{...}` from anywhere in the reply. Qwen in fact wraps every combined-mode reply
+in a ```` ```json ```` fence, so under the strict contract this document already
+claimed ("exactly one JSON object, no surrounding prose") the combined-mode
+conformance rate is **0%**. The content recovered here is unaffected; the claim
+that conformance was perfect was not.
 
 ### Per-field sign accuracy
 

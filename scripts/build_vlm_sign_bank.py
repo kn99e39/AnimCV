@@ -149,6 +149,16 @@ def main() -> int:
         "frames_per_second": len(records) / max(elapsed, 1e-9),
         "elapsed_seconds": elapsed,
         "accuracy_vs_oracle": agreement(signs[scored], oracle[scored]),
+        # Diagnostic only, never used to relabel a prediction: if a field scores
+        # far BELOW chance, the advisor is not guessing -- it is answering
+        # consistently in an inverted convention, which localises the failure to
+        # the question's wording rather than to the model's perception. Reported
+        # so the distinction is visible; the prompt is not re-tuned on it.
+        "accuracy_vs_oracle_if_inverted": agreement(-signs[scored], oracle[scored]),
+        "inversion_diagnostic_note": (
+            "an inverted-reading accuracy near 1.0 means the sign information is present in the "
+            "response but reported under the opposite convention; the prompt was NOT changed after "
+            "seeing this"),
     })
 
     args.out.mkdir(parents=True, exist_ok=True)

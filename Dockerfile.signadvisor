@@ -1,0 +1,23 @@
+# VLM Sign Advisor image (Architecture_v3 Sign Contract).
+#
+# Extends the Layer A image with a single lightweight vision-language model,
+# used ONLY to answer the discrete Sign Contract questions. It never produces
+# XYZ, depth magnitude, patch tokens or any continuous pose evidence, and its
+# output reaches the pose model only as a validated categorical SignState.
+FROM animcv-framepose:cuda118
+
+ENV PIP_NO_CACHE_DIR=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /workspace/AnimCV
+
+# Pinned: Qwen2-VL support landed in transformers 4.45; 4.49 is the newest line
+# verified against the base image's torch 2.1.2+cu118.
+RUN python3 -m pip install --upgrade pip && \
+    python3 -m pip install "transformers==4.49.0" "accelerate>=0.34" "qwen-vl-utils"
+
+COPY . .
+RUN python3 -m pip install -e '.[training]'
+
+ENTRYPOINT ["python3"]

@@ -161,21 +161,28 @@ P95 spanning 18.6–28.7° and hinge flip spanning 0.0159–0.0240.
 ## 13. Minimum sign-channel conclusion
 
 ```
-necessary and nearly sufficient for the orientation/yaw failure
+sufficient for the orientation/yaw failure (as a pair)
     shoulder_forward_depth
     hip_forward_depth
 
-separately necessary for the hinge failure
+useful as a family for the hinge failure
     the four elbow/knee forward-bend signs
 
-not needed
-    torso_facing  (redundant given the bilateral pair)
+not required to reproduce the bilateral pair's measured orientation benefit
+    torso_facing
 ```
+
+*Corrected in docs/30.* This section originally called the individual fields
+"necessary". Group membership is not evidence of individual necessity, and the
+leave-one-field-out candidates that would establish it had not been run. docs/30
+runs them and states the result in the sufficient / necessary / useful /
+unresolved vocabulary.
 
 A sign sensor for AnimCV therefore needs to answer **bilateral near/far
 ordering** first, and hinge near/far second. The global "is the person facing
 the camera" question — the intuitive one, and the one easiest to ask — is the
-one the Geometry Core least needs.
+one the Geometry Core least needs. The exact per-field contract is settled in
+docs/30.
 
 ## 14. Diagnostic subset composition
 
@@ -237,8 +244,14 @@ answering `unclear` on 85 of 100 frames.
 
 ## 17. Real vs shuffled image, and per-field output entropy
 
-Prediction change rate when the correct crop is replaced by another person's
-crop, with the question and oracle label kept:
+Prediction change rate when the correct crop is replaced by a crop **from a
+different sequence**, with the question and oracle label kept:
+
+*(Corrected in docs/30: the pairing rule guarantees a different sample, and an
+audit confirms every donor came from a different 3DPW sequence — but performer
+identity across sequences is not representable from the bank, so "another
+person's crop" overstates what was controlled. Read it as "a different
+sequence's crop".)*
 
 | field | combined | isolated |
 | --- | ---: | ---: |
@@ -276,9 +289,11 @@ Against the decision table:
   emitted, not whether it was grounded.
 - **Visual non-grounding (case B) for six of seven fields.** Both bilateral
   fields, both elbows and both knees are constant, with 0.000–0.040 change rate
-  under a completely different subject, entropy near zero where it is one-sided,
-  and balanced accuracy pinned at 0.500. The model is filling the schema, not
-  looking.
+  under a crop from a different sequence, entropy near zero where it is
+  one-sided, and balanced accuracy pinned at 0.500. The model is filling the
+  schema, not looking. *(docs/30 sharpens this: conditioned on the donor
+  carrying the **opposite** true branch, the change rate for all six fields is
+  exactly 0.000.)*
 - **Case D for the elbows and right knee specifically.** They vary at
   ~0.46–0.48 under shuffle — chance-level flipping for a binary answer — so
   their variation is not evidence of frame grounding either.

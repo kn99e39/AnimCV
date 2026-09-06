@@ -56,6 +56,24 @@ CANDIDATES = {
     "O_ORIENTATION": {"name": "O_ORIENTATION_oracle_facing_and_forward_depth",
                       "sign_source": "oracle",
                       "fields": ["torso_facing"] + list(_BILATERAL_FIELDS)},
+    # Leave-one-field-out reads of the successful groups: a field is not shown
+    # necessary by the group containing it having worked.
+    "O_SHOULDER": {"name": "O_SHOULDER_oracle_shoulder_depth_only", "sign_source": "oracle",
+                   "fields": ["shoulder_forward_depth"]},
+    "O_HIP": {"name": "O_HIP_oracle_hip_depth_only", "sign_source": "oracle",
+              "fields": ["hip_forward_depth"]},
+    "O_ELBOWS": {"name": "O_ELBOWS_oracle_elbow_bend_only", "sign_source": "oracle",
+                 "fields": ["left_elbow_forward_bend", "right_elbow_forward_bend"]},
+    "O_KNEES": {"name": "O_KNEES_oracle_knee_bend_only", "sign_source": "oracle",
+                "fields": ["left_knee_forward_bend", "right_knee_forward_bend"]},
+    "O_LEFT_ELBOW": {"name": "O_LEFT_ELBOW_oracle", "sign_source": "oracle",
+                     "fields": ["left_elbow_forward_bend"]},
+    "O_RIGHT_ELBOW": {"name": "O_RIGHT_ELBOW_oracle", "sign_source": "oracle",
+                      "fields": ["right_elbow_forward_bend"]},
+    "O_LEFT_KNEE": {"name": "O_LEFT_KNEE_oracle", "sign_source": "oracle",
+                    "fields": ["left_knee_forward_bend"]},
+    "O_RIGHT_KNEE": {"name": "O_RIGHT_KNEE_oracle", "sign_source": "oracle",
+                     "fields": ["right_knee_forward_bend"]},
 }
 
 COMPARISON_SEMANTICS = {

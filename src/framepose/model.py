@@ -146,13 +146,17 @@ def build_model(config: ModelConfig):
                 if sign_state.shape[-1] != self.config.sign_fields:
                     raise ValueError(f"sign_state must be (B, {self.config.sign_fields})")
                 # -1/0/+1 -> 0/1/2, then gather each field's value embedding and
-                # route it only to the joints that field governs. The domain is
-                # checked rather than clamped: clamping would turn an invalid
-                # value into a confident legal branch.
-                if not bool(((sign_state >= -1) & (sign_state <= 1)).all()):
+                # route it only to the joints that field governs. Membership is
+                # exact, not a range: a range test would let 0.5 through and
+                # `.long()` would then truncate it into a confident legal branch,
+                # and NaN/inf would pass an unordered comparison entirely.
+                finite = torch.isfinite(sign_state.float())
+                exact = ((sign_state == -1) | (sign_state == 0) | (sign_state == 1))
+                if not bool((finite & exact).all()):
                     raise ValueError(
-                        "sign_state values must be -1, 0 or +1; out-of-domain values are refused, "
-                        "never clamped into a branch")
+                        "sign_state values must be exactly -1, 0 or +1; anything else -- including "
+                        "0.5, NaN and inf -- is refused, never clamped, rounded or truncated into "
+                        "a branch")
                 indices = sign_state.long() + 1
                 fields = torch.arange(self.config.sign_fields, device=indices.device)
                 selected = self.sign_embedding[fields.unsqueeze(0), indices]

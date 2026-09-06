@@ -92,6 +92,9 @@ def evaluate_predictions(bank: FrameBank, positions: Sequence[int], prediction: 
             "root_yaw_error_degrees": root_yaw_error_degrees(estimate, reference, frame_valid),
             "hinge_direction_mae_degrees": _hinge_direction_error(estimate, reference, frame_valid),
             "hinge_flip_rate": _hinge_flip_rate(estimate, reference, frame_valid),
+            # Per-chain accounting, so a single-field sign candidate can be
+            # checked against the chain its routing mask actually governs.
+            **_hinge_by_chain(estimate, reference, frame_valid),
             "strata": {name: sample.strata.get(name, "unknown") for name in stratum_names()},
             # The Sign Contract read back out of this frame's prediction and its
             # ground truth, so a flip is traceable per frame and per field.
@@ -142,6 +145,10 @@ def aggregate(frames: Iterable[dict[str, Any]]) -> dict[str, Any]:
     summary: dict[str, Any] = {"frame_count": len(frames)}
     for key in ("mpjpe_mm", "pa_mpjpe_mm", "max_joint_error_mm", "root_yaw_error_degrees",
                 "hinge_direction_mae_degrees", "hinge_flip_rate",
+                "elbow_bend_error_degrees", "elbow_flip_rate",
+                "knee_bend_error_degrees", "knee_flip_rate",
+                *[f"{joint}_bend_error_degrees" for joint in _HINGE_JOINTS],
+                *[f"{joint}_bend_flipped" for joint in _HINGE_JOINTS],
                 "shoulder_forward_depth_residual_mm", "hip_forward_depth_residual_mm",
                 "shoulder_forward_depth_abs_residual_mm", "hip_forward_depth_abs_residual_mm"):
         summary[key] = _statistics([record.get(key) for record in frames])
@@ -202,6 +209,29 @@ def _forward_depth_metrics(estimate: np.ndarray, reference: np.ndarray, valid: n
             disagreement if abs(actual) >= STABLE_FORWARD_DEPTH_M else None),
         f"{label}_forward_depth_target_m": actual,
     }
+
+
+_HINGE_JOINTS = ("left_elbow", "right_elbow", "left_knee", "right_knee")
+
+
+def _hinge_by_chain(estimate: np.ndarray, reference: np.ndarray, valid: np.ndarray) -> dict[str, Any]:
+    """Per-joint bend error and flip flag, from the historical hinge accounting."""
+    from common.canonical_pose import hinge_errors
+
+    chains = {chain["joint"]: chain for chain in hinge_errors(estimate, reference, valid)}
+    record: dict[str, Any] = {}
+    for joint in _HINGE_JOINTS:
+        chain = chains.get(joint)
+        record[f"{joint}_bend_error_degrees"] = None if chain is None else chain["error_degrees"]
+        record[f"{joint}_bend_flipped"] = None if chain is None else int(chain["flipped"])
+    for group, joints in (("elbow", ("left_elbow", "right_elbow")),
+                          ("knee", ("left_knee", "right_knee"))):
+        present = [chains[joint] for joint in joints if joint in chains]
+        record[f"{group}_bend_error_degrees"] = (
+            float(np.mean([item["error_degrees"] for item in present])) if present else None)
+        record[f"{group}_flip_rate"] = (
+            float(np.mean([item["flipped"] for item in present])) if present else None)
+    return record
 
 
 def _hinge_flip_rate(estimate: np.ndarray, reference: np.ndarray, valid: np.ndarray) -> float | None:

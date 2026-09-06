@@ -341,8 +341,20 @@ def test_sign_experiment_runner_declares_its_comparison_semantics():
     finally:
         sys.path.pop(0)
 
-    assert set(module.CANDIDATES) == {"S0", "S1", "S2", "O_TORSO", "O_BILATERAL", "O_HINGE",
-                                      "O_ORIENTATION"}
+    assert {"S0", "S1", "S2", "O_TORSO", "O_BILATERAL", "O_HINGE", "O_ORIENTATION",
+            "O_SHOULDER", "O_HIP", "O_ELBOWS", "O_KNEES", "O_LEFT_ELBOW", "O_RIGHT_ELBOW",
+            "O_LEFT_KNEE", "O_RIGHT_KNEE"} == set(module.CANDIDATES)
+    # Single-field candidates activate exactly one field, so a group result can
+    # never stand in for an individual necessity claim.
+    for key in ("O_TORSO", "O_SHOULDER", "O_HIP", "O_LEFT_ELBOW", "O_RIGHT_ELBOW",
+                "O_LEFT_KNEE", "O_RIGHT_KNEE"):
+        assert len(module.CANDIDATES[key]["fields"]) == 1, key
+    assert set(module.CANDIDATES["O_ELBOWS"]["fields"] + module.CANDIDATES["O_KNEES"]["fields"]) \
+        == set(module.CANDIDATES["O_HINGE"]["fields"])
+    assert set(module.CANDIDATES["O_SHOULDER"]["fields"] + module.CANDIDATES["O_HIP"]["fields"]) \
+        == set(module.CANDIDATES["O_BILATERAL"]["fields"])
+    for key, definition in module.CANDIDATES.items():
+        assert set(definition["fields"]) <= set(SIGN_FIELD_NAMES), key
     assert module.CANDIDATES["S0"]["sign_source"] == "neutral"
     assert module.CANDIDATES["S0"]["fields"] == []
     assert module.CANDIDATES["S1"]["fields"] == list(SIGN_FIELD_NAMES)
@@ -562,3 +574,50 @@ def test_an_explicitly_supplied_sign_array_is_never_re_derived(bank):
         CandidateConfig(name="unit_full", sign_source="oracle", epochs=1, batch_size=16,
                         device="cpu", mixed_precision=False, evaluate_every=1, seed=3))
     assert full["sign"]["distribution"]["shoulder_forward_depth"]["degenerate"] < len(bank)
+
+
+def test_the_model_requires_exact_sign_membership_not_a_range():
+    """A range test lets 0.5 through and `.long()` then truncates it to 0.
+
+    NaN and inf also pass an unordered range comparison, so the boundary must
+    check exact membership in {-1, 0, +1}.
+    """
+    torch = pytest.importorskip("torch")
+
+    from framepose.model import ModelConfig, build_model
+
+    torch.manual_seed(0)
+    model = build_model(ModelConfig(sign_fields=SIGN_FIELD_COUNT)).eval()
+    geometry = torch.randn(1, 17, 4)
+
+    for legal in (-1.0, 0.0, 1.0):
+        state = torch.full((1, SIGN_FIELD_COUNT), legal)
+        assert model(geometry, None, state).shape == (1, 17, 3)
+
+    for illegal in (0.5, -0.5, 0.999, float("nan"), float("inf"), float("-inf")):
+        state = torch.zeros(1, SIGN_FIELD_COUNT)
+        state[0, 2] = illegal
+        with pytest.raises(ValueError, match="exactly -1, 0 or"):
+            model(geometry, None, state)
+
+
+def test_per_chain_hinge_metrics_are_reported(bank):
+    from framepose.evaluate import evaluate_predictions
+
+    positions = bank.indices("test")
+    prediction = bank.arrays["target_3d"][positions].copy()
+    # Flip only the left elbow's bend across the shoulder-wrist axis.
+    left_shoulder, left_elbow, left_wrist = (JOINT_INDEX["left_shoulder"],
+                                             JOINT_INDEX["left_elbow"], JOINT_INDEX["left_wrist"])
+    axis_point = (prediction[:, left_shoulder] + prediction[:, left_wrist]) / 2
+    prediction[:, left_elbow] = 2 * axis_point - prediction[:, left_elbow]
+    report = evaluate_predictions(bank, positions, prediction, candidate="left_elbow_flipped")
+
+    aggregate = report["aggregate"]
+    assert aggregate["left_elbow_bend_flipped"]["mean"] > 0.5
+    assert aggregate["right_elbow_bend_flipped"]["mean"] == pytest.approx(0.0, abs=1e-9)
+    assert aggregate["knee_flip_rate"]["mean"] == pytest.approx(0.0, abs=1e-9)
+    assert aggregate["elbow_flip_rate"]["mean"] > aggregate["knee_flip_rate"]["mean"]
+    frame = report["frames"][0]
+    assert set(frame) >= {"left_elbow_bend_error_degrees", "right_elbow_bend_flipped",
+                          "elbow_flip_rate", "knee_bend_error_degrees"}

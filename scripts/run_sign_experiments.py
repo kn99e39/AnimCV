@@ -88,6 +88,19 @@ CANDIDATES = {
     "H_NO_RIGHT_KNEE": {"name": "H_NO_RIGHT_KNEE_oracle", "sign_source": "oracle",
                         "fields": [name for name in _HINGE_FIELDS
                                    if name != "right_knee_forward_bend"]},
+    # docs/32's conditional local-hinge topology candidates. Same fields as
+    # their H_*/O_HINGE counterparts; run these with
+    # --hinge-sign-injection post_attention. Never run with the default
+    # pre_attention topology -- that would just reproduce O_HINGE/H_NO_*.
+    "L_HINGE": {"name": "L_HINGE_oracle_bend_only_post_attention", "sign_source": "oracle",
+                "fields": list(_HINGE_FIELDS)},
+    "L_NO_LEFT_KNEE": {"name": "L_NO_LEFT_KNEE_oracle_post_attention", "sign_source": "oracle",
+                       "fields": [name for name in _HINGE_FIELDS if name != "left_knee_forward_bend"]},
+    "L_NO_RIGHT_KNEE": {"name": "L_NO_RIGHT_KNEE_oracle_post_attention", "sign_source": "oracle",
+                        "fields": [name for name in _HINGE_FIELDS if name != "right_knee_forward_bend"]},
+    "L_NO_RIGHT_ELBOW": {"name": "L_NO_RIGHT_ELBOW_oracle_post_attention", "sign_source": "oracle",
+                         "fields": [name for name in _HINGE_FIELDS if name != "right_elbow_forward_bend"]},
+    "L_NEUTRAL": {"name": "L_NEUTRAL_post_attention", "sign_source": "neutral", "fields": []},
 }
 
 COMPARISON_SEMANTICS = {
@@ -131,6 +144,11 @@ def main() -> int:
     parser.add_argument("--evaluate-every", type=int, default=10)
     parser.add_argument("--no-mixed-precision", action="store_true")
     parser.add_argument("--compile-training-graph", action="store_true")
+    parser.add_argument("--hinge-sign-injection", choices=("pre_attention", "post_attention"),
+                        default="pre_attention",
+                        help="docs/32: where the four hinge sign fields are injected relative to "
+                             "global joint self-attention. Applies to every candidate in this "
+                             "invocation; orientation fields are unaffected either way.")
     args = parser.parse_args()
 
     bank = load_bank(args.bank)
@@ -170,7 +188,8 @@ def main() -> int:
             loss_contract="baseline_geometry_v1", epochs=args.epochs, batch_size=args.batch_size,
             learning_rate=args.learning_rate, weight_decay=args.weight_decay, seed=args.seed,
             device=args.device, mixed_precision=not args.no_mixed_precision,
-            compile_training_graph=args.compile_training_graph, evaluate_every=args.evaluate_every)
+            compile_training_graph=args.compile_training_graph, evaluate_every=args.evaluate_every,
+            hinge_sign_injection=args.hinge_sign_injection)
         if definition["sign_source"] == "advisor":
             signs = advisor
         elif definition["sign_source"] == "neutral":
@@ -189,6 +208,8 @@ def main() -> int:
         reports[key] = evaluation
         matrix["candidates"][key] = {
             "active_sign_fields": definition["fields"],
+            "inactive_sign_fields": [name for name in SIGN_FIELD_NAMES if name not in definition["fields"]],
+            "sign_source": definition["sign_source"],
             "config": config.to_dict(), "model": training["model"],
             "sign": training["sign"], "selection": training["selection"],
             "performance": training["performance"], "execution": training["execution"],

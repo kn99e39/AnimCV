@@ -344,7 +344,9 @@ def test_sign_experiment_runner_declares_its_comparison_semantics():
     assert {"S0", "S1", "S2", "O_TORSO", "O_BILATERAL", "O_HINGE", "O_ORIENTATION",
             "O_SHOULDER", "O_HIP", "O_ELBOWS", "O_KNEES", "O_LEFT_ELBOW", "O_RIGHT_ELBOW",
             "O_LEFT_KNEE", "O_RIGHT_KNEE", "H_NO_LEFT_ELBOW", "H_NO_RIGHT_ELBOW",
-            "H_NO_LEFT_KNEE", "H_NO_RIGHT_KNEE"} == set(module.CANDIDATES)
+            "H_NO_LEFT_KNEE", "H_NO_RIGHT_KNEE",
+            "L_HINGE", "L_NO_LEFT_KNEE", "L_NO_RIGHT_KNEE", "L_NO_RIGHT_ELBOW",
+            "L_NEUTRAL"} == set(module.CANDIDATES)
     # Single-field candidates activate exactly one field, so a group result can
     # never stand in for an individual necessity claim.
     for key in ("O_TORSO", "O_SHOULDER", "O_HIP", "O_LEFT_ELBOW", "O_RIGHT_ELBOW",

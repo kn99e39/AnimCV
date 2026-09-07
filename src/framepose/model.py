@@ -16,8 +16,10 @@ from __future__ import annotations
 from dataclasses import dataclass, asdict
 from typing import Any
 
+import numpy as np
+
 from framepose.contract import JOINT_COUNT
-from framepose.signs import SIGN_FIELD_COUNT, joint_field_matrix
+from framepose.signs import SIGN_FIELD_COUNT, SIGN_FIELD_NAMES, joint_field_matrix
 
 
 MODEL_SCHEMA = "animcv_frame_pose_estimator_v1"
@@ -48,6 +50,18 @@ class ModelConfig:
     heads: int = DEFAULT_HEADS
     fusion_depth: int = DEFAULT_FUSION_DEPTH
     feedforward_multiplier: int = DEFAULT_FEEDFORWARD_MULTIPLIER
+    # docs/32's conditional locality candidate. "pre_attention" is the
+    # historical FramePoseEstimator, unchanged: every sign field is injected
+    # into the joint query before global joint self-attention, so a hinge
+    # sign can reach any joint through fusion_depth rounds of attention.
+    # "post_attention" changes ONLY where the four hinge fields are added:
+    # after every self-/cross-attention block, routed by the same
+    # sign_joint_mask to only the one joint that field governs, immediately
+    # before the per-joint output head -- so a hinge sign can no longer
+    # reach any other joint's output at all, by construction. Orientation
+    # fields (torso_facing, shoulder_forward_depth, hip_forward_depth) are
+    # injected pre-attention in both modes; their behaviour is unchanged.
+    hinge_sign_injection: str = "pre_attention"
 
     def __post_init__(self) -> None:
         if self.width <= 0 or self.width % self.heads:
@@ -60,6 +74,8 @@ class ModelConfig:
             raise ValueError("visual_dim must be positive when set")
         if self.sign_fields not in (0, SIGN_FIELD_COUNT):
             raise ValueError(f"sign_fields must be 0 or the contract's {SIGN_FIELD_COUNT}")
+        if self.hinge_sign_injection not in ("pre_attention", "post_attention"):
+            raise ValueError("hinge_sign_injection must be 'pre_attention' or 'post_attention'")
 
     @property
     def uses_vision(self) -> bool:
@@ -122,8 +138,22 @@ def build_model(config: ModelConfig):
                 self.sign_embedding = nn.Parameter(
                     torch.zeros(config.sign_fields, SIGN_VALUE_COUNT, config.width))
                 nn.init.normal_(self.sign_embedding, std=0.02)
-                self.register_buffer("sign_joint_mask",
-                                     torch.as_tensor(joint_field_matrix()), persistent=False)
+                mask = joint_field_matrix()
+                self.register_buffer("sign_joint_mask", torch.as_tensor(mask), persistent=False)
+                if config.hinge_sign_injection == "post_attention":
+                    # Same mask, same embedding table -- split only by WHEN each
+                    # field's contribution is added, not by any new routing or
+                    # capacity. Computed once from the fixed field/joint
+                    # contract, never learned or tuned.
+                    hinge_columns = [index for index, name in enumerate(SIGN_FIELD_NAMES)
+                                     if name.endswith("_forward_bend")]
+                    hinge_mask = np.zeros_like(mask)
+                    hinge_mask[:, hinge_columns] = mask[:, hinge_columns]
+                    orientation_mask = mask - hinge_mask
+                    self.register_buffer("orientation_joint_mask",
+                                         torch.as_tensor(orientation_mask), persistent=False)
+                    self.register_buffer("hinge_only_joint_mask",
+                                         torch.as_tensor(hinge_mask), persistent=False)
             if config.uses_vision:
                 self.image_projection = nn.Linear(config.visual_dim, config.width)
                 self.image_norm = nn.LayerNorm(config.width)
@@ -140,6 +170,7 @@ def build_model(config: ModelConfig):
             if geometry.shape[-2:] != (JOINT_COUNT, GEOMETRY_FEATURES):
                 raise ValueError(f"geometry must be (B, {JOINT_COUNT}, {GEOMETRY_FEATURES})")
             queries = self.geometry_projection(geometry) + self.joint_embedding
+            hinge_injection = None
             if self.config.uses_signs:
                 if sign_state is None:
                     raise ValueError("this candidate requires a sign state")
@@ -160,7 +191,14 @@ def build_model(config: ModelConfig):
                 indices = sign_state.long() + 1
                 fields = torch.arange(self.config.sign_fields, device=indices.device)
                 selected = self.sign_embedding[fields.unsqueeze(0), indices]
-                queries = queries + torch.einsum("jf,bfw->bjw", self.sign_joint_mask, selected)
+                if self.config.hinge_sign_injection == "post_attention":
+                    # Historical topology for orientation fields, unchanged.
+                    queries = queries + torch.einsum("jf,bfw->bjw", self.orientation_joint_mask, selected)
+                    # Hinge fields: computed now, added only after every
+                    # attention block, so they never reach self-attention.
+                    hinge_injection = torch.einsum("jf,bfw->bjw", self.hinge_only_joint_mask, selected)
+                else:
+                    queries = queries + torch.einsum("jf,bfw->bjw", self.sign_joint_mask, selected)
             elif sign_state is not None:
                 raise ValueError("this candidate must not receive a sign state")
             tokens = None
@@ -172,6 +210,12 @@ def build_model(config: ModelConfig):
                 raise ValueError("the geometry-only candidate must not receive image tokens")
             for block in self.blocks:
                 queries = block(queries, tokens)
+            if hinge_injection is not None:
+                # output_norm/head are both per-joint (LayerNorm over width,
+                # then a position-wise MLP) with no joint-mixing left in the
+                # graph, so from this point on a hinge sign can only change
+                # its own routed joint's 3D output.
+                queries = queries + hinge_injection
             return self.head(self.output_norm(queries))
 
     return FramePoseEstimator()

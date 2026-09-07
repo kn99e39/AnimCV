@@ -64,6 +64,11 @@ class CandidateConfig:
     # Reserved for Section 13's conditional parameter-efficient adaptation.
     # Frozen-first is the policy; this batch leaves it False.
     adapt_backbone: bool = False
+    # docs/32's conditional locality candidate: "pre_attention" is the
+    # historical topology (default, unchanged); "post_attention" injects the
+    # four hinge fields only after global joint self-attention, routed to
+    # their own joint. See framepose.model.ModelConfig for the full contract.
+    hinge_sign_injection: str = "pre_attention"
 
     def __post_init__(self) -> None:
         if min(self.epochs, self.batch_size, self.evaluate_every) <= 0:
@@ -76,6 +81,8 @@ class CandidateConfig:
                 "(Architecture_v3 section 8) and is not enabled in this batch")
         if self.sign_source not in SIGN_SOURCES:
             raise ValueError(f"sign_source must be one of {SIGN_SOURCES}")
+        if self.hinge_sign_injection not in ("pre_attention", "post_attention"):
+            raise ValueError("hinge_sign_injection must be 'pre_attention' or 'post_attention'")
         resolve_backbone(self.backbone)
         resolve_contract(self.loss_contract)
 
@@ -154,6 +161,7 @@ def train_candidate(bank: FrameBank, config: CandidateConfig, *,
         visual_dim=spec.embed_dim if spec.kind != "none" else None,
         visual_tokens=spec.token_count if spec.kind != "none" else 0,
         sign_fields=0 if config.sign_source == "none" else sign_module.SIGN_FIELD_COUNT,
+        hinge_sign_injection=config.hinge_sign_injection,
     )
     model = build_model(model_config).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=config.learning_rate,
@@ -320,7 +328,10 @@ def load_checkpoint(path: str | Path, device: str = "cpu"):
                          sign_fields=stored.get("sign_fields", 0),
                          width=stored["width"], heads=stored["heads"],
                          fusion_depth=stored["fusion_depth"],
-                         feedforward_multiplier=stored["feedforward_multiplier"])
+                         feedforward_multiplier=stored["feedforward_multiplier"],
+                         # Older checkpoints predate this field entirely; they
+                         # were all trained with the historical topology.
+                         hinge_sign_injection=stored.get("hinge_sign_injection", "pre_attention"))
     model = build_model(config).to(device)
     model.load_state_dict(payload["state_dict"])
     model.eval()

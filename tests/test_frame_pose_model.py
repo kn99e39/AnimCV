@@ -113,3 +113,118 @@ def test_pose_inference_never_depends_on_text_generation():
     # The backbone wrapper only ever calls the vision tower's feature extractor.
     assert "forward_features" in inspect.getsource(backbones)
     assert "num_classes=0" in inspect.getsource(backbones)
+
+
+# --------------------------- docs/32: local-hinge injection topology ----
+
+def _sign_model(injection: str, seed: int = 0):
+    from framepose.signs import SIGN_FIELD_COUNT
+
+    torch.manual_seed(seed)
+    return build_model(ModelConfig(sign_fields=SIGN_FIELD_COUNT, hinge_sign_injection=injection)).eval()
+
+
+def test_hinge_sign_injection_rejects_unknown_values():
+    with pytest.raises(ValueError, match="hinge_sign_injection"):
+        ModelConfig(hinge_sign_injection="mid_attention")
+
+
+def test_pre_attention_is_the_default_and_matches_historical_construction():
+    """The default must be exactly the historical FramePoseEstimator: no new
+    buffers, no behavior change, for every existing (S0/S1/O_*/H_*) config."""
+    default_config = ModelConfig()
+    assert default_config.hinge_sign_injection == "pre_attention"
+    model = build_model(ModelConfig(sign_fields=7))
+    assert not hasattr(model, "orientation_joint_mask")
+    assert not hasattr(model, "hinge_only_joint_mask")
+    assert hasattr(model, "sign_joint_mask")
+
+
+def test_post_attention_and_pre_attention_share_one_parameter_count():
+    """Pure topology attribution: same embeddings, same mask, same width --
+    only WHEN the hinge contribution is added differs."""
+    pre = build_model(ModelConfig(sign_fields=7, hinge_sign_injection="pre_attention"))
+    post = build_model(ModelConfig(sign_fields=7, hinge_sign_injection="post_attention"))
+    assert parameter_report(pre) == parameter_report(post)
+
+
+def test_post_attention_hinge_toggle_changes_only_its_own_routed_joint():
+    """The architectural claim docs/32 exists to test: after moving hinge
+    injection past every attention block, toggling one hinge sign must
+    change EXACTLY that joint's 3 output coordinates and nothing else."""
+    from framepose.contract import JOINT_NAMES
+    from framepose.signs import SIGN_FIELD_COUNT, SIGN_FIELD_NAMES
+
+    model = _sign_model("post_attention")
+    geometry = torch.randn(2, 17, GEOMETRY_FEATURES)
+    base_state = torch.zeros(2, SIGN_FIELD_COUNT, dtype=torch.long)
+
+    field = "left_knee_forward_bend"
+    index = SIGN_FIELD_NAMES.index(field)
+    toggled_state = base_state.clone()
+    toggled_state[:, index] = 1
+
+    with torch.no_grad():
+        baseline = model(geometry, None, base_state)
+        moved = model(geometry, None, toggled_state)
+
+    displacement = (moved - baseline).abs().sum(dim=-1)  # (2, 17)
+    routed_joint = JOINT_NAMES.index("left_knee")
+    assert displacement[:, routed_joint].gt(0).all(), "the routed joint must move"
+    other_joints = [i for i in range(len(JOINT_NAMES)) if i != routed_joint]
+    assert torch.equal(displacement[:, other_joints], torch.zeros_like(displacement[:, other_joints])), (
+        "no other joint may move at all under post_attention hinge injection")
+
+
+def test_post_attention_orientation_toggle_still_propagates_globally():
+    """Orientation fields keep the historical (pre-attention) topology even
+    under hinge_sign_injection='post_attention' -- their behaviour is
+    unchanged, so a torso_facing toggle can still move other joints."""
+    from framepose.contract import JOINT_NAMES
+    from framepose.signs import SIGN_FIELD_COUNT, SIGN_FIELD_NAMES
+
+    model = _sign_model("post_attention")
+    geometry = torch.randn(2, 17, GEOMETRY_FEATURES)
+    base_state = torch.zeros(2, SIGN_FIELD_COUNT, dtype=torch.long)
+
+    index = SIGN_FIELD_NAMES.index("torso_facing")
+    toggled_state = base_state.clone()
+    toggled_state[:, index] = 1
+
+    with torch.no_grad():
+        baseline = model(geometry, None, base_state)
+        moved = model(geometry, None, toggled_state)
+
+    displacement = (moved - baseline).abs().sum(dim=-1)
+    # torso_facing is not one of the joints it directly governs (it governs
+    # torso/hip/shoulder joints); a joint OUTSIDE that set moving confirms
+    # attention-mediated propagation is intact for orientation fields.
+    outside_joint = JOINT_NAMES.index("left_wrist")
+    assert displacement[:, outside_joint].gt(0).any(), (
+        "orientation-field propagation must remain global under post_attention")
+
+
+def test_pre_attention_hinge_toggle_still_propagates_globally():
+    """Sanity check that the historical topology's own cross-joint
+    propagation (the mechanism docs/32 attributes the knee leakage to) is
+    reproduced by this exact model/config path, for contrast with the
+    post_attention result above."""
+    from framepose.contract import JOINT_NAMES
+    from framepose.signs import SIGN_FIELD_COUNT, SIGN_FIELD_NAMES
+
+    model = _sign_model("pre_attention")
+    geometry = torch.randn(2, 17, GEOMETRY_FEATURES)
+    base_state = torch.zeros(2, SIGN_FIELD_COUNT, dtype=torch.long)
+
+    index = SIGN_FIELD_NAMES.index("left_knee_forward_bend")
+    toggled_state = base_state.clone()
+    toggled_state[:, index] = 1
+
+    with torch.no_grad():
+        baseline = model(geometry, None, base_state)
+        moved = model(geometry, None, toggled_state)
+
+    displacement = (moved - baseline).abs().sum(dim=-1)
+    other_joint = JOINT_NAMES.index("right_elbow")
+    assert displacement[:, other_joint].gt(0).any(), (
+        "pre_attention hinge injection is expected to leak to unrelated joints")

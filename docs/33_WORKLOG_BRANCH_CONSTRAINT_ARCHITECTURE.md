@@ -264,3 +264,179 @@ a sign it does not believe; a constraint cannot, by construction.** The
 constraint's entire benefit is contingent on the sign being right, and this
 batch used an oracle. Nothing here says what accuracy a real sign sensor would
 need, and nothing here should be read as saying a sensor exists.
+
+## 13. Coverage and applicability, per field
+
+`requested = already_satisfied + corrected + unresolved` was asserted for
+every field of every variant and held everywhere (`coverage_identity_holds:
+true`). No requested frame is dropped, hidden or counted twice.
+
+| field | requested | already correct | corrected | unresolved | branch satisfied after |
+|---|---|---|---|---|---|
+| left_elbow_forward_bend | 5,428 | 4,707 | 341 | 380 | 93.00% |
+| right_elbow_forward_bend | 5,561 | 4,827 | 367 | 367 | 93.40% |
+| left_knee_forward_bend | 6,049 | 5,447 | 273 | 329 | 94.56% |
+| right_knee_forward_bend | 6,045 | 5,293 | 407 | 345 | 94.29% |
+| shoulder_forward_depth | 6,725 | 5,787 | 578 | 360 | 94.65% |
+| hip_forward_depth | 6,192 | 5,053 | 253 | 886 | 85.69% |
+
+### 13.1 The decisive decomposition of `unresolved`
+
+An unresolved field means one of two very different things, and this batch
+reports them apart:
+
+| field | unresolved | *prediction was unreadable* | *prediction held the opposite branch and the correction failed* |
+|---|---|---|---|
+| left_elbow_forward_bend | 380 | **380** | **0** |
+| right_elbow_forward_bend | 367 | **367** | **0** |
+| left_knee_forward_bend | 329 | **329** | **0** |
+| right_knee_forward_bend | 345 | **345** | **0** |
+| shoulder_forward_depth | 360 | **360** | **0** |
+| hip_forward_depth | 886 | **886** | **0** |
+
+**Zero.** Across all six fields and 7,076 frames, the declared correction never
+once ran on a frame whose prediction actually carried a readable opposite
+branch and failed to install the requested one. Conditional on the Core having
+produced a readable violated branch, the operator's success rate is **1.000**.
+
+Every unresolved frame is a frame where the Core's own output reads UNKNOWN
+under the Sign Contract — the perpendicular bend offset is below
+`MIN_BEND_OFFSET_M`/`UNIT_FORWARD_EPSILON`, or the bilateral separation is
+below `STABLE_FORWARD_DEPTH_M`. There is no branch there to reflect, and
+reflecting a near-zero offset yields a near-zero offset. The operator reverts
+the field and says so rather than reporting a branch it did not install.
+
+So the gap between 100% and the 85.7–94.7% satisfied rates is **not** an
+operator failure. It is a limit of what the Sign Contract can express about a
+prediction whose geometry is sub-threshold. `hip_forward_depth` is worst
+(14.3% unreadable) for the obvious reason: the hips sit close together, so the
+predicted depth separation falls under the 0.01 m stability floor far more
+often than the shoulders' does (5.4%).
+
+Only 1 frame in 7,076 hit the hinge singularity (the limb axis within 0.1 of
+the camera depth axis) — the analytically exposed degeneracy is real but
+almost never binding on this data.
+
+## 14. Real-frame review
+
+`branch_constraint_review.json` exports touched frames with `sample_id`,
+sequence, frame index, source image path, requested sign, read-back before and
+after, the closed-form `depth_delta_m`, joint names, and the original and
+corrected XYZ of every moved joint. Two representative rows:
+
+```
+3dpw:downtown_arguing_00:actor0#000585   image_00585.jpg
+  left_elbow_forward_bend  corrected  req=-1 before=+1 after=-1  delta_y_m=-0.2007
+    left_elbow  dXYZ_mm=[0.0, -200.738, 0.0]
+                [0.07142, 0.19547, 0.23881] -> [0.07142, -0.00527, 0.23881]
+
+3dpw:downtown_arguing_00:actor0#000000   image_00000.jpg
+  shoulder_forward_depth  corrected  req=+1 before=-1 after=+1
+  hip_forward_depth       corrected  req=+1 before=-1 after=+1
+    left_shoulder   dXYZ_mm=[0.0,  -96.226, 0.0]
+    right_shoulder  dXYZ_mm=[0.0,  +96.226, 0.0]
+    left_hip        dXYZ_mm=[0.0,  -21.255, 0.0]
+    right_hip       dXYZ_mm=[0.0,  +21.255, 0.0]
+```
+
+Every `dXYZ_mm` has **exactly 0.0 in X and Z**. The screen-space-preservation
+and depth-only guarantees are not only proven synthetically; they hold
+verbatim on real 3DPW frames. The bilateral exchange is visibly
+midpoint-symmetric (`−96.226`/`+96.226`).
+
+## 15. Classification: **D — mixed**, decomposed
+
+The DIRECTION's four outcomes each apply to a different part of the contract,
+so the honest answer is D and the decomposition is the result:
+
+**A (constraint supported) — the four hinge fields.** `C_HINGE_ALL` reduces
+the hinge flip rate by 42.5% and hinge direction MAE by 2.08° for +0.084 mm
+MPJPE, while leaving root yaw and both bilateral residuals bit-identical. Every
+learned hinge conditioning tested — `O_HINGE`, `L_HINGE`, and the `H_NO_*`
+leave-one-out family — buys less branch benefit for 17–25× more continuous
+geometry cost. On this axis the constraint does not merely match learned
+conditioning; it dominates it.
+
+**B (learned conditioning still necessary) — the bilateral fields.**
+`O_BILATERAL` beats `C_BILATERAL` on every measured axis, and the reason is
+structural (Section 11): the bilateral constraint moves the proximal anchors of
+all four hinge chains and cannot compensate for the four branches it perturbs,
+whereas a learned conditioning can. Learned bilateral conditioning is not
+replaced by anything in this batch.
+
+**C (Sign Contract insufficient) — bounded and identified.** 5.4–14.3% of
+requested frames have predictions the contract cannot read a branch from at
+all, so no constraint of any kind can act on them. This is a real ceiling on
+the approach, it is now measured per field, and it is a property of the
+contract's thresholds meeting the Core's sub-threshold output — not of the
+operator.
+
+**Not promoted.** Nothing here is turned on by default, no default was
+changed, and no model was retrained. `C_HINGE_ALL` is a measured candidate
+under an oracle sign, not a shipped feature.
+
+## 16. What this batch does NOT establish
+
+- **It does not identify a sign sensor.** Every number above uses the oracle.
+  The wrong-sign control (Section 12) shows the constraint is exactly as good
+  as the sign it is handed and has *no* robustness to a wrong one — under the
+  opposite oracle, `C_HINGE_ALL` goes from a 1.2% flip rate to 54.5%. A
+  learned conditioning degrades far more gracefully. This asymmetry is the
+  dominant open risk.
+- It does not measure any accuracy threshold a sensor would have to clear.
+  That would require a sensor, or at minimum a controlled corruption sweep,
+  and the DIRECTION deliberately restricted this batch to two endpoints.
+- It does not show the knee signs carry no information (docs/32's conservative
+  reading stands), and it does not show the post-attention topology is
+  production-ready.
+- It says nothing about `torso_facing`, for which no correction is declared.
+- Regime is `benchmark_detector_observation` throughout. Nothing here is a
+  `real_animcv_observation` result.
+- One source candidate (`S0_neutral_sign`) and one split (`test`). The
+  operator was not replayed over another Core's predictions.
+
+## 17. Files
+
+| file | role |
+|---|---|
+| `src/framepose/branch_constraints.py` | the operator; parameter-free, RGB-free, GT-magnitude-free |
+| `tests/test_frame_pose_branch_constraints.py` | 28 contract tests, run before any real frame |
+| `scripts/replay_branch_constraints.py` | stored-prediction replay; no training path exists in it |
+| `scripts/run_sign_experiments.py` | `expected_hinge_sign_injection` per candidate + `require_topology_match` |
+| `scripts/diagnose_sign_influence.py` | `verify_checkpoint_identity` |
+| `/output/framepose/branch_constraint_v3/` | replay report, review export, per-variant corrected predictions |
+
+Two independent full replays (`branch_constraint_v1`, `_v2`) produced
+byte-identical aggregates; `_v3` adds the corrected review sampling. The
+operator is deterministic.
+
+## 18. The completion question
+
+> *If the Geometry Core predicts continuous pose first, can an explicit branch
+> constraint enforce the correct discrete orientation/hinge branch while
+> preserving the Core's continuous geometry substantially better than learned
+> SignState conditioning?*
+
+**For the hinge branch, yes — decisively.** A parameter-free, closed-form
+depth reflection installs the requested bend branch on 100% of frames where
+the Core produced a readable violated branch, raises hinge sign agreement from
+86.7–90.1% to 93.0–94.6%, cuts the flip rate by 42.5%, and costs 0.084 mm
+MPJPE — against 1.46 mm for the best learned hinge conditioning at 25% flip
+reduction. It provably touches nothing else: root yaw and both bilateral
+residuals are bit-identical.
+
+**For the bilateral branch, no.** The constraint is worse than learned
+conditioning on every axis, because the joints it must move are the proximal
+anchors that four other contract fields read.
+
+The generalisable finding is the boundary between those two answers: **a
+branch constraint is the right abstraction where the constrained joint is a
+leaf of the Sign Contract's dependency graph, and the wrong one where it is an
+anchor.** That is a property of the contract's structure, not of this
+implementation, and it predicts where the approach will and will not transfer.
+
+The dominant caveat is unchanged and unsoftened: all of it rests on an oracle
+sign, and the constraint has no tolerance for a wrong one.
+
+**STOP.** No sign sensor is chosen here, nothing is promoted, and no follow-up
+training is started.

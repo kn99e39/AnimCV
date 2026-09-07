@@ -61,11 +61,37 @@ left elbow — reproduces the four-field pooled benefit exactly (0.0159 vs 0.015
 hinge MAE 23.52 vs 23.44). The right-elbow sign contributes nothing measurable
 to the pooled result once the other three are present.
 
-Position guardrails: MPJPE 81.47–83.84 against S0's 81.98, PA-MPJPE 57.11–59.11
-against 56.85 — all inside the ~1.5 mm band this single-seed lineage cannot
-resolve, and no candidate degraded materially.
+**Wording correction (docs/32 Section 3)**: this batch previously claimed
+every leave-one-out position delta sat inside an "~1.5 mm band". That
+overstates the resolution. Exact S0-relative deltas (S0: MPJPE 81.98,
+PA-MPJPE 56.85):
+
+| candidate | ΔMPJPE mm | ΔPA-MPJPE mm |
+| --- | ---: | ---: |
+| H_NO_LEFT_ELBOW | −0.51 | +0.48 |
+| H_NO_RIGHT_ELBOW | +0.49 | +0.27 |
+| **H_NO_LEFT_KNEE** | **+1.86** | **+2.26** |
+| H_NO_RIGHT_KNEE | −0.25 | +0.26 |
+| O_HINGE | +1.46 | +1.13 |
+| S1 | −2.78 | −0.89 |
+
+`H_NO_LEFT_KNEE`'s PA-MPJPE delta (+2.26 mm) and O_HINGE's own PA-MPJPE
+delta (+1.13 mm) both exceed the previously claimed band. These are the
+exact numbers; no threshold is asserted and MPJPE/PA-MPJPE remain
+guardrails, not a promotion criterion — no candidate here was selected or
+rejected on them.
 
 ## 5. Frozen-weight sign-to-joint influence
+
+> **PROVISIONAL — repaired in docs/32.** The probe below fed every checkpoint
+> the full 7-field oracle as its baseline, including for O_HINGE, which was
+> never trained with `torso_facing`/`shoulder_forward_depth`/
+> `hip_forward_depth` active (they were UNKNOWN throughout training). That
+> evaluates O_HINGE in an out-of-distribution sign state. **Do not use the
+> locality numbers in Sections 5–8 below to close the knee mechanism** — see
+> docs/32 for the corrected, in-distribution-only probe and its mechanism
+> reassessment. Sections 1–4 above (the leave-one-out training result itself)
+> are unaffected and remain valid as stated.
 
 Weights frozen, geometry fixed, exactly one hinge sign toggled from its oracle
 value to the opposite branch, 1,500 test frames. The skeleton is partitioned
@@ -180,9 +206,12 @@ parameter count, or locality accounting to report for it.
 
 No candidate in this batch was selected or tuned on MPJPE. Across the four
 leave-one-out runs MPJPE spans 81.47–83.84 mm against S0's 81.98 and O_HINGE's
-83.44, and PA-MPJPE spans 57.11–59.11 against S0's 56.85. Nothing here trades
-position for flip behaviour in either direction beyond the resolution of a
-single-seed run.
+83.44, and PA-MPJPE spans 57.11–59.11 against S0's 56.85. **Wording correction
+(docs/32 Section 3)**: this is not a claim that every delta is inside one small
+band — see Section 4's exact per-candidate delta table, where `H_NO_LEFT_KNEE`
+(+2.26 mm PA-MPJPE) and O_HINGE (+1.13 mm PA-MPJPE) are the largest. No
+candidate degraded catastrophically, and none was chosen or rejected on this
+metric, but the deltas are not uniformly small.
 
 ## 12. Hinge sensor requirement — verdict
 
@@ -213,10 +242,20 @@ UNRESOLVED
         and this lineage cannot separate the two
 ```
 
-**A future hinge sign sensor must answer at least the two knee questions.** The
-right-elbow question can be dropped. Whether the left-elbow question is needed,
-and whether a locality-preserving conditioning topology would shrink the
-requirement further, are open.
+**Wording correction (docs/32 Section 2)**: the sentence originally here read
+"a future hinge sign sensor must answer at least the two knee questions." That
+overstates what this batch's evidence supports, because the frozen
+sign-influence probe behind the locality half of that claim had a contract
+mismatch (Section 8 above; repaired in docs/32). The corrected statement is:
+
+**If the current conditioning topology is preserved, both knee signs are
+required by the current single-seed leave-one-out result. Whether they are
+requirements of the information itself remains unresolved.** The right-elbow
+question can still be dropped — that conclusion rests on the leave-one-out
+training result alone, not on the influence probe, and is unaffected. Whether
+the left-elbow question is needed, and whether a locality-preserving
+conditioning topology would shrink the knee requirement further, are open;
+see docs/32 for the corrected attribution.
 
 ## 13. Untouched tracks
 

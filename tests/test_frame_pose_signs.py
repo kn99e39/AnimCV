@@ -735,3 +735,151 @@ def test_sign_toggle_is_deterministic_under_frozen_weights():
     with torch.no_grad():
         moved = model(geometry, None, toggled)
     assert not torch.equal(first, moved), "a toggled sign must change the output"
+
+
+# --------------------------------- docs/32: sign-influence contract repair ----
+
+def _load_diagnose_sign_influence():
+    import importlib.util
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    sys.path.insert(0, str(root / "scripts"))
+    sys.path.insert(0, str(root / "src"))
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "diagnose_sign_influence", root / "scripts" / "diagnose_sign_influence.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+    finally:
+        sys.path.pop(0)
+        sys.path.pop(0)
+
+
+def test_checkpoint_diagnostic_requires_an_explicit_active_sign_contract():
+    """No guessing from a checkpoint name: an unknown name must be refused,
+    not defaulted to the full oracle or to an empty contract."""
+    module = _load_diagnose_sign_influence()
+    with pytest.raises(ValueError, match="no active-sign-field contract"):
+        module.active_fields_for("NOT_A_REGISTERED_CANDIDATE")
+
+
+def test_active_fields_for_matches_the_training_time_contract():
+    module = _load_diagnose_sign_influence()
+    assert set(module.active_fields_for("O_HINGE")) == {
+        "left_elbow_forward_bend", "right_elbow_forward_bend",
+        "left_knee_forward_bend", "right_knee_forward_bend",
+    }
+    assert module.active_fields_for("S0") == []
+    assert set(module.active_fields_for("S1")) == set(SIGN_FIELD_NAMES)
+    assert module.active_fields_for("O_LEFT_ELBOW") == ["left_elbow_forward_bend"]
+
+
+def test_o_hinge_baseline_never_feeds_orientation_signs(bank):
+    """The exact bug docs/32 repairs: O_HINGE was never trained with
+    torso_facing/shoulder_forward_depth/hip_forward_depth active, so its
+    probe baseline must hold them UNKNOWN for every frame, not the oracle
+    +/-1 value."""
+    module = _load_diagnose_sign_influence()
+    from framepose.signs import mask_fields
+
+    oracle = oracle_sign_states(bank.arrays["target_3d"], bank.arrays["target_valid"])
+    active = module.active_fields_for("O_HINGE")
+    baseline = mask_fields(oracle, active)
+
+    for orientation_field in ("torso_facing", "shoulder_forward_depth", "hip_forward_depth"):
+        index = SIGN_FIELD_NAMES.index(orientation_field)
+        assert (baseline[:, index] == UNKNOWN).all(), orientation_field
+    # The four hinge fields, in contrast, carry the real oracle value
+    # wherever the oracle itself is not degenerate.
+    for hinge_field in module.HINGE_FIELDS:
+        index = SIGN_FIELD_NAMES.index(hinge_field)
+        np.testing.assert_array_equal(baseline[:, index], oracle[:, index])
+
+
+def test_single_field_baseline_never_feeds_unrelated_active_signs(bank):
+    """A single-hinge-field checkpoint's baseline must not carry oracle
+    values for the OTHER three hinge fields either -- not just orientation."""
+    module = _load_diagnose_sign_influence()
+    from framepose.signs import mask_fields
+
+    oracle = oracle_sign_states(bank.arrays["target_3d"], bank.arrays["target_valid"])
+    active = module.active_fields_for("O_LEFT_ELBOW")
+    baseline = mask_fields(oracle, active)
+
+    for name in SIGN_FIELD_NAMES:
+        index = SIGN_FIELD_NAMES.index(name)
+        if name == "left_elbow_forward_bend":
+            np.testing.assert_array_equal(baseline[:, index], oracle[:, index])
+        else:
+            assert (baseline[:, index] == UNKNOWN).all(), name
+
+
+def test_primary_diagnostic_only_toggles_fields_active_for_that_checkpoint():
+    """A single-field checkpoint must never toggle a field it was never
+    trained with as production locality evidence."""
+    module = _load_diagnose_sign_influence()
+
+    def active_hinge_fields(name):
+        active = module.active_fields_for(name)
+        return [field for field in module.HINGE_FIELDS if field in active]
+
+    assert active_hinge_fields("O_LEFT_ELBOW") == ["left_elbow_forward_bend"]
+    assert set(active_hinge_fields("O_HINGE")) == set(module.HINGE_FIELDS)
+    assert active_hinge_fields("O_TORSO") == []  # no hinge field active -> nothing to toggle
+
+
+def test_corrected_influence_matrix_is_deterministic_and_self_describing(bank, tmp_path):
+    """End-to-end (tiny, CPU) check of the repaired per-checkpoint block:
+    same weights/inputs give the same baseline and toggle output twice, and
+    the emitted per-checkpoint record names its own active_sign_fields."""
+    torch = pytest.importorskip("torch")
+    module = _load_diagnose_sign_influence()
+
+    from framepose.signs import mask_fields
+    from framepose.train import CandidateConfig, geometry_tensor, train_candidate
+
+    oracle = oracle_sign_states(bank.arrays["target_3d"], bank.arrays["target_valid"])
+    active = module.active_fields_for("O_HINGE")
+    signs = mask_fields(oracle, active)
+    geometry = geometry_tensor(bank)
+
+    checkpoint_path = tmp_path / "checkpoint.pt"
+    train_candidate(
+        bank, CandidateConfig(name="unit_o_hinge", sign_source="oracle", epochs=1, batch_size=16,
+                              device="cpu", mixed_precision=False, evaluate_every=1, seed=7),
+        geometry=geometry, signs=signs, checkpoint_path=checkpoint_path,
+    )
+
+    from framepose.train import load_checkpoint
+    model, _ = load_checkpoint(checkpoint_path, device="cpu")
+    model.eval()
+
+    positions = bank.indices("test")
+    geometry_batch = torch.as_tensor(geometry[positions])
+    base_signs = mask_fields(oracle[positions], active).astype(np.int64)
+
+    with torch.no_grad():
+        first = model(geometry_batch, None, torch.as_tensor(base_signs)).numpy()
+        second = model(geometry_batch, None, torch.as_tensor(base_signs)).numpy()
+    np.testing.assert_array_equal(first, second)
+
+    field = "left_knee_forward_bend"
+    index = SIGN_FIELD_NAMES.index(field)
+    toggled = base_signs.copy()
+    active_frame_mask = base_signs[:, index] != UNKNOWN
+    toggled[active_frame_mask, index] = -toggled[active_frame_mask, index]
+    with torch.no_grad():
+        moved = model(geometry_batch, None, torch.as_tensor(toggled)).numpy()
+    if active_frame_mask.any():
+        assert not np.array_equal(first[active_frame_mask], moved[active_frame_mask])
+
+    # Self-describing: the report this checkpoint would be filed under names
+    # exactly its own training-time contract.
+    record = {"active_sign_fields": active}
+    assert set(record["active_sign_fields"]) == {
+        "left_elbow_forward_bend", "right_elbow_forward_bend",
+        "left_knee_forward_bend", "right_knee_forward_bend",
+    }

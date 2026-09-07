@@ -92,14 +92,18 @@ def _requested(oracle: np.ndarray, fields: list[str], *, invert: bool) -> np.nda
 
 def _review_rows(bank, positions, original, corrected, reports, requested, limit: int):
     """Real frames a human can check, not aggregate numbers."""
+    # Every frame the constraint actually touched is a candidate, and the
+    # export is an even subsample of those. Taking the first N instead draws
+    # the whole export from whichever sequence happens to sort first.
+    qualifying = [order for order in range(len(positions))
+                  if any(entry["outcome"] in (CORRECTED, UNRESOLVED)
+                         for entry in reports[order]["fields"].values())]
+    if len(qualifying) > limit:
+        picks = np.unique(np.floor(np.arange(limit) * (len(qualifying) / limit)).astype(np.int64))
+        qualifying = [qualifying[int(index)] for index in picks]
+
     rows = []
-    # Stride across the split rather than taking the first N frames: a review
-    # export drawn from one sequence says nothing about the other sequences.
-    order_sequence = (range(len(positions)) if limit >= len(positions)
-                      else np.unique(np.floor(np.arange(limit * 12) * (len(positions) / (limit * 12)))
-                                     .astype(np.int64)))
-    for order in order_sequence:
-        order = int(order)
+    for order in qualifying:
         report = reports[order]
         touched = {field: entry for field, entry in report["fields"].items()
                    if entry["outcome"] in (CORRECTED, UNRESOLVED)}
@@ -131,8 +135,6 @@ def _review_rows(bank, positions, original, corrected, reports, requested, limit
             "corrected_xyz_m": {JOINT_NAMES[joint]: [round(float(value), 5) for value in corrected[order][joint]]
                                 for joint in moved},
         })
-        if len(rows) >= limit:
-            break
     return rows
 
 

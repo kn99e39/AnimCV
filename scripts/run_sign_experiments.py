@@ -44,64 +44,85 @@ _BILATERAL_FIELDS = ["shoulder_forward_depth", "hip_forward_depth"]
 # the optimizer, the loss, the evaluator and the schedule with S0/S1; only which
 # fields carry oracle values changes, and every other field is UNKNOWN.
 CANDIDATES = {
-    "S0": {"name": "S0_neutral_sign", "sign_source": "neutral", "fields": []},
-    "S1": {"name": "S1_oracle_sign", "sign_source": "oracle", "fields": list(SIGN_FIELD_NAMES)},
-    "S2": {"name": "S2_advisor_sign", "sign_source": "advisor", "fields": list(SIGN_FIELD_NAMES)},
+    "S0": {"name": "S0_neutral_sign", "sign_source": "neutral", "fields": [], "expected_hinge_sign_injection": "pre_attention"},
+    "S1": {"name": "S1_oracle_sign", "sign_source": "oracle", "fields": list(SIGN_FIELD_NAMES), "expected_hinge_sign_injection": "pre_attention"},
+    "S2": {"name": "S2_advisor_sign", "sign_source": "advisor", "fields": list(SIGN_FIELD_NAMES), "expected_hinge_sign_injection": "pre_attention"},
     "O_TORSO": {"name": "O_TORSO_oracle_facing_only", "sign_source": "oracle",
-                "fields": ["torso_facing"]},
+                "fields": ["torso_facing"], "expected_hinge_sign_injection": "pre_attention"},
     "O_BILATERAL": {"name": "O_BILATERAL_oracle_forward_depth_only", "sign_source": "oracle",
-                    "fields": list(_BILATERAL_FIELDS)},
+                    "fields": list(_BILATERAL_FIELDS), "expected_hinge_sign_injection": "pre_attention"},
     "O_HINGE": {"name": "O_HINGE_oracle_bend_only", "sign_source": "oracle",
-                "fields": list(_HINGE_FIELDS)},
+                "fields": list(_HINGE_FIELDS), "expected_hinge_sign_injection": "pre_attention"},
     "O_ORIENTATION": {"name": "O_ORIENTATION_oracle_facing_and_forward_depth",
                       "sign_source": "oracle",
-                      "fields": ["torso_facing"] + list(_BILATERAL_FIELDS)},
+                      "fields": ["torso_facing"] + list(_BILATERAL_FIELDS), "expected_hinge_sign_injection": "pre_attention"},
     # Leave-one-field-out reads of the successful groups: a field is not shown
     # necessary by the group containing it having worked.
     "O_SHOULDER": {"name": "O_SHOULDER_oracle_shoulder_depth_only", "sign_source": "oracle",
-                   "fields": ["shoulder_forward_depth"]},
+                   "fields": ["shoulder_forward_depth"], "expected_hinge_sign_injection": "pre_attention"},
     "O_HIP": {"name": "O_HIP_oracle_hip_depth_only", "sign_source": "oracle",
-              "fields": ["hip_forward_depth"]},
+              "fields": ["hip_forward_depth"], "expected_hinge_sign_injection": "pre_attention"},
     "O_ELBOWS": {"name": "O_ELBOWS_oracle_elbow_bend_only", "sign_source": "oracle",
-                 "fields": ["left_elbow_forward_bend", "right_elbow_forward_bend"]},
+                 "fields": ["left_elbow_forward_bend", "right_elbow_forward_bend"], "expected_hinge_sign_injection": "pre_attention"},
     "O_KNEES": {"name": "O_KNEES_oracle_knee_bend_only", "sign_source": "oracle",
-                "fields": ["left_knee_forward_bend", "right_knee_forward_bend"]},
+                "fields": ["left_knee_forward_bend", "right_knee_forward_bend"], "expected_hinge_sign_injection": "pre_attention"},
     "O_LEFT_ELBOW": {"name": "O_LEFT_ELBOW_oracle", "sign_source": "oracle",
-                     "fields": ["left_elbow_forward_bend"]},
+                     "fields": ["left_elbow_forward_bend"], "expected_hinge_sign_injection": "pre_attention"},
     "O_RIGHT_ELBOW": {"name": "O_RIGHT_ELBOW_oracle", "sign_source": "oracle",
-                      "fields": ["right_elbow_forward_bend"]},
+                      "fields": ["right_elbow_forward_bend"], "expected_hinge_sign_injection": "pre_attention"},
     "O_LEFT_KNEE": {"name": "O_LEFT_KNEE_oracle", "sign_source": "oracle",
-                    "fields": ["left_knee_forward_bend"]},
+                    "fields": ["left_knee_forward_bend"], "expected_hinge_sign_injection": "pre_attention"},
     "O_RIGHT_KNEE": {"name": "O_RIGHT_KNEE_oracle", "sign_source": "oracle",
-                     "fields": ["right_knee_forward_bend"]},
+                     "fields": ["right_knee_forward_bend"], "expected_hinge_sign_injection": "pre_attention"},
     # Direct 3-of-4 leave-one-out from the successful O_HINGE set. Necessity of
     # a field can only be read from removing it from a set that works.
     "H_NO_LEFT_ELBOW": {"name": "H_NO_LEFT_ELBOW_oracle", "sign_source": "oracle",
                         "fields": [name for name in _HINGE_FIELDS
-                                   if name != "left_elbow_forward_bend"]},
+                                   if name != "left_elbow_forward_bend"], "expected_hinge_sign_injection": "pre_attention"},
     "H_NO_RIGHT_ELBOW": {"name": "H_NO_RIGHT_ELBOW_oracle", "sign_source": "oracle",
                          "fields": [name for name in _HINGE_FIELDS
-                                    if name != "right_elbow_forward_bend"]},
+                                    if name != "right_elbow_forward_bend"], "expected_hinge_sign_injection": "pre_attention"},
     "H_NO_LEFT_KNEE": {"name": "H_NO_LEFT_KNEE_oracle", "sign_source": "oracle",
                        "fields": [name for name in _HINGE_FIELDS
-                                  if name != "left_knee_forward_bend"]},
+                                  if name != "left_knee_forward_bend"], "expected_hinge_sign_injection": "pre_attention"},
     "H_NO_RIGHT_KNEE": {"name": "H_NO_RIGHT_KNEE_oracle", "sign_source": "oracle",
                         "fields": [name for name in _HINGE_FIELDS
-                                   if name != "right_knee_forward_bend"]},
+                                   if name != "right_knee_forward_bend"], "expected_hinge_sign_injection": "pre_attention"},
     # docs/32's conditional local-hinge topology candidates. Same fields as
-    # their H_*/O_HINGE counterparts; run these with
-    # --hinge-sign-injection post_attention. Never run with the default
-    # pre_attention topology -- that would just reproduce O_HINGE/H_NO_*.
+    # their H_*/O_HINGE counterparts, but a different conditioning topology --
+    # which `expected_hinge_sign_injection` now binds to the candidate identity,
+    # so running one of these under pre_attention (which would just reproduce
+    # O_HINGE/H_NO_*) is refused rather than silently mislabelled.
     "L_HINGE": {"name": "L_HINGE_oracle_bend_only_post_attention", "sign_source": "oracle",
-                "fields": list(_HINGE_FIELDS)},
+                "fields": list(_HINGE_FIELDS), "expected_hinge_sign_injection": "post_attention"},
     "L_NO_LEFT_KNEE": {"name": "L_NO_LEFT_KNEE_oracle_post_attention", "sign_source": "oracle",
-                       "fields": [name for name in _HINGE_FIELDS if name != "left_knee_forward_bend"]},
+                       "fields": [name for name in _HINGE_FIELDS if name != "left_knee_forward_bend"], "expected_hinge_sign_injection": "post_attention"},
     "L_NO_RIGHT_KNEE": {"name": "L_NO_RIGHT_KNEE_oracle_post_attention", "sign_source": "oracle",
-                        "fields": [name for name in _HINGE_FIELDS if name != "right_knee_forward_bend"]},
+                        "fields": [name for name in _HINGE_FIELDS if name != "right_knee_forward_bend"], "expected_hinge_sign_injection": "post_attention"},
     "L_NO_RIGHT_ELBOW": {"name": "L_NO_RIGHT_ELBOW_oracle_post_attention", "sign_source": "oracle",
-                         "fields": [name for name in _HINGE_FIELDS if name != "right_elbow_forward_bend"]},
-    "L_NEUTRAL": {"name": "L_NEUTRAL_post_attention", "sign_source": "neutral", "fields": []},
+                         "fields": [name for name in _HINGE_FIELDS if name != "right_elbow_forward_bend"], "expected_hinge_sign_injection": "post_attention"},
+    "L_NEUTRAL": {"name": "L_NEUTRAL_post_attention", "sign_source": "neutral", "fields": [], "expected_hinge_sign_injection": "post_attention"},
 }
+
+def require_topology_match(key: str, requested: str) -> str:
+    """Candidate identity and conditioning topology must not drift apart.
+
+    A global CLI switch alone would permit conceptually invalid runs such as
+    ``L_HINGE`` under ``pre_attention`` (which is just O_HINGE) or ``O_HINGE``
+    under ``post_attention`` (which is not the historical O_HINGE at all), and
+    either would be filed under a name whose measured lineage says something
+    different. docs/33 Section 2 binds the topology to the candidate instead.
+    """
+    if key not in CANDIDATES:
+        raise ValueError(f"unknown candidate {key!r} (known: {sorted(CANDIDATES)})")
+    expected = CANDIDATES[key]["expected_hinge_sign_injection"]
+    if requested != expected:
+        raise ValueError(
+            f"candidate {key!r} declares expected_hinge_sign_injection={expected!r} but the run "
+            f"requested {requested!r}; refusing rather than filing a result under "
+            "a candidate identity whose topology it does not have")
+    return expected
+
 
 COMPARISON_SEMANTICS = {
     "S1_vs_S0": ("capacity-matched: same graph, same parameter count, same seed; the only "
@@ -183,6 +204,7 @@ def main() -> int:
     reports: dict[str, dict] = {}
     for key in [item.strip() for item in args.candidates.split(",") if item.strip()]:
         definition = CANDIDATES[key]
+        require_topology_match(key, args.hinge_sign_injection)
         config = CandidateConfig(
             name=definition["name"], backbone="none", sign_source=definition["sign_source"],
             loss_contract="baseline_geometry_v1", epochs=args.epochs, batch_size=args.batch_size,
@@ -210,6 +232,7 @@ def main() -> int:
             "active_sign_fields": definition["fields"],
             "inactive_sign_fields": [name for name in SIGN_FIELD_NAMES if name not in definition["fields"]],
             "sign_source": definition["sign_source"],
+            "expected_hinge_sign_injection": definition["expected_hinge_sign_injection"],
             "config": config.to_dict(), "model": training["model"],
             "sign": training["sign"], "selection": training["selection"],
             "performance": training["performance"], "execution": training["execution"],

@@ -885,3 +885,93 @@ def test_corrected_influence_matrix_is_deterministic_and_self_describing(bank, t
         "left_elbow_forward_bend", "right_elbow_forward_bend",
         "left_knee_forward_bend", "right_knee_forward_bend",
     }
+
+
+# ------------------------------------------- candidate/topology identity ----
+
+def _load_script(module_name: str, relative: str):
+    import importlib.util
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    sys.path.insert(0, str(root / "src"))
+    sys.path.insert(0, str(root / "scripts"))
+    try:
+        spec = importlib.util.spec_from_file_location(module_name, root / relative)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    finally:
+        sys.path.pop(0)
+        sys.path.pop(0)
+    return module
+
+
+def test_every_candidate_binds_its_conditioning_topology():
+    """docs/33 Section 2: a candidate name that does not carry its own
+    conditioning topology can be reproduced under the wrong one and filed as if
+    it were the historical result."""
+    module = _load_script("run_sign_experiments", "scripts/run_sign_experiments.py")
+
+    for key, definition in module.CANDIDATES.items():
+        assert definition["expected_hinge_sign_injection"] in ("pre_attention", "post_attention"), key
+        # The topology is a property of the candidate, not of the run.
+        assert module.require_topology_match(
+            key, definition["expected_hinge_sign_injection"]) == definition["expected_hinge_sign_injection"]
+
+    # Every historical candidate is pre_attention; every docs/32 local-hinge
+    # candidate is post_attention. Those are the only two lineages that exist.
+    for key in module.CANDIDATES:
+        expected = "post_attention" if key.startswith("L_") else "pre_attention"
+        assert module.CANDIDATES[key]["expected_hinge_sign_injection"] == expected, key
+
+
+def test_runner_refuses_a_candidate_under_the_wrong_topology():
+    module = _load_script("run_sign_experiments", "scripts/run_sign_experiments.py")
+
+    # The two concrete confusions the DIRECTION names.
+    with pytest.raises(ValueError, match="refusing rather than filing a result"):
+        module.require_topology_match("L_HINGE", "pre_attention")
+    with pytest.raises(ValueError, match="refusing rather than filing a result"):
+        module.require_topology_match("O_HINGE", "post_attention")
+    # And an unknown key is refused rather than defaulted.
+    with pytest.raises(ValueError, match="unknown candidate"):
+        module.require_topology_match("NOT_A_CANDIDATE", "pre_attention")
+
+
+def test_influence_diagnostic_verifies_checkpoint_identity_not_the_cli_label():
+    """The probe must not trust `NAME=PATH` alone: the checkpoint's own stored
+    candidate name and conditioning topology have to agree with the CANDIDATES
+    contract used to build its baseline sign state."""
+    module = _load_script("diagnose_sign_influence", "scripts/diagnose_sign_influence.py")
+
+    # An honest post_attention checkpoint filed under its own name verifies.
+    good = {"candidate": {"name": "L_HINGE_oracle_bend_only_post_attention"},
+            "model_config": {"hinge_sign_injection": "post_attention"}}
+    identity = module.verify_checkpoint_identity("L_HINGE", good)
+    assert identity["identity_verified"] is True
+    assert identity["hinge_sign_injection"] == "post_attention"
+    assert identity["stored_candidate_name"] == identity["contract_candidate_name"]
+
+    # A pre_attention checkpoint presented as L_HINGE is refused: that is
+    # exactly O_HINGE's topology wearing docs/32's name.
+    wrong_topology = {"candidate": {"name": "L_HINGE_oracle_bend_only_post_attention"},
+                      "model_config": {"hinge_sign_injection": "pre_attention"}}
+    with pytest.raises(ValueError, match="refusing to report a topology"):
+        module.verify_checkpoint_identity("L_HINGE", wrong_topology)
+
+    # One candidate's weights may not be attributed to another candidate.
+    wrong_name = {"candidate": {"name": "O_HINGE_oracle_bend_only"},
+                  "model_config": {"hinge_sign_injection": "post_attention"}}
+    with pytest.raises(ValueError, match="refusing to attribute one candidate"):
+        module.verify_checkpoint_identity("L_HINGE", wrong_name)
+
+    # Checkpoints written before the topology field existed are pre_attention
+    # by construction, so they still verify against a pre_attention contract...
+    legacy = {"candidate": {"name": "O_HINGE_oracle_bend_only"}, "model_config": {}}
+    assert module.verify_checkpoint_identity("O_HINGE", legacy)["hinge_sign_injection"] == "pre_attention"
+    # ...and are refused against a post_attention one.
+    legacy_as_local = {"candidate": {"name": "L_HINGE_oracle_bend_only_post_attention"},
+                       "model_config": {}}
+    with pytest.raises(ValueError, match="refusing to report a topology"):
+        module.verify_checkpoint_identity("L_HINGE", legacy_as_local)

@@ -65,6 +65,36 @@ def active_fields_for(name: str) -> list[str]:
     return list(CANDIDATES[name]["fields"])
 
 
+def verify_checkpoint_identity(name: str, payload: dict) -> dict:
+    """Check that the checkpoint agrees with the contract it is filed under.
+
+    docs/33 Section 2: the CLI label alone is not evidence. A checkpoint's own
+    stored candidate name and conditioning topology must both match the
+    CANDIDATES entry being used to build its baseline sign state, or the
+    diagnostic is measuring one thing and reporting it as another.
+    """
+    contract = CANDIDATES[name]
+    stored_candidate = dict(payload.get("candidate") or {})
+    stored_model = dict(payload.get("model_config") or {})
+    # Checkpoints trained before the topology switch existed carry no field;
+    # they were all trained with the historical pre-attention injection.
+    stored_topology = stored_model.get("hinge_sign_injection",
+                                       stored_candidate.get("hinge_sign_injection", "pre_attention"))
+    expected_topology = contract["expected_hinge_sign_injection"]
+    stored_name = stored_candidate.get("name")
+    if stored_name is not None and stored_name != contract["name"]:
+        raise ValueError(
+            f"checkpoint filed as {name!r} stores candidate name {stored_name!r} but the contract "
+            f"declares {contract['name']!r}; refusing to attribute one candidate's weights to another")
+    if stored_topology != expected_topology:
+        raise ValueError(
+            f"checkpoint filed as {name!r} was trained with hinge_sign_injection={stored_topology!r} "
+            f"but the contract declares {expected_topology!r}; refusing to report a topology the "
+            "weights do not have")
+    return {"stored_candidate_name": stored_name, "contract_candidate_name": contract["name"],
+            "hinge_sign_injection": stored_topology, "identity_verified": True}
+
+
 def _chain_joints(field: str) -> tuple[str, ...]:
     joint = field[: -len("_forward_bend")]
     return HINGE_CHAINS_BY_JOINT[joint]
@@ -125,7 +155,8 @@ def main() -> int:
         active_fields = active_fields_for(name)
         active_hinge_fields = [field for field in HINGE_FIELDS if field in active_fields]
 
-        model, _ = load_checkpoint(path, device=str(device))
+        model, payload = load_checkpoint(path, device=str(device))
+        identity = verify_checkpoint_identity(name, payload)
         model.eval()
         geometry_batch = torch.as_tensor(geometry[positions], device=device)
         base_signs = mask_fields(oracle[positions], active_fields).astype(np.int64)
@@ -135,7 +166,7 @@ def main() -> int:
 
         if not active_hinge_fields:
             report["checkpoints"][name] = {
-                "path": path, "active_sign_fields": active_fields,
+                "path": path, "active_sign_fields": active_fields, "identity": identity,
                 "note": "no active hinge field for this checkpoint; primary in-distribution probe has nothing to toggle",
                 "fields": {},
             }
@@ -197,7 +228,8 @@ def main() -> int:
                         for q in (50, 90, 99)},
                 },
             }
-        report["checkpoints"][name] = {"path": path, "active_sign_fields": active_fields, "fields": per_field}
+        report["checkpoints"][name] = {"path": path, "active_sign_fields": active_fields,
+                                       "identity": identity, "fields": per_field}
 
     args.out.mkdir(parents=True, exist_ok=True)
     write_json(args.out / "sign_influence.json", report)

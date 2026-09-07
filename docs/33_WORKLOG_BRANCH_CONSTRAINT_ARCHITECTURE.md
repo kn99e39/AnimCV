@@ -313,9 +313,11 @@ prediction whose geometry is sub-threshold. `hip_forward_depth` is worst
 predicted depth separation falls under the 0.01 m stability floor far more
 often than the shoulders' does (5.4%).
 
-Only 1 frame in 7,076 hit the hinge singularity (the limb axis within 0.1 of
-the camera depth axis) — the analytically exposed degeneracy is real but
-almost never binding on this data.
+Exactly **one** field-frame out of the 23,083 requested hinge field-frames hit
+the analytic singularity (the limb axis within 0.1 of the camera depth axis).
+The degeneracy the closed form exposes is real and is refused correctly, but it
+is almost never binding on this data — the practical limit is the contract's
+readability floor, not the singularity.
 
 ## 14. Real-frame review
 
@@ -339,10 +341,12 @@ corrected XYZ of every moved joint. Two representative rows:
     right_hip       dXYZ_mm=[0.0,  +21.255, 0.0]
 ```
 
-Every `dXYZ_mm` has **exactly 0.0 in X and Z**. The screen-space-preservation
-and depth-only guarantees are not only proven synthetically; they hold
-verbatim on real 3DPW frames. The bilateral exchange is visibly
-midpoint-symmetric (`−96.226`/`+96.226`).
+Each variant's export is an even subsample of the frames the constraint
+actually touched and spans **18-21 distinct 3DPW sequences**. Across every
+exported row of every variant, the number of moved joints whose X or Z changed
+is **zero**. The screen-space-preservation and depth-only guarantees are not
+only proven synthetically; they hold verbatim on real frames. The bilateral
+exchange is visibly midpoint-symmetric (`-96.226`/`+96.226`).
 
 ## 15. Classification: **D — mixed**, decomposed
 
@@ -406,9 +410,10 @@ under an oracle sign, not a shipped feature.
 | `scripts/diagnose_sign_influence.py` | `verify_checkpoint_identity` |
 | `/output/framepose/branch_constraint_v3/` | replay report, review export, per-variant corrected predictions |
 
-Two independent full replays (`branch_constraint_v1`, `_v2`) produced
-byte-identical aggregates; `_v3` adds the corrected review sampling. The
-operator is deterministic.
+Three independent full replays (`branch_constraint_v1`, `_v2`, `_v3`) produced
+**byte-identical aggregates**; `_v2` added the unresolved decomposition and
+`_v3` the corrected review sampling, neither of which changed a single metric.
+The operator is deterministic. `_v3` is the canonical output.
 
 ## 18. The completion question
 

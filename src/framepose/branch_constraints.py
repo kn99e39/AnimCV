@@ -306,6 +306,12 @@ def coverage(reports: Sequence[dict[str, Any]]) -> dict[str, Any]:
         # Counted from the requested sign itself, NOT from the outcome buckets,
         # so the identity below is a real cross-check rather than a tautology.
         requested = 0
+        # An unresolved field means two very different things: the Core's own
+        # output carried NO readable branch for the constraint to reflect
+        # (`unreadable_prediction`), or it carried the opposite branch and the
+        # declared correction still could not install the requested one
+        # (`correction_failed`). Only the second is a failure of the operator.
+        unresolved_before = {"unreadable_prediction": 0, "opposite_branch": 0, "other": 0}
         for report in reports:
             entry = report["fields"].get(field)
             if entry is None:
@@ -316,6 +322,13 @@ def coverage(reports: Sequence[dict[str, Any]]) -> dict[str, Any]:
             counts[entry["outcome"]] += 1
             if entry["outcome"] == UNRESOLVED:
                 reasons[entry.get("reason", "unspecified")] = reasons.get(entry.get("reason", "unspecified"), 0) + 1
+                before = entry.get("read_back_before")
+                if before == UNKNOWN:
+                    unresolved_before["unreadable_prediction"] += 1
+                elif before is not None and before == -int(entry["requested"]):
+                    unresolved_before["opposite_branch"] += 1
+                else:
+                    unresolved_before["other"] += 1
         resolved_buckets = counts[ALREADY_SATISFIED] + counts[CORRECTED] + counts[UNRESOLVED]
         identity = (requested == resolved_buckets
                     and present == requested + counts[NOT_REQUESTED])
@@ -325,6 +338,7 @@ def coverage(reports: Sequence[dict[str, Any]]) -> dict[str, Any]:
             "already_satisfied": counts[ALREADY_SATISFIED],
             "corrected": counts[CORRECTED],
             "unresolved": counts[UNRESOLVED],
+            "unresolved_by_prediction_state": unresolved_before,
             "unknown_or_not_requested": counts[NOT_REQUESTED],
             "outcome_bucket_total": resolved_buckets,
             "coverage_identity_holds": bool(identity),

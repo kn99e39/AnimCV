@@ -354,3 +354,21 @@ def test_branch_constraint_replay_runs_over_a_stored_prediction(tmp_path, monkey
     assert set(report["wrong_sign_control"]) == set(module.VARIANTS) - {"C0"}
     for value in report["wrong_sign_control"].values():
         assert value["endpoints"] == ["oracle", "opposite_oracle"]
+
+
+def test_unresolved_is_split_by_what_the_prediction_actually_said():
+    """An unresolved field where the Core produced no readable branch is not
+    the same failure as one where it produced the opposite branch and the
+    correction could not install the requested one."""
+    from framepose.branch_constraints import UNRESOLVED, coverage
+
+    reports = [
+        {"fields": {"left_knee_forward_bend": {
+            "outcome": UNRESOLVED, "requested": -1, "read_back_before": UNKNOWN}}},
+        {"fields": {"left_knee_forward_bend": {
+            "outcome": UNRESOLVED, "requested": -1, "read_back_before": POSITIVE}}},
+        {"fields": {"left_knee_forward_bend": {
+            "outcome": UNRESOLVED, "requested": -1, "read_back_before": POSITIVE}}},
+    ]
+    split = coverage(reports)["fields"]["left_knee_forward_bend"]["unresolved_by_prediction_state"]
+    assert split == {"unreadable_prediction": 1, "opposite_branch": 2, "other": 0}

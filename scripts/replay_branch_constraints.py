@@ -93,7 +93,13 @@ def _requested(oracle: np.ndarray, fields: list[str], *, invert: bool) -> np.nda
 def _review_rows(bank, positions, original, corrected, reports, requested, limit: int):
     """Real frames a human can check, not aggregate numbers."""
     rows = []
-    for order in range(len(positions)):
+    # Stride across the split rather than taking the first N frames: a review
+    # export drawn from one sequence says nothing about the other sequences.
+    order_sequence = (range(len(positions)) if limit >= len(positions)
+                      else np.unique(np.floor(np.arange(limit * 12) * (len(positions) / (limit * 12)))
+                                     .astype(np.int64)))
+    for order in order_sequence:
+        order = int(order)
         report = reports[order]
         touched = {field: entry for field, entry in report["fields"].items()
                    if entry["outcome"] in (CORRECTED, UNRESOLVED)}

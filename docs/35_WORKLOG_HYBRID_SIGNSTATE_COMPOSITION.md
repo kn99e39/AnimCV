@@ -167,3 +167,170 @@ three different continuous-pose sources, including two whose global depth and
 orientation geometry the learned channel has already changed substantially.
 The hinge mechanism is **not source-dependent**, and the benefit does not
 disappear once the bilateral channel is present.
+
+## 9. What enforcement does to the *historical* metric
+
+The Sign Contract's one-bit Y branch and the full-3D hinge metric are different
+predicates, so enforcing the contract can move the metric either way. docs/34
+measured one direction only (branch satisfied, metric still flipped). Both are
+now counted, over the chain-frames the constraint actually corrected:
+
+| source | fixed | broken | stayed flipped | stayed fine |
+|---|---|---|---|---|
+| `S0` | 211 | 6 | 11 | 1,160 |
+| `O_HIP` | 192 | 6 | 14 | 1,372 |
+| `O_BILATERAL` | **175** | **7** | 4 | 1,204 |
+
+**Enforcement fixes the historical metric 25× more often than it breaks it**,
+and the magnitudes are asymmetric in the same direction: a fixed chain improves
+by 63–81° on average, a broken one worsens by 58–68°. The "the contract called
+it wrong but the 3D metric was already right" case is real — it is the mirror
+of docs/34's outcome B — but it is 7 of 1,390 corrected chain-frames (0.5%).
+
+## 10. Residual hinge attribution on the hybrid
+
+Same decomposition as docs/34, rebuilt on `H1_BILATERAL_HINGE`:
+
+| cause of a residual flip | over `S0` | over `O_BILATERAL` |
+|---|---|---|
+| oracle never requested a branch | 161 (55.7%) | 138 (49.5%) |
+| requested, prediction unreadable | 79 (27.3%) | 58 (20.8%) |
+| **Y sign satisfied, full-3D still flipped** | 49 (17.0%) | **83 (29.7%)** |
+| total residual flips | 289 | 279 |
+
+As the upstream continuous geometry improves, the *unreadable* and
+*never-requested* failures shrink (79→58, 161→138) and the residual becomes
+increasingly dominated by the **one-bit incompleteness**, which rises from 17.0%
+to 29.7% of all residual flips. In absolute terms it also grows (49→83), because
+more chains are now readable and satisfied at all — `already_satisfied` rises
+20,242 → 20,345 and every per-field satisfied rate improves.
+
+**This is the architecturally significant part:** the known Sign Contract limit
+does not shrink as the Core gets better — it becomes proportionally *more* of
+what is left. The contract is unchanged in this batch, as directed, and the
+limit stays visible.
+
+## 11. Wrong-hinge-sign endpoint: damage is local
+
+Opposite-oracle hinge signs, learned bilateral input unchanged:
+
+| source | root yaw° (H0 → wrong) | flip | hinge MAE° | MPJPE mm |
+|---|---|---|---|---|
+| `S0` | 10.920 → **10.920** | 0.5449 | 94.224 | 97.182 |
+| `O_HIP` | 8.261 → **8.261** | 0.5455 | 93.613 | 95.440 |
+| `O_BILATERAL` | 7.999 → **7.999** | 0.5429 | 93.838 | 93.561 |
+
+The structural property holds exactly: **catastrophically wrong hinge advice
+does not touch the learned channel at all.** Root yaw, both depth residuals and
+all three non-hinge sign agreements are bit-identical to `H0` — the replay
+asserts this for the wrong-sign endpoint with the same exact-equality contract
+it uses for the hybrid, and it passed on all three sources.
+
+Meanwhile hinge quality collapses (flip 1.2% → 54.3%, MAE 22.1° → 93.8°) and
+MPJPE rises ~14 mm. Local damage, global safety. No corruption sweep was run.
+
+## 12. A measured pathology of the frozen operator
+
+The review surfaced a correction of **+3,108 mm** — the limb was nearly
+parallel to the camera depth axis, so the closed form
+`δ = −2·o_y·|a|²/(a_x²+a_z²)` exploded while still passing the operator's
+`sqrt(f) ≥ 0.1` guard (which permits amplification up to 200×). That frame's
+MPJPE went 60.0 → 252.1 mm and its hinge error 21.0° → 123.5°.
+
+Distribution of |δY| over the 1,390 corrected chain-frames (`O_BILATERAL`):
+
+| p50 | p90 | p99 | p99.9 | max |
+|---|---|---|---|---|
+| 62.0 mm | 191.6 mm | 430.8 mm | 1,756.9 mm | 3,108.4 mm |
+
+`> 200 mm`: 126 (9.1%). `> 500 mm`: 12 (0.86%). `> 1 m`: 6 (0.43%). `> 2 m`: 1.
+
+docs/33 counted only the *refused* singular cases (1 frame in 23,083). The
+near-singular-but-not-refused cases are the dangerous ones, and they are the
+main reason the elbows pay MPJPE in Section 7. **The operator was not changed**
+— its mathematics and threshold are frozen by directive — so this is recorded
+as a measured, bounded defect for a future batch to decide on.
+
+## 13. Real-frame review
+
+`hybrid_signstate_review.json`, six buckets, each subsampled evenly across
+qualifying frames (16–18 distinct 3DPW sequences per bucket):
+
+| bucket | rows | example |
+|---|---|---|
+| `hinge_corrected_by_hybrid` | 25 | `downtown_arguing_00#000300` right elbow, −1→+1, δY +122.6 mm, hinge 94.7°→**15.6°** |
+| `branch_corrected_but_position_worsened` | 25 | `#000220` left elbow, δY +121.8 mm, hinge 26.3°→30.5° |
+| `y_sign_satisfied_but_still_full_3d_flipped` | 25 | `downtown_bar_00#000339` left elbow, +1 read back +1, hinge **105.2°** unchanged, δY 0 |
+| `contract_called_it_wrong_but_the_3d_metric_did_not` | **7** | `downtown_cafe_00#000375` δY **+3,108 mm**, hinge 21.0°→123.5° |
+| `requested_but_unresolved` | 25 | `#000075` left knee, requested −1, prediction reads UNKNOWN, δY 0 |
+| `opposite_sign_catastrophic_bend` | 25 | `#000000` right elbow, δY −72.9 mm, hinge 14.3°→**136.5°** |
+
+Each row carries `sample_id`, sequence, frame index, source image path,
+requested sign, read-back before/after, moved joint, δY, source and hybrid XYZ,
+full-3D hinge error before/after and frame MPJPE before/after. No VLM was used.
+
+## 14. Classification: **A — hybrid supported**
+
+- **Learned bilateral metrics preserved** — exactly, on all three sources, at
+  both sign endpoints, verified on the real predictions and not merely from
+  code structure.
+- **Explicit hinge constraint adds material benefit after the best learned
+  bilateral mechanism is already present** — −38.6% relative flip, −1.97°
+  hinge MAE, and it transfers across three different continuous-pose sources.
+- **Continuous position cost far below the learned hinge-conditioning
+  alternatives** — +0.137 mm against `O_HINGE`'s +1.464 mm and `L_HINGE`'s
+  +2.134 mm, i.e. roughly **11× and 16× cheaper** for a larger branch gain.
+
+`H1_BILATERAL_HINGE` is the best pose this programme has measured: root yaw
+7.999°, hinge flip 0.0116, hinge MAE 22.129°, MPJPE 79.366 mm.
+
+## 15. Architecture, and what remains open
+
+The evidence now supports closing AnimCV's **SignState integration
+architecture** as:
+
+```
+sign source  -> discrete signs only
+bilateral    -> learned conditioning        (owns orientation + depth magnitude)
+hinge        -> explicit branch constraint  (owns the four local bend branches)
+```
+
+This is no longer a per-channel hypothesis. The two mechanisms were composed on
+the same continuous pose and each preserved the other's benefit exactly.
+
+**Not promoted, and not turned on by default.** Every sign used here is an
+oracle. **Architecture closure is not sensor validation, and sensor validation
+remains entirely open** — no sensor was chosen, built, or evaluated in this
+batch or any previous one. The wrong-sign endpoints show both channels are
+high-authority: a wrong hinge sign is locally catastrophic even though it
+cannot reach the learned channel.
+
+Three measured limits stay visible and unrepaired by directive: the one-bit
+hinge sign's incompleteness (now 29.7% of residual flips), the near-singular
+δY tail (Section 12), and the depth-magnitude exclusion that caps the bilateral
+constraint (docs/34, carried in its bounded form).
+
+## 16. Tests and environment
+
+12 focused tests in `tests/test_frame_pose_hybrid_composition.py`: source
+identity binding and parse-level refusals (wrong candidate, wrong frame count,
+wrong regime, wrong shape), `unverifiable_in_source_schema` for the missing
+split field, the ownership boundary (only hinge middles, only the depth axis,
+refusal otherwise), exact-equality bilateral preservation including a 1e-9
+drift being rejected, the enforcement-effect accounting, and an end-to-end
+replay asserting ownership, preservation at both endpoints, cross-table
+completeness and bit-exact determinism across two runs.
+
+Shared production code was added (`src/framepose/replay_provenance.py`), so full
+regression was run at closure: **487 passed, 40 skipped**.
+
+`hybrid_signstate_v1` and `_v2` produce identical aggregates; `_v2` adds the
+enforcement-effect accounting and the corrected review sampling. **docs/33's
+`C_HINGE_ALL` is reproduced byte-identically** by the hybrid path
+(`34045891fb544928…`), so the new code changed nothing about the historical
+result.
+
+LabServer63, `animcv-framepose:cuda118`, repo mounted read-only. No GPU work,
+no training, no model execution.
+
+**STOP.** No sign sensor is chosen here.

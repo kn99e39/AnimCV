@@ -305,3 +305,32 @@ def test_shoulder_dependency_aware_preserves_elbow_bends_and_exposes_attachment_
         frame[JOINT_INDEX[f"{side}_shoulder"]] - frame[JOINT_INDEX["thorax"]])
     assert any(abs(attachment(corrected, side) - attachment(pose, side)) > 1e-9
                for side in ("left", "right"))
+
+
+def test_replay_declares_validity_regimes_and_per_variant_write_policy():
+    import importlib.util
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    sys.path.insert(0, str(root / "src"))
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "replay_branch_constraints", root / "scripts" / "replay_branch_constraints.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    finally:
+        sys.path.pop(0)
+
+    assert module.VALIDITY_SOURCES == {"V_ORACLE": "target_valid", "V_OBSERVED": "input_valid"}
+    # Historical variants keep the anchor-only policy; the DEP pair is the new one.
+    assert module.VARIANTS["C_HIP"]["policy"] == ANCHOR_ONLY
+    assert module.VARIANTS["C_BILATERAL"]["policy"] == ANCHOR_ONLY
+    assert module.VARIANTS["C_HIP_DEP"]["policy"] == DEPENDENCY_AWARE
+    assert module.VARIANTS["C_BILATERAL_DEP"]["policy"] == DEPENDENCY_AWARE
+    # A DEP variant constrains exactly the same fields as its historical twin,
+    # so the only variable between them is the write policy.
+    assert module.VARIANTS["C_HIP_DEP"]["fields"] == module.VARIANTS["C_HIP"]["fields"]
+    assert module.VARIANTS["C_BILATERAL_DEP"]["fields"] == module.VARIANTS["C_BILATERAL"]["fields"]
+    # The frozen hinge variant is unaffected by any bilateral policy.
+    assert all(name.endswith("_forward_bend") for name in module.VARIANTS["C_HINGE_ALL"]["fields"])

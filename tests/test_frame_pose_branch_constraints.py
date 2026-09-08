@@ -297,6 +297,7 @@ def test_branch_constraint_replay_runs_over_a_stored_prediction(tmp_path, monkey
     The replay must not train, must leave C0 bit-identical, and must produce a
     coverage identity that holds for every field of every variant.
     """
+    import hashlib
     import importlib.util
     import json
     import sys
@@ -336,13 +337,22 @@ def test_branch_constraint_replay_runs_over_a_stored_prediction(tmp_path, monkey
 
     report = json.loads((out / "branch_constraint_replay.json").read_text())
     assert report["schema"] == module.SCHEMA
+    # Provenance binds the exact bytes and the bank-derived regime, not labels.
+    provenance = report["provenance"]
+    assert provenance["source_prediction"]["sha256"] == hashlib.sha256(
+        prediction_path.read_bytes()).hexdigest()
+    assert provenance["source_prediction"]["bytes"] == prediction_path.stat().st_size
+    assert provenance["observation_regime"] == built.regime()
+    assert provenance["constraint_validity_source"] == "target_valid"
+    assert provenance["constraint_validity_regime"] == "V_ORACLE"
+    assert provenance["bank_content_digest"] == built.content_digest()
     assert set(report["variants"]) == set(module.VARIANTS)
     # C0 is an exact no-op: identical aggregate to the untouched baseline.
     assert report["variants"]["C0"]["evaluation"] == report["baseline"]
     assert report["variants"]["C0"]["displacement_mm"]["max"] == 0.0
     # torso_facing has no declared correction and must appear in no variant.
     for definition in module.VARIANTS.values():
-        assert "torso_facing" not in definition
+        assert "torso_facing" not in definition["fields"]
     for name, value in report["variants"].items():
         for field, entry in value["coverage"].items():
             assert entry["coverage_identity_holds"], (name, field)

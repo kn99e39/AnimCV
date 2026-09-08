@@ -217,3 +217,111 @@ inferred from aggregate sign agreement — the collateral is 100% concentrated i
 the fields whose read set intersects the write set, with no leakage anywhere
 else. Section 8's gate is therefore passed, and the dependency-aware operator
 was implemented.
+
+## 10. The dependency-aware bilateral operator
+
+Implemented as a **write policy** on the existing operator, not as a new
+operator: `bilateral_write_policy` defaults to `anchor_only`, so every docs/33
+result stays reproducible bit-for-bit. The historical pair swap is unmodified,
+and the hinge operator is untouched under either policy.
+
+Exact mathematics. With anchors `L`, `R` and their predicted depths `y_L`,
+`y_R`:
+
+```
+delta_L = y_R - y_L            delta_R = -delta_L = y_L - y_R
+```
+
+Under `anchor_only` those deltas are applied to `L` and `R`. Under
+`dependency_aware` each delta is additionally applied, **unchanged**, to the
+limb chain that anchor is the proximal joint of:
+
+```
+left_shoulder  delta -> left_shoulder,  left_elbow, left_wrist
+right_shoulder delta -> right_shoulder, right_elbow, right_wrist
+left_hip       delta -> left_hip,  left_knee,  left_ankle
+right_hip      delta -> right_hip, right_knee, right_ankle
+```
+
+No magnitude is introduced: the delta is exactly the anchor correction the
+bilateral branch already required. The chain is translated rigidly in depth, so
+every within-chain difference is unchanged.
+
+### Preserved exactly (all pinned by test, `atol=1e-12`)
+
+every joint X · every joint Z · pair depth midpoint · `|D|` · proximal-middle
+and middle-distal relative XYZ · the chain's `bend_direction` **numerically** ·
+its hinge SignState · internal limb bone lengths · idempotence · determinism ·
+UNKNOWN and already-correct exact no-ops · everything outside the two
+translated chains.
+
+### NOT preserved, and measured rather than claimed
+
+The anchor's attachment to the torso. Reported per variant: thorax→shoulder
+mean |Δ| 0.78/0.82 mm (p95 5.0 mm, max 105-147 mm) on a ~227 mm segment;
+pelvis→hip mean |Δ| 0.16 mm (p95 0.00 mm, max 21 mm) on a ~101 mm segment.
+These are identical under both write policies — the attachment cost belongs to
+moving the anchor at all, which `anchor_only` already paid.
+
+### Causal teeth
+
+A test asserts that on the *same* fixture the historical pair swap **destroys
+both** dependent knee signs (−1,+1 → 0,0) and visibly moves both bend
+directions, so the preservation test cannot pass on a fixture where nothing was
+at risk.
+
+## 11. Real replay (7,076 test frames, oracle signs, no training)
+
+Same stored `S0_neutral_sign` prediction lineage as docs/33
+(SHA-256 `4357c7bd…`).
+
+| variant | root yaw° | shldr res mm | hip res mm | flip | hinge MAE° | MPJPE mm | PA-MPJPE mm |
+|---|---|---|---|---|---|---|---|
+| S0 baseline / `C0` | 10.920 | 3.790 | 2.587 | 0.0212 | 24.819 | 81.976 | 56.852 |
+| `C_HIP` (anchor-only) | 10.424 | 3.790 | 2.348 | 0.0219 | 24.913 | 81.910 | 56.857 |
+| **`C_HIP_DEP`** | **10.424** | **3.790** | **2.348** | **0.0212** | **24.819** | **81.870** | 56.865 |
+| `C_BILATERAL` (anchor-only) | 9.777 | 5.094 | 2.348 | 0.0239 | 25.297 | 81.726 | 56.947 |
+| **`C_BILATERAL_DEP`** | **9.777** | **5.094** | **2.348** | **0.0212** | **24.819** | **81.192** | **56.565** |
+
+The dependency-aware variants deliver **exactly the same bilateral benefit** as
+their anchor-only twins — identical yaw, identical residuals, the same 578 and
+253 corrections — while the hinge columns snap back to the **baseline to the
+last digit**. Sign agreement confirms it field by field: under
+`C_BILATERAL_DEP` all four hinge fields are bit-identical to `C0`
+(0.8672 / 0.8680 / 0.9005 / 0.8756), against `C_BILATERAL`'s degraded
+0.8644 / 0.8538 / 0.8988 / 0.8749.
+
+And the continuous cost is **negative**: MPJPE 81.192 vs the baseline's 81.976
+(−0.78 mm) and PA-MPJPE 56.565 vs 56.852 (−0.29 mm), better than the
+anchor-only variant on both. Carrying the limb along with its anchor is not
+merely safer for the sign semantics — it is a better prediction.
+
+Moved joints per constrained frame: `C_BILATERAL` 2.39, `C_BILATERAL_DEP`
+7.16. Total introduced depth displacement: 83,087 mm vs 249,260 mm. The
+dependency-aware operator moves **3× as much geometry**, and this is stated
+rather than hidden — it is exactly why its wrong-sign endpoint is worse
+(Section 13).
+
+## 12. Against learned bilateral conditioning
+
+| approach | root yaw° | Δ yaw | shldr res mm | hip res mm | flip | MPJPE mm |
+|---|---|---|---|---|---|---|
+| S0 baseline | 10.920 | — | 3.790 | 2.587 | 0.0212 | 81.976 |
+| `C_HIP_DEP` (constraint) | 10.424 | −0.50 | 3.790 | 2.348 | 0.0212 | 81.870 |
+| `O_HIP` (learned) | **8.261** | **−2.66** | 5.699 | **−0.064** | 0.0202 | **80.418** |
+| `C_BILATERAL_DEP` (constraint) | 9.777 | −1.14 | 5.094 | 2.348 | 0.0212 | 81.192 |
+| `O_BILATERAL` (learned) | **7.999** | **−2.92** | **2.208** | **0.479** | **0.0189** | **79.229** |
+
+The dependency-aware constraint captures **39% of the learned yaw gain**
+(1.14° of 2.92°) and **29% of the learned MPJPE gain**. On the depth residuals
+it barely moves: hip 2.587 → 2.348 (−9%) against the learned −81%, and the
+shoulder residual gets **worse** (3.790 → 5.094).
+
+That last row is not a defect of the write policy — it is a **Sign Contract
+expressiveness limit**, and the contract says so itself: `depth magnitude` is
+listed under `excluded_by_contract`. The exchange preserves `|D|` **exactly**
+by construction, so a sign-only constraint can install the correct near/far
+branch but can never correct a wrong separation *magnitude* — and when the
+predicted magnitude is wrong, installing the correct sign with the wrong
+magnitude can increase the signed residual. Learned conditioning is under no
+such restriction, which is precisely where the remaining gap lives.

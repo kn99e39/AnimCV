@@ -37,7 +37,8 @@ from common.canonical_pose import FORWARD_DEPTH_AXIS, JOINT_INDEX, hinge_errors
 from common.serialization import write_json
 from framepose.bank import load_bank
 from framepose.branch_constraints import (
-    BRANCH_CONSTRAINT_SCHEMA, CORRECTED, UNRESOLVED, apply_branch_constraints_batch, coverage,
+    BRANCH_CONSTRAINT_SCHEMA, CORRECTED, DEPTH_ONLY, HINGE_WRITE_POLICIES, UNRESOLVED,
+    apply_branch_constraints_batch, coverage,
 )
 from framepose.contract import JOINT_NAMES
 from framepose.evaluate import evaluate_predictions
@@ -86,8 +87,16 @@ def _summary(evaluation: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _assert_ownership(before: np.ndarray, after: np.ndarray) -> dict[str, Any]:
-    """Only the four hinge middle joints may differ, and only in depth."""
+def _assert_ownership(before: np.ndarray, after: np.ndarray,
+                      depth_only: bool = True) -> dict[str, Any]:
+    """Only the four hinge middle joints may differ.
+
+    Under the historical depth-only policy the write is additionally confined
+    to the depth axis. The minimum-norm policy writes in the plane
+    perpendicular to the limb axis, so it moves X and Z too -- the joint-level
+    ownership boundary is the one both must satisfy, and it is the one the
+    bilateral channel depends on.
+    """
     moved = np.flatnonzero((before != after).any(axis=(0, 2)))
     illegal = sorted(set(moved.tolist()) - set(HINGE_MIDDLE_INDICES))
     if illegal:
@@ -96,13 +105,13 @@ def _assert_ownership(before: np.ndarray, after: np.ndarray) -> dict[str, Any]:
             "the ownership abstraction is violated and this replay is refused")
     axis_moved = [axis for axis in range(3)
                   if axis != FORWARD_DEPTH_AXIS and not np.array_equal(before[..., axis], after[..., axis])]
-    if axis_moved:
+    if axis_moved and depth_only:
         raise ValueError(f"hinge constraint moved non-depth axes {axis_moved}; refused")
     return {
         "moved_joints": [JOINT_NAMES[index] for index in moved.tolist()],
         "permitted_joints": [JOINT_NAMES[index] for index in HINGE_MIDDLE_INDICES],
         "wrote_only_permitted_joints": True,
-        "wrote_only_the_depth_axis": True,
+        "wrote_only_the_depth_axis": not axis_moved,
         "frames_with_any_write": int((before != after).any(axis=(1, 2)).sum()),
     }
 
@@ -308,6 +317,8 @@ def main() -> int:
     parser.add_argument("--split", default="test")
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--review-frames", type=int, default=25)
+    parser.add_argument("--hinge-write-policy", default=DEPTH_ONLY, choices=list(HINGE_WRITE_POLICIES),
+                        help="depth_only is docs/33's frozen operator and the default")
     args = parser.parse_args()
 
     args.out.mkdir(parents=True, exist_ok=True)
@@ -329,6 +340,7 @@ def main() -> int:
                    "execution, no bilateral output-space constraint, no sensor"),
         "sign_source": "oracle hinge signs (upper bound; not a sensor result)",
         "hinge_fields": list(HINGE_FIELDS),
+        "hinge_write_policy": args.hinge_write_policy,
         "bilateral_channel": "learned conditioning, untouched",
         "provenance": {"bank_index": str(args.bank),
                        "bank_content_digest": bank.content_digest(),
@@ -355,9 +367,10 @@ def main() -> int:
         base_eval = evaluate_predictions(bank, positions, before, candidate=f"H0_{label}")
         base_summary = _summary(base_eval)
 
-        after, reports = apply_branch_constraints_batch(before, valid, requested,
-                                                        fields=list(HINGE_FIELDS))
-        ownership = _assert_ownership(before, after)
+        after, reports = apply_branch_constraints_batch(
+            before, valid, requested, fields=list(HINGE_FIELDS),
+            hinge_write_policy=args.hinge_write_policy)
+        ownership = _assert_ownership(before, after, depth_only=args.hinge_write_policy == DEPTH_ONLY)
         hybrid_eval = evaluate_predictions(bank, positions, after, candidate=f"H1_{label}_HINGE")
         hybrid_summary = _summary(hybrid_eval)
         preservation = _assert_bilateral_preserved(base_summary, hybrid_summary)
@@ -366,21 +379,37 @@ def main() -> int:
         flipped, error = _hinge_arrays(after, targets, valid)
         after_signs = np.stack([sign_state(after[order], valid[order]) for order in range(len(after))])
 
-        wrong, wrong_reports = apply_branch_constraints_batch(before, valid, opposite,
-                                                              fields=list(HINGE_FIELDS))
-        _assert_ownership(before, wrong)
+        wrong, wrong_reports = apply_branch_constraints_batch(
+            before, valid, opposite, fields=list(HINGE_FIELDS),
+            hinge_write_policy=args.hinge_write_policy)
+        _assert_ownership(before, wrong, depth_only=args.hinge_write_policy == DEPTH_ONLY)
         wrong_eval = evaluate_predictions(bank, positions, wrong, candidate=f"H1_{label}_HINGE_opposite")
         wrong_summary = _summary(wrong_eval)
         # The structural claim the wrong-sign endpoint must demonstrate: bad
         # hinge advice stays local and cannot reach the learned channel.
         wrong_preservation = _assert_bilateral_preserved(base_summary, wrong_summary)
 
+        displacement = after - before
+        moved = np.linalg.norm(displacement, axis=-1) > 0
+        norms = np.linalg.norm(displacement, axis=-1)[moved] * 1000.0
+        corrections = {
+            "count": int(moved.sum()),
+            "norm_mm": {**{f"p{q}": float(np.percentile(norms, q)) for q in (50, 90, 99, 99.9)},
+                        "max": float(norms.max()) if norms.size else 0.0,
+                        "mean": float(norms.mean()) if norms.size else 0.0},
+            **{f"abs_delta_{name}_mm": {
+                **{f"p{q}": float(np.percentile(np.abs(displacement[..., axis])[moved] * 1000.0, q))
+                   for q in (50, 90, 99, 99.9)},
+                "max": float((np.abs(displacement[..., axis])[moved] * 1000.0).max()) if norms.size else 0.0}
+               for axis, name in ((0, "x"), (FORWARD_DEPTH_AXIS, "y"), (2, "z"))},
+        }
         np.save(args.out / f"prediction_{args.split}_H1_{label}_HINGE.npy", after.astype(np.float32))
         report["sources"][label] = {
             "candidate": candidate,
             "H0": base_summary,
             "H1": hybrid_summary,
             "ownership": ownership,
+            "correction_distribution": corrections,
             "bilateral_preservation": preservation,
             "coverage": coverage(reports)["fields"],
             "requested_branch_satisfied_rate": {

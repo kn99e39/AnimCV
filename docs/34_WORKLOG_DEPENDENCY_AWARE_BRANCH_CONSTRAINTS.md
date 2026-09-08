@@ -304,13 +304,17 @@ rather than hidden — it is exactly why its wrong-sign endpoint is worse
 
 ## 12. Against learned bilateral conditioning
 
-| approach | root yaw° | Δ yaw | shldr res mm | hip res mm | flip | MPJPE mm |
-|---|---|---|---|---|---|---|
-| S0 baseline | 10.920 | — | 3.790 | 2.587 | 0.0212 | 81.976 |
-| `C_HIP_DEP` (constraint) | 10.424 | −0.50 | 3.790 | 2.348 | 0.0212 | 81.870 |
-| `O_HIP` (learned) | **8.261** | **−2.66** | 5.699 | **−0.064** | 0.0202 | **80.418** |
-| `C_BILATERAL_DEP` (constraint) | 9.777 | −1.14 | 5.094 | 2.348 | 0.0212 | 81.192 |
-| `O_BILATERAL` (learned) | **7.999** | **−2.92** | **2.208** | **0.479** | **0.0189** | **79.229** |
+| approach | root yaw° | yaw P95° | Δ yaw | shldr res mm | hip res mm | flip | MPJPE mm |
+|---|---|---|---|---|---|---|---|
+| S0 baseline | 10.920 | 28.670 | — | 3.790 | 2.587 | 0.0212 | 81.976 |
+| `C_HIP_DEP` (constraint) | 10.424 | 26.184 | −0.50 | 3.790 | 2.348 | 0.0212 | 81.870 |
+| `O_HIP` (learned) | **8.261** | **19.535** | **−2.66** | 5.699 | **−0.064** | 0.0202 | **80.418** |
+| `C_BILATERAL_DEP` (constraint) | 9.777 | 24.306 | −1.14 | 5.094 | 2.348 | 0.0212 | 81.192 |
+| `O_BILATERAL` (learned) | **7.999** | **18.645** | **−2.92** | **2.208** | **0.479** | **0.0189** | **79.229** |
+
+The yaw tail tells the same story as the mean: the constraint moves P95 from
+28.67° to 24.31° (−4.36°), the learned candidate to 18.65° (−10.03°) — again
+about 43% of the learned gain.
 
 The dependency-aware constraint captures **39% of the learned yaw gain**
 (1.14° of 2.92°) and **29% of the learned MPJPE gain**. On the depth residuals

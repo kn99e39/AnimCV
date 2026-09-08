@@ -188,14 +188,18 @@ def main() -> int:
             screen_mismatch = bool(screen_predicted and screen_target and screen_predicted != screen_target)
             axis_normalized_flip = transport["axis_normalized_flipped"]
 
-            if screen_mismatch and not axis_normalized_flip:
+            # "The axis is substantially different" is operationalized without a
+            # threshold: the axis is implicated exactly when aligning the two
+            # limb axes is enough to remove the >90-degree flip.
+            axis_implicated = not axis_normalized_flip
+            if screen_mismatch and not axis_implicated:
                 kind = "A_screen_side_mismatch"
-            elif axis_normalized_flip and not screen_mismatch:
+            elif axis_implicated and not screen_mismatch:
                 kind = "B_axis_geometry_mismatch"
-            elif screen_mismatch and axis_normalized_flip:
+            elif screen_mismatch and axis_implicated:
                 kind = "C_both"
             else:
-                kind = "D_other"
+                kind = "D_unexplained"
             classification[kind] += 1
             ownership_totals[kind] += 1
 
@@ -225,6 +229,8 @@ def main() -> int:
                 "historical_hinge_error_degrees": transport["historical_error_degrees"],
                 "axis_normalized_hinge_error_degrees": transport["axis_normalized_error_degrees"],
                 "axis_normalized_flipped": bool(axis_normalized_flip),
+                "axis_implicated": bool(axis_implicated),
+                "screen_implicated": bool(screen_mismatch),
                 "source_middle_xyz_m": [round(float(v), 5) for v in before[order, middle]],
                 "corrected_middle_xyz_m": [round(float(v), 5) for v in after[order, middle]],
                 "input_2d_chain": [[round(float(v), 5) for v in observation[order][i][:2]]
@@ -233,7 +239,7 @@ def main() -> int:
             residual.append(record)
             if depth_ok and screen_mismatch and len(review["depth_correct_but_screen_side_wrong"]) < args.review_frames:
                 review["depth_correct_but_screen_side_wrong"].append(record)
-            if depth_ok and not screen_mismatch and len(review["both_sides_correct_but_still_flipped"]) < args.review_frames:
+            if depth_ok and not screen_mismatch and axis_normalized_flip and len(review["both_sides_correct_but_still_flipped"]) < args.review_frames:
                 review["both_sides_correct_but_still_flipped"].append(record)
             if len(review["large_axis_angle_error"]) < args.review_frames and transport["axis_angle_degrees"] > 45.0:
                 review["large_axis_angle_error"].append(record)

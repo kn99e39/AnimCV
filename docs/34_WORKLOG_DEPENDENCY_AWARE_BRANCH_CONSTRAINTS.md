@@ -49,3 +49,55 @@ That is **not established** and is treated here as a hypothesis. The tested
 bilateral operator moved the anchor joints and left the limb geometry that
 depends on them behind — a **write-policy** fault before it is an abstraction
 fault. Distinguishing the two is the point of this batch.
+
+## 4. Replay provenance hardening
+
+The docs/33 replay validated the prediction's *shape*, accepted a
+caller-supplied source-candidate label, and **hard-coded** the regime string.
+Every new replay artifact now records, in a `provenance` block:
+
+| recorded | value on this run |
+|---|---|
+| source prediction SHA-256 | `4357c7bd…` |
+| source prediction bytes | 1,443,632 |
+| source evaluation digest | `evaluation_test.json` of the same S0 run |
+| bank content digest | `75519e63…` |
+| **observation regime** | `benchmark_detector_observation`, from `FrameBank.regime()` — **derived, never hard-coded** |
+| source candidate / split | `S0_neutral_sign` / `test` |
+| constraint schema | `animcv_frame_pose_branch_constraint_v1` |
+| constraint validity source | see Section 5 |
+| bilateral write policy | per variant |
+
+Historical `branch_constraint_v3` is untouched; this batch writes a new
+lineage (`branch_constraint_dep_v1`, `constraint_attribution_v*`).
+
+## 5. Validity provenance, and the applicability control
+
+docs/33 applied constraints under `target_valid`. That is GT-side validity
+semantics — acceptable for an oracle architecture upper bound, but **not
+production-validity evidence**, and it is now recorded explicitly as
+`constraint_validity_source: target_valid`.
+
+Two regimes were run, changing **only** the mask the correction and read-back
+path sees:
+
+| regime | mask |
+|---|---|
+| `V_ORACLE` | `target_valid` |
+| `V_OBSERVED` | `input_valid` |
+
+The oracle *request* is always built from `target_valid` in both, because it is
+ground truth by definition and rebuilding it would confound applicability with
+a different requested-sign distribution.
+
+**On this bank the two masks are bit-identical.** `bank_3dpw_paired_v2` is a
+paired construction, and on the 7,076-frame `test` split
+`np.array_equal(input_valid, target_valid)` is `True` (both 94.77% valid, both
+4,240 all-joints-valid frames, zero frames differing). So the applicability
+control returns identical numbers, and docs/33's use of `target_valid` gave it
+no GT-side advantage **on this data**.
+
+That is a property of this bank, not a general guarantee. The control is now a
+one-flag rerun for any future bank where the two masks diverge, and the
+provenance block records `validity_identical_to_target_valid` so a future run
+cannot quietly inherit this batch's coincidence.

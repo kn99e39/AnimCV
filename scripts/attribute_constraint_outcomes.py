@@ -112,7 +112,19 @@ def _residual_hinge_attribution(bank, positions, original, corrected, reports, r
         buckets: dict[str, list[float]] = {}
         for order in range(len(corrected)):
             want = int(requested[order, index])
+            state_before = int(base_flipped[order, column])
             if want == UNKNOWN:
+                # No branch was requested for this chain at all (the oracle
+                # itself is degenerate here). A residual flip in this bucket is
+                # not something any constraint declined to fix -- it was never
+                # asked about -- and pooling it with the rest would overstate
+                # what enforcement left behind.
+                state = int(flipped[order, column])
+                key = ("not_requested|not_requested|"
+                       + {1: "flipped", 0: "not_flipped", -1: "metric_unavailable"}[state])
+                cross[key] += 1
+                totals[key] += 1
+                buckets.setdefault(key, []).append(float(error[order, column]))
                 continue
             outcome = reports[order]["fields"][field]["outcome"]
             satisfied = "satisfied" if int(after_signs[order, index]) == want else "not_satisfied"
@@ -139,8 +151,13 @@ def _residual_hinge_attribution(bank, positions, original, corrected, reports, r
             "error_by_bucket": {key: _bucket_stats(np.asarray(values))
                                 for key, values in sorted(buckets.items())},
             "satisfied_and_flipped": sum(count for key, count in cross.items()
-                                         if key.endswith("|satisfied|flipped")),
+                                         if key.endswith("|satisfied|flipped")
+                                         and not key.startswith("not_requested")),
             "flipped_total": sum(count for key, count in cross.items() if key.endswith("|flipped")),
+            "flipped_in_requested_frames": sum(
+                count for key, count in cross.items()
+                if key.endswith("|flipped") and not key.startswith("not_requested")),
+            "flipped_in_unrequested_frames": cross.get("not_requested|not_requested|flipped", 0),
         }
     return {
         "axes": ["constraint_outcome", "requested_sign_satisfaction", "historical_hinge_flip"],

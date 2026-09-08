@@ -176,15 +176,59 @@ def _cross_table(reports, requested, after_signs, flipped, error):
     return {"pooled_cross_table": dict(sorted(pooled.items())), "per_field": per_field}
 
 
+def _enforcement_effect(reports, requested, base_flipped, base_error, flipped, error):
+    """What enforcement did to the HISTORICAL metric, chain-frame by chain-frame.
+
+    The Sign Contract's one-bit Y branch and the full-3D hinge metric are not
+    the same predicate, so enforcing the contract can move the metric either
+    way. docs/34 measured one direction (the branch is satisfied and the metric
+    still says flipped). This measures the other: the contract called the
+    branch wrong, the constraint dutifully flipped it, and the metric -- which
+    was already content -- got worse.
+    """
+    from collections import Counter
+
+    result: dict[str, Any] = {}
+    for column, field in enumerate(HINGE_FIELDS):
+        index = SIGN_FIELD_NAMES.index(field)
+        counts, deltas = Counter(), {}
+        for order in range(len(reports)):
+            if int(requested[order, index]) == UNKNOWN:
+                continue
+            if reports[order]["fields"][field]["outcome"] != CORRECTED:
+                continue
+            was, now = int(base_flipped[order, column]), int(flipped[order, column])
+            if was < 0 or now < 0:
+                counts["metric_unavailable"] += 1
+                continue
+            key = {(1, 0): "fixed_by_enforcement", (0, 1): "broken_by_enforcement",
+                   (1, 1): "stayed_flipped", (0, 0): "stayed_not_flipped"}[(was, now)]
+            counts[key] += 1
+            deltas.setdefault(key, []).append(float(error[order, column] - base_error[order, column]))
+        result[field] = {
+            "counts": dict(sorted(counts.items())),
+            "mean_error_change_degrees": {key: float(np.mean(values))
+                                          for key, values in sorted(deltas.items())},
+        }
+    pooled = Counter()
+    for entry in result.values():
+        pooled.update(entry["counts"])
+    return {"per_field": result, "pooled": dict(sorted(pooled.items()))}
+
+
 def _review(bank, positions, before, after, reports, requested, targets, valid,
-            base_flipped, base_error, flipped, error, limit):
+            base_flipped, base_error, flipped, error, limit, wrong=None,
+            wrong_flipped=None, wrong_error=None):
     """Frames a human can check, bucketed by the question each one answers."""
     buckets: dict[str, list[dict[str, Any]]] = {
         "hinge_corrected_by_hybrid": [],
         "branch_corrected_but_position_worsened": [],
         "y_sign_satisfied_but_still_full_3d_flipped": [],
+        "contract_called_it_wrong_but_the_3d_metric_did_not": [],
         "requested_but_unresolved": [],
+        "opposite_sign_catastrophic_bend": [],
     }
+    candidates: dict[str, list[tuple[int, int]]] = {name: [] for name in buckets}
     after_signs = np.stack([sign_state(after[order], valid[order]) for order in range(len(after))])
     per_frame_error = lambda pose, order: float(np.linalg.norm(
         (pose[order][valid[order]] - targets[order][valid[order]]), axis=-1).mean() * 1000.0)
@@ -200,18 +244,37 @@ def _review(bank, positions, before, after, reports, requested, targets, valid,
             row = None
             if entry["outcome"] == CORRECTED and base_flipped[order, column] == 1 and flipped[order, column] == 0:
                 row = "hinge_corrected_by_hybrid"
+            elif entry["outcome"] == CORRECTED and base_flipped[order, column] == 0 and flipped[order, column] == 1:
+                row = "contract_called_it_wrong_but_the_3d_metric_did_not"
             elif entry["outcome"] == CORRECTED and per_frame_error(after, order) > per_frame_error(before, order):
                 row = "branch_corrected_but_position_worsened"
             elif satisfied and flipped[order, column] == 1:
                 row = "y_sign_satisfied_but_still_full_3d_flipped"
             elif entry["outcome"] == UNRESOLVED:
                 row = "requested_but_unresolved"
-            if row is None or len(buckets[row]) >= limit:
-                continue
+            if row is not None:
+                candidates[row].append((order, column))
+            if wrong is not None and wrong_flipped[order, column] == 1 and base_flipped[order, column] == 0:
+                candidates["opposite_sign_catastrophic_bend"].append((order, column))
+
+    # Subsample evenly across every qualifying frame rather than taking the
+    # first N, which would draw a whole bucket from one sequence.
+    for name, picks in candidates.items():
+        chosen = picks
+        if len(picks) > limit:
+            step = len(picks) / limit
+            chosen = [picks[int(np.floor(index * step))] for index in range(limit)]
+        for order, column in chosen:
+            field = HINGE_FIELDS[column]
+            index = SIGN_FIELD_NAMES.index(field)
+            entry = reports[order]["fields"][field]
+            want = int(requested[order, index])
             sample = bank.samples[int(positions[order])]
             joint = HINGE_JOINTS[column]
             middle = JOINT_INDEX[HINGE_CHAINS_BY_JOINT[joint][1]]
-            buckets[row].append({
+            target_pose = wrong if name == "opposite_sign_catastrophic_bend" else after
+            target_error = wrong_error if name == "opposite_sign_catastrophic_bend" else error
+            buckets[name].append({
                 "field": field,
                 "sample_id": sample.sample_id,
                 "sequence_id": sample.sequence_id,
@@ -223,14 +286,16 @@ def _review(bank, positions, before, after, reports, requested, targets, valid,
                 "read_back_after": entry.get("read_back_after", entry.get("read_back_after_attempt")),
                 "constraint_outcome": entry["outcome"],
                 "moved_joint": JOINT_NAMES[middle],
-                "depth_delta_mm": float((after[order, middle, FORWARD_DEPTH_AXIS]
+                "depth_delta_mm": float((target_pose[order, middle, FORWARD_DEPTH_AXIS]
                                          - before[order, middle, FORWARD_DEPTH_AXIS]) * 1000.0),
                 "source_xyz_m": [round(float(v), 5) for v in before[order, middle]],
-                "hybrid_xyz_m": [round(float(v), 5) for v in after[order, middle]],
+                "hybrid_xyz_m": [round(float(v), 5) for v in target_pose[order, middle]],
                 "full_3d_hinge_error_before": float(base_error[order, column]),
-                "full_3d_hinge_error_after": float(error[order, column]),
+                "full_3d_hinge_error_after": float(target_error[order, column]),
                 "frame_mpjpe_before_mm": per_frame_error(before, order),
-                "frame_mpjpe_after_mm": per_frame_error(after, order),
+                "frame_mpjpe_after_mm": per_frame_error(target_pose, order),
+                "note": ("opposite-oracle endpoint, not the hybrid"
+                         if name == "opposite_sign_catastrophic_bend" else None),
             })
     return buckets
 
@@ -324,6 +389,8 @@ def main() -> int:
                     if r["requested_branch_satisfied"][field] is not None]) else None)
                 for field in HINGE_FIELDS},
             "residual_hinge_attribution": _cross_table(reports, requested, after_signs, flipped, error),
+            "enforcement_effect_on_historical_metric": _enforcement_effect(
+                reports, requested, base_flipped, base_error, flipped, error),
             "wrong_sign_endpoint": {
                 "endpoints": ["oracle", "opposite_oracle"],
                 "evaluation": wrong_summary,
@@ -332,9 +399,11 @@ def main() -> int:
                                             for r in wrong_reports)),
             },
         }
+        wrong_flipped, wrong_error = _hinge_arrays(wrong, targets, valid)
         review["sources"][label] = _review(bank, positions, before, after, reports, requested,
                                            targets, valid, base_flipped, base_error, flipped, error,
-                                           args.review_frames)
+                                           args.review_frames, wrong=wrong,
+                                           wrong_flipped=wrong_flipped, wrong_error=wrong_error)
 
     write_json(args.out / "hybrid_signstate_replay.json", report)
     write_json(args.out / "hybrid_signstate_review.json", review)

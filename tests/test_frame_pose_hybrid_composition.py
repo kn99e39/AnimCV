@@ -248,3 +248,39 @@ def test_hybrid_replay_preserves_bilateral_and_is_deterministic(tmp_path, monkey
     monkeypatch.setattr(sys, "argv", argv)
     assert HYBRID.main() == 0
     np.testing.assert_array_equal(np.load(out / "prediction_test_H1_UNIT_HINGE.npy"), first)
+
+
+def test_enforcement_effect_separates_fixing_from_breaking_the_historical_metric():
+    """The one-bit branch and the full-3D metric are different predicates, so
+    enforcement can move the metric either way. Both directions are counted."""
+    from framepose.branch_constraints import ALREADY_SATISFIED, CORRECTED
+
+    field = "left_knee_forward_bend"
+    index = SIGN_FIELD_NAMES.index(field)
+    column = HYBRID.HINGE_JOINTS.index("left_knee")
+    frames = 5
+    reports = [{"fields": {name: {"outcome": CORRECTED if name == field else ALREADY_SATISFIED}
+                           for name in HYBRID.HINGE_FIELDS}} for _ in range(frames)]
+    requested = np.zeros((frames, len(SIGN_FIELD_NAMES)), dtype=np.int64)
+    requested[:, index] = 1
+    requested[4, index] = 0  # not requested: must be skipped entirely
+
+    base_flipped = np.zeros((frames, 4), dtype=np.int8)
+    flipped = np.zeros((frames, 4), dtype=np.int8)
+    base_flipped[0, column], flipped[0, column] = 1, 0   # fixed
+    base_flipped[1, column], flipped[1, column] = 0, 1   # broken
+    base_flipped[2, column], flipped[2, column] = 1, 1   # stayed flipped
+    base_flipped[3, column], flipped[3, column] = 0, 0   # stayed fine
+    base_error = np.full((frames, 4), 100.0)
+    error = np.full((frames, 4), 40.0)
+
+    result = HYBRID._enforcement_effect(reports, requested, base_flipped, base_error, flipped, error)
+    counts = result["per_field"][field]["counts"]
+    assert counts == {"broken_by_enforcement": 1, "fixed_by_enforcement": 1,
+                      "stayed_flipped": 1, "stayed_not_flipped": 1}
+    assert result["pooled"]["broken_by_enforcement"] == 1
+    # Only CORRECTED, requested chain-frames are counted -- never the other three
+    # fields, which were already satisfied, nor the unrequested frame.
+    assert sum(counts.values()) == 4
+    assert all(result["per_field"][other]["counts"] == {} for other in HYBRID.HINGE_FIELDS
+               if other != field)

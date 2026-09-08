@@ -101,3 +101,119 @@ That is a property of this bank, not a general guarantee. The control is now a
 one-flag rerun for any future bank where the two masks diverge, and the
 provenance block records `validity_identical_to_target_valid` so a future run
 cannot quietly inherit this batch's coincidence.
+
+## 6. Residual hinge flips: the exact cross-table
+
+Built from the **stored** `branch_constraint_v3/prediction_test_C_HINGE_ALL.npy`.
+The analysis recomputes the constraint and refuses to proceed unless the
+recompute is **byte-identical** to the stored artifact; it reproduced exactly,
+as did the stored `C_HIP` and `C_BILATERAL`.
+
+Axes: constraint outcome × requested-sign satisfaction × historical full-3D
+hinge flip. All four chains pooled, 28,304 chain-frames:
+
+| constraint outcome | sign | historical | count |
+|---|---|---|---|
+| already_satisfied | satisfied | not_flipped | 20,242 |
+| already_satisfied | satisfied | **flipped** | **32** |
+| corrected | satisfied | not_flipped | 1,371 |
+| corrected | satisfied | **flipped** | **17** |
+| unresolved | not_satisfied | not_flipped | 1,342 |
+| unresolved | not_satisfied | **flipped** | **79** |
+| not_requested | — | not_flipped | 1,851 |
+| not_requested | — | **flipped** | **161** |
+| not_requested | — | metric_unavailable | 3,209 |
+
+**289 residual flips**, decomposed:
+
+| cause | count | share |
+|---|---|---|
+| the oracle never requested a branch for this chain (its own sign is degenerate) | 161 | 55.7% |
+| requested, but the prediction was unreadable → `unresolved` | 79 | 27.3% |
+| **requested Y sign satisfied, and still historically flipped** | **49** | **17.0%** |
+
+## 7. Is the one-bit Y sign a complete hinge representation? **No — outcome B**
+
+49 chain-frames satisfy the requested `+Y` branch and are still counted as a
+full-3D hinge flip. Outcome **B** holds: the sign is useful but is **not** a
+complete representation of hinge orientation.
+
+The magnitude matters as much as the fact, and the error distributions separate
+the buckets cleanly:
+
+| bucket | n | mean error° | p90 error° |
+|---|---|---|---|
+| satisfied & flipped (left elbow) | 19 | **97.6** | 102.7 |
+| satisfied & flipped, corrected (left elbow) | 8 | **103.6** | 115.2 |
+| satisfied & flipped (left knee) | 3 | **98.7** | 101.9 |
+| satisfied & flipped, corrected (left knee) | 7 | **100.8** | 114.8 |
+| unresolved & flipped (left knee) | 37 | 133.5 | 166.0 |
+| not_requested & flipped (left knee) | 37 | 131.5 | 165.9 |
+| not_requested & flipped (left elbow) | 55 | 128.7 | 167.3 |
+
+The satisfied-but-flipped cases sit **just past the 90° threshold** (mean
+97-104°, p90 103-115°). The unreadable and never-requested cases are
+**near-antiparallel** (mean 129-133°, p90 166-167°). So the one-bit encoding
+pins the bend to the correct depth hemisphere and leaves a residual
+in-image-plane disagreement that only marginally crosses the metric's cut.
+
+Per field, satisfied-and-flipped: left elbow 27, right elbow 8, left knee 10,
+right knee 4. Sample IDs for all 49 are in
+`constraint_attribution_v2/constraint_attribution.json` under
+`satisfied_but_flipped_samples` — e.g. `3dpw:downtown_bar_00:actor0#000389`
+(left elbow, requested `+1`, read back `+1`, 103.7°).
+
+**The Sign Contract is not changed in this batch**, as directed. This is
+recorded as a measured limit of the current encoding.
+
+## 8. The machine-readable constraint dependency graph
+
+`src/framepose/constraint_graph.py`. `SignField.joints` is left alone: it is a
+routing/ownership property and, for a hinge field, names only the middle joint
+even though the sign is derived from proximal, middle and distal. The
+constraint relation is separate.
+
+Read sets are transcribed from the sign derivation functions and **pinned by
+test**: for every field, a joint outside its read set can never change it under
+large random perturbation, and every joint inside it can.
+
+| field | reads | writes (anchor_only) | downstream dependents |
+|---|---|---|---|
+| `shoulder_forward_depth` | left/right_shoulder | left/right_shoulder | `torso_facing`, both elbow bends |
+| `hip_forward_depth` | left/right_hip | left/right_hip | both knee bends |
+| `*_elbow/knee_forward_bend` | proximal, middle, distal | middle only | **none** |
+| `torso_facing` (no constraint) | pelvis, thorax, left/right_shoulder | — | — |
+
+Note `torso_facing` **reads four** joints though `SignField.joints` routes
+nine, and a hinge field **reads three** though it routes one. Using the routing
+property for constraint reasoning would have got both wrong.
+
+Under `dependency_aware` the four hinge dependents move from *at risk* to
+**preserved exactly** — a field is marked exactly preserved only when its whole
+read set rides a single displacement group, i.e. sees a rigid translation.
+`torso_facing` remains formally at risk under a shoulder write; separately, its
+sign **numerator** `cross(up, right)·ŷ = up_z·right_x − up_x·right_z` contains
+no Y at all, so a depth-only write can move it only through the unit
+normalization. That is pinned by its own test.
+
+## 9. Historical bilateral collateral, attributed
+
+Every collateral effect of the anchor-only pair swap lands **exactly** on the
+chains that hang from the moved anchor, and nowhere else:
+
+| variant | left elbow | right elbow | left knee | right knee |
+|---|---|---|---|---|
+| `C_SHOULDER` newly flipped | 14 | 43 | **0** | **0** |
+| `C_HIP` newly flipped | **0** | **0** | 13 | 5 |
+| `C_BILATERAL` newly flipped | 14 | 43 | 13 | 5 |
+
+Sign transitions tell the same story. `C_SHOULDER`: right elbow 83
+correct→incorrect against 4 incorrect→correct; left elbow 29 against 14. Knee
+chains: **exactly zero** changed, agreement bit-identical. `C_HIP` is the
+mirror image, and `C_BILATERAL` is the exact union of the two.
+
+This is the dependency-graph explanation confirmed quantitatively, not merely
+inferred from aggregate sign agreement — the collateral is 100% concentrated in
+the fields whose read set intersects the write set, with no leakage anywhere
+else. Section 8's gate is therefore passed, and the dependency-aware operator
+was implemented.

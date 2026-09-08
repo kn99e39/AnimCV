@@ -45,6 +45,9 @@ from typing import Any, Iterable, Sequence
 import numpy as np
 
 from common.canonical_pose import BILATERAL_DEPTH_NORMALIZATION, FORWARD_DEPTH_AXIS, JOINT_INDEX
+from framepose.constraint_graph import (
+    ANCHOR_ONLY, BILATERAL_DEPENDENT_CHAINS, DEPENDENCY_AWARE, WRITE_POLICIES,
+)
 from framepose.signs import (
     ALLOWED_VALUES, HINGE_CHAINS_BY_JOINT, SIGN_FIELD_COUNT, SIGN_FIELD_NAMES,
     STABLE_FORWARD_DEPTH_M, UNIT_FORWARD_EPSILON, UNKNOWN, sign_state,
@@ -99,12 +102,26 @@ def _validate(pose: np.ndarray, valid: np.ndarray, requested: np.ndarray):
     return pose, valid, requested.astype(np.int64)
 
 
-def _bilateral_correction(pose: np.ndarray, valid: np.ndarray, field: str):
+def _bilateral_correction(pose: np.ndarray, valid: np.ndarray, field: str,
+                          policy: str = ANCHOR_ONLY):
     """Exchange the pair's forward-depth offsets around their own midpoint.
 
-    Preserved exactly: every X and Z coordinate, the pair's depth midpoint,
-    |D| = |y_right - y_left| / sqrt(2), and every unrelated joint. Changed:
-    only which side of the pair owns the near branch.
+    Preserved exactly under both policies: every X and Z coordinate, the pair's
+    depth midpoint, |D| = |y_right - y_left| / sqrt(2), and every joint outside
+    the pair's own side. Changed: only which side of the pair owns the near
+    branch.
+
+    Under `anchor_only` (docs/33's operator, unchanged) exactly the two anchor
+    joints move. Under `dependency_aware` (docs/34) each anchor's *own* delta
+    is additionally applied to the limb chain that anchor is the proximal joint
+    of, so that chain is translated rigidly in depth. That is not a tuned
+    heuristic and introduces no magnitude of its own: the delta is exactly the
+    anchor correction the bilateral branch already requires. Because the whole
+    chain shares one delta, every within-chain difference -- and therefore the
+    chain's bend direction, its hinge SignState and its internal bone lengths
+    -- is preserved exactly. The cost the propagation does NOT avoid is the
+    anchor's attachment to the torso (thorax->shoulder, pelvis->hip), which is
+    measured separately rather than claimed.
     """
     left, right = _BILATERAL_PAIRS[field]
     left_index, right_index = JOINT_INDEX[left], JOINT_INDEX[right]
@@ -123,11 +140,26 @@ def _bilateral_correction(pose: np.ndarray, valid: np.ndarray, field: str):
                                  f"Contract's stability floor ({STABLE_FORWARD_DEPTH_M} m), so an "
                                  "exchange cannot produce a readable branch"),
                       "predicted_separation_m": separation, "joints": [left, right]}
+    left_delta = float(pose[right_index, FORWARD_DEPTH_AXIS] - pose[left_index, FORWARD_DEPTH_AXIS])
     corrected = pose.copy()
-    corrected[left_index, FORWARD_DEPTH_AXIS] = pose[right_index, FORWARD_DEPTH_AXIS]
-    corrected[right_index, FORWARD_DEPTH_AXIS] = pose[left_index, FORWARD_DEPTH_AXIS]
-    return corrected, {"operation": "forward-depth exchange about the pair midpoint",
-                       "predicted_separation_m": separation, "joints": [left, right]}
+    if policy == ANCHOR_ONLY:
+        moved = {left: left_delta, right: -left_delta}
+        operation = "forward-depth exchange about the pair midpoint"
+    else:
+        chains = BILATERAL_DEPENDENT_CHAINS[field]
+        moved = {joint: delta
+                 for anchor, delta in ((left, left_delta), (right, -left_delta))
+                 for joint in chains[anchor]}
+        operation = ("forward-depth exchange about the pair midpoint, with each anchor's own "
+                     "delta applied rigidly to the limb chain it anchors")
+    for joint, delta in moved.items():
+        corrected[JOINT_INDEX[joint], FORWARD_DEPTH_AXIS] = (
+            pose[JOINT_INDEX[joint], FORWARD_DEPTH_AXIS] + delta)
+    return corrected, {"operation": operation, "write_policy": policy,
+                       "predicted_separation_m": separation,
+                       "anchor_depth_delta_m": {left: left_delta, right: -left_delta},
+                       "translated_joints": sorted(moved, key=lambda name: JOINT_INDEX[name]),
+                       "joints": [left, right]}
 
 
 def _hinge_correction(pose: np.ndarray, valid: np.ndarray, field: str):
@@ -193,20 +225,26 @@ def _hinge_correction(pose: np.ndarray, valid: np.ndarray, field: str):
                        "joints": [proximal, middle, distal]}
 
 
-def _correction(pose: np.ndarray, valid: np.ndarray, field: str):
+def _correction(pose: np.ndarray, valid: np.ndarray, field: str, policy: str = ANCHOR_ONLY):
     if field in _BILATERAL_PAIRS:
-        return _bilateral_correction(pose, valid, field)
+        return _bilateral_correction(pose, valid, field, policy)
+    # The docs/33 hinge operator is frozen: no policy reaches it.
     return _hinge_correction(pose, valid, field)
 
 
 def apply_branch_constraints(pose: np.ndarray, valid: np.ndarray, requested: np.ndarray, *,
-                             fields: Iterable[str] | None = None) -> tuple[np.ndarray, dict[str, Any]]:
+                             fields: Iterable[str] | None = None,
+                             bilateral_write_policy: str = ANCHOR_ONLY,
+                             ) -> tuple[np.ndarray, dict[str, Any]]:
     """Enforce the requested branches on one predicted canonical pose.
 
     Returns `(corrected_pose, accounting)`. The pose is never modified in
     place, unrelated joints are never written, and every field's outcome is
     reported.
     """
+    if bilateral_write_policy not in WRITE_POLICIES:
+        raise ValueError(f"unknown bilateral write policy {bilateral_write_policy!r}; "
+                         f"known: {list(WRITE_POLICIES)}")
     pose, valid, requested = _validate(pose, valid, requested)
     selected = tuple(APPLICATION_ORDER) if fields is None else tuple(
         name for name in APPLICATION_ORDER if name in set(fields))
@@ -234,7 +272,7 @@ def apply_branch_constraints(pose: np.ndarray, valid: np.ndarray, requested: np.
         if before == want:
             accounting[field] = {"outcome": ALREADY_SATISFIED, "requested": want, "read_back_before": before}
             continue
-        candidate, detail = _correction(corrected, valid, field)
+        candidate, detail = _correction(corrected, valid, field, bilateral_write_policy)
         if candidate is None:
             accounting[field] = {"outcome": UNRESOLVED, "requested": want,
                                  "read_back_before": before, **detail}
@@ -263,6 +301,7 @@ def apply_branch_constraints(pose: np.ndarray, valid: np.ndarray, requested: np.
     displacement = np.linalg.norm(corrected - pose, axis=-1) * 1000.0
     return corrected, {
         "schema": BRANCH_CONSTRAINT_SCHEMA,
+        "bilateral_write_policy": bilateral_write_policy,
         "fields": accounting,
         "final_sign_state": {name: int(final_state[position])
                              for position, name in enumerate(SIGN_FIELD_NAMES)},
@@ -277,7 +316,8 @@ def apply_branch_constraints(pose: np.ndarray, valid: np.ndarray, requested: np.
 
 
 def apply_branch_constraints_batch(poses: np.ndarray, valid: np.ndarray, requested: np.ndarray, *,
-                                   fields: Iterable[str] | None = None):
+                                   fields: Iterable[str] | None = None,
+                                   bilateral_write_policy: str = ANCHOR_ONLY):
     """`apply_branch_constraints` over `(N, 17, 3)` predictions."""
     poses = np.asarray(poses, dtype=np.float64)
     if poses.ndim != 3:
@@ -286,7 +326,8 @@ def apply_branch_constraints_batch(poses: np.ndarray, valid: np.ndarray, request
     reports: list[dict[str, Any]] = []
     for index in range(len(poses)):
         frame, report = apply_branch_constraints(poses[index], valid[index], requested[index],
-                                                 fields=fields)
+                                                 fields=fields,
+                                                 bilateral_write_policy=bilateral_write_policy)
         corrected[index] = frame
         reports.append(report)
     return corrected, reports

@@ -133,6 +133,8 @@ def main() -> int:
         middle = JOINT_INDEX[chain[1]]
 
         residual: list[dict[str, Any]] = []
+        all_cross, flip_cross = [], []
+        all_target_screen_magnitude, flip_target_screen_magnitude = [], []
         all_observed, all_target_screen = [], []
         flip_observed, flip_target_screen = [], []
         type1_observed, type1_target = [], []
@@ -150,6 +152,9 @@ def main() -> int:
             if target_components is not None:
                 all_observed.append(observed["side"] if observed["resolved"] else 0)
                 all_target_screen.append(int(np.sign(target_components["c_screen"])))
+                all_target_screen_magnitude.append(abs(target_components["c_screen"]) * 1000.0)
+                if observed["cross"] is not None:
+                    all_cross.append(abs(observed["cross"]))
 
             transport = axis_transport(after[order], targets[order], chain)
             if not transport.get("resolved"):
@@ -196,6 +201,10 @@ def main() -> int:
 
             flip_observed.append(observed["side"] if observed["resolved"] else 0)
             flip_target_screen.append(screen_target)
+            if observed["cross"] is not None:
+                flip_cross.append(abs(observed["cross"]))
+            if target_components is not None:
+                flip_target_screen_magnitude.append(abs(target_components["c_screen"]) * 1000.0)
             sample = bank.samples[int(positions[order])]
             record = {
                 "field": field, "class": kind,
@@ -282,6 +291,15 @@ def main() -> int:
                 "type_2_corrections": _confusion(type2_observed, type2_target),
             },
             "unresolved_observed_side": int(sum(1 for value in all_observed if value == 0)),
+            "observed_line_side_magnitude": {
+                "all_frames": _quantiles(np.array(all_cross)),
+                "residual_flip_frames": _quantiles(np.array(flip_cross)),
+            },
+            "target_c_screen_magnitude_mm": {
+                "all_frames": _quantiles(np.array(all_target_screen_magnitude)),
+                "residual_flip_frames": _quantiles(np.array(flip_target_screen_magnitude)),
+            },
+            "residual_flip_records": residual,
             "minimum_norm_movement": movement,
         }
 

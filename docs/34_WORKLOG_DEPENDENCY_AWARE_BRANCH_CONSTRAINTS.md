@@ -417,3 +417,99 @@ Two caveats hold the promotion back, and nothing is promoted here:
   split.
 - The dependency-aware chain is the *anatomical* chain. Whether carrying the
   full chain is right for a rig with different topology is untested.
+
+## 17. Reproduction, tests and environment
+
+### The historical operator is provably undisturbed
+
+`C_HIP`, `C_BILATERAL` and `C_HINGE_ALL` recomputed under the new code are
+**byte-identical (SHA-256) to docs/33's `branch_constraint_v3` artifacts**.
+Adding `bilateral_write_policy` with an `anchor_only` default changed nothing
+about the historical result. The attribution script additionally *refuses to
+run* unless its recompute reproduces the stored artifact it claims to analyse.
+
+### Determinism and the validity control
+
+`branch_constraint_dep_v1`, `_V_ORACLE` and `_V_OBSERVED` produce byte-identical
+corrected predictions for every variant, and `V_ORACLE` vs `V_OBSERVED` are
+identical in **every** metric, variant and wrong-sign endpoint — the expected
+consequence of the two masks being bit-identical on this bank (Section 5). The
+per-field coverage identity `requested = already_satisfied + corrected +
+unresolved` holds everywhere in both.
+
+### Tests
+
+40 focused tests across three files, all passing; full regression **476 passed,
+40 skipped** at closure (shared production code was modified, so it was run).
+
+| test area | covers |
+|---|---|
+| read-set pinning | a joint outside a field's read set can never change it; every joint inside it can |
+| dependency graph | the stated read/write/dependent relation; hinge writes one joint under either policy |
+| torso_facing numerator | `cross(up,right)·ŷ` is exactly invariant to any depth-only write |
+| causal teeth | the pair swap really does destroy both dependent knee signs on the test fixture |
+| dependency-aware invariants | branch enforced; X/Z, midpoint, \|D\|, bend direction, hinge SignState, bone lengths preserved to 1e-12; one shared delta per side; nothing outside the chains moves |
+| no-ops / idempotence / determinism | UNKNOWN and already-correct are exact no-ops; second application is a no-op |
+| attachment cost | the operator does **not** claim to preserve it, and a test asserts it changes |
+| replay provenance | SHA-256/bytes of the source prediction, bank-derived regime, validity source, per-variant write policy |
+| policy refusal | an unknown write policy is refused, not defaulted |
+
+### Environment
+
+LabServer63, `animcv-framepose:cuda118`, repo mounted read-only. No GPU work,
+no training, no model execution of any kind — the replays run the operator over
+stored arrays and score them with the same `evaluate_predictions` used for every
+trained candidate.
+
+### Confirmation
+
+No sensor was chosen or built. No VLM was called. No prompt was written. No
+pose model was trained or fine-tuned. No Sign Contract threshold or variable
+was changed. No learned conditioning was modified. No attention topology was
+added. No displacement magnitude was tuned. No RGB, no GT XYZ magnitude, no
+temporal evidence was used.
+
+## 18. Completion
+
+> **Are the residual hinge flips caused only by unreadable geometry, or can the
+> historical full-3D hinge metric remain wrong even after the requested one-bit
+> Y branch is satisfied?**
+
+**It can remain wrong.** Of 289 residual flips: 161 (55.7%) are in chains the
+oracle never requested, 79 (27.3%) are unreadable predictions, and **49
+(17.0%) satisfy the requested Y branch and are still historically flipped**.
+The one-bit sign is useful but **not a complete representation of hinge
+orientation** — outcome **B**. Its incompleteness is marginal in magnitude: the
+satisfied-but-flipped cases sit at 97-104° mean error, barely past the 90° cut,
+while the unreadable and unrequested cases are near-antiparallel at 129-133°.
+The Sign Contract is left unchanged, as directed.
+
+> **Does dependency-aware anchor correction rescue bilateral hard constraints,
+> or is learned bilateral conditioning still necessary?**
+
+**Both halves have an answer, and they point in different directions.**
+
+*The abstraction was not the problem.* docs/33's "constraint good iff the field
+is a leaf" is **refuted**. The bilateral collateral was 100% a write-policy
+fault: carrying each anchor's limb chain by the anchor's own exact delta removes
+**all** of it — all four dependent hinge fields return to bit-identical baseline
+agreement — while delivering the identical bilateral benefit and *improving*
+MPJPE by 0.78 mm. An explicit constraint over an anchor is entirely viable.
+
+*But it is still not enough.* The repaired constraint captures only ~39% of
+learned conditioning's yaw gain (mean and P95 alike) and barely moves the depth
+residuals, because the Sign Contract deliberately excludes depth magnitude and
+the exchange preserves `|D|` exactly. What limits the bilateral channel is the
+**contract's expressiveness**, not the operator's write policy or its position
+in the dependency graph.
+
+So the supported architecture remains the **hybrid** — hinge by explicit
+constraint, bilateral by learned conditioning — and it is supported for a
+better-understood reason than docs/33 had: not because anchors resist
+constraints, but because a sign without a magnitude cannot fix a magnitude.
+
+**Nothing is promoted.** Both channels still rest on an oracle sign, both are
+catastrophically sensitive to a wrong one, and the combined system was never
+run.
+
+**STOP.** No sign sensor is chosen here.

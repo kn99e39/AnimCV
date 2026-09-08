@@ -125,7 +125,8 @@ def _summary(evaluation: dict[str, Any]) -> dict[str, Any]:
     def read(name):
         entry = aggregate.get(name)
         return None if entry is None else {"mean": entry["mean"], "median": entry["median"],
-                                           "p90": entry["p90"], "count": entry["count"]}
+                                           "p90": entry["p90"], "p95": entry["p95"],
+                                           "count": entry["count"]}
     return {"primary": {name: read(name) for name in PRIMARY},
             "guardrail": {name: read(name) for name in GUARDRAIL},
             "sign_agreement": evaluation.get("sign_agreement")}

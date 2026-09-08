@@ -325,3 +325,91 @@ branch but can never correct a wrong separation *magnitude* — and when the
 predicted magnitude is wrong, installing the correct sign with the wrong
 magnitude can increase the signed residual. Learned conditioning is under no
 such restriction, which is precisely where the remaining gap lives.
+
+## 13. Wrong-sign endpoint for the new operator (two endpoints, no sweep)
+
+The same operators, the **opposite** oracle branch requested:
+
+| variant | root yaw° | flip | hinge MAE° | MPJPE mm | PA-MPJPE mm |
+|---|---|---|---|---|---|
+| `C_HIP` | 39.401 | 0.0185 | 25.747 | 86.729 | 61.105 |
+| `C_HIP_DEP` | 39.401 | **0.0212** | **24.819** | **90.805** | 66.641 |
+| `C_BILATERAL` | 70.860 | 0.0498 | 34.417 | 103.124 | 80.947 |
+| `C_BILATERAL_DEP` | 70.860 | **0.0212** | **24.819** | **129.746** | 90.855 |
+
+A genuine two-sided trade-off, and the most important caveat on the new
+operator:
+
+- Under a wrong sign the dependency-aware policy still **protects the hinge
+  semantics perfectly** — all four hinge agreements stay bit-identical to the
+  baseline (0.8672 / 0.8680 / 0.9005 / 0.8756), while the anchor-only policy
+  collapses the elbows to 0.7559 / 0.7686.
+- But it **amplifies the positional damage**: MPJPE 129.7 mm against
+  anchor-only's 103.1 mm, because a wrong anchor now drags the entire limb
+  chain with it instead of only the anchor joint.
+
+So dependency-awareness converts a wrong sign from *semantic* damage into
+*positional* damage, and moves ~3× as much geometry while doing it. Both
+operators remain high-authority and dangerous under wrong advice; the
+constraint is exactly as good as the sign it is given. No corruption sweep was
+run — that would invent a sensor-accuracy curve nothing here supports.
+
+## 14. Classification: **B**
+
+Against the DIRECTION's criteria for the bilateral result:
+
+- **Hinge collateral is removed** — not reduced, *removed*: every one of the
+  four dependent hinge fields returns to bit-identical baseline agreement, and
+  the collateral transition counts go to exactly zero.
+- **Bilateral benefit remains substantially below learned conditioning** —
+  39% of the learned yaw gain, ~9% of the learned hip-residual gain, and the
+  shoulder residual moves the wrong way.
+
+That is **B**: a hybrid architecture is supported. It is B with one deviation
+worth stating plainly — B anticipates an unacceptable continuous-geometry cost,
+and the actual cost is **negative** (MPJPE improves by 0.78 mm over the
+baseline). The constraint is not rejected because it is expensive; it is
+insufficient because a sign carries no magnitude.
+
+**Separately, docs/33's generalisation is refuted.** "Constraint good iff the
+field is a leaf" does not hold. The bilateral collateral was **100% a
+write-policy fault**: with a dependency-aware write it disappears entirely,
+while the anchor is still an anchor. An explicit constraint over an anchor is
+perfectly viable — it simply has to move the geometry that depends on the
+anchor. What limits the bilateral channel is the **contract**, not the
+graph position.
+
+## 15. Does the evidence support the hybrid?
+
+```
+hinge      -> explicit parameter-free branch constraint
+bilateral  -> learned conditioning
+```
+
+**Yes, on the evidence so far.** The hinge constraint cuts the flip rate 42.5%
+for +0.084 mm MPJPE and beats every learned hinge conditioning tested
+(docs/33). The bilateral constraint, even with the collateral fully repaired,
+recovers only ~39% of learned conditioning's yaw benefit and cannot address the
+depth magnitude at all.
+
+Two caveats hold the promotion back, and nothing is promoted here:
+
+1. Everything rests on an **oracle** sign. Both channels are catastrophically
+   sensitive to a wrong one (Section 13), and no sensor exists.
+2. The two channels are **not independent**: they write into overlapping read
+   sets, and a combined hinge-constraint + learned-bilateral system was never
+   run. Only the isolated channels were measured.
+
+## 16. What this batch does NOT establish
+
+- No sensor, no accuracy threshold, no confidence weighting, no temporal
+  voting. The sensor remains outside this batch.
+- No claim that the one-bit hinge sign should change. Outcome B is recorded as
+  a measured limit; the Sign Contract is untouched, as directed.
+- The `V_OBSERVED` applicability control is **uninformative on this bank**
+  because the two masks are bit-identical (Section 5). It is not evidence that
+  `input_valid` behaves like `target_valid` in general.
+- Regime `benchmark_detector_observation` throughout; one source candidate, one
+  split.
+- The dependency-aware chain is the *anatomical* chain. Whether carrying the
+  full chain is right for a rig with different topology is untested.

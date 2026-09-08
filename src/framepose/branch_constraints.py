@@ -162,6 +162,96 @@ def _bilateral_correction(pose: np.ndarray, valid: np.ndarray, field: str,
                        "joints": [left, right]}
 
 
+#: Hinge write policies. `depth_only` is docs/33's frozen historical operator
+#: and stays the default so every previous result reproduces bit-for-bit.
+#: `minimum_norm` is docs/36's candidate: the SAME target offset, reached by the
+#: smallest displacement of the middle joint instead of a depth-only one.
+DEPTH_ONLY = "depth_only"
+MINIMUM_NORM = "minimum_norm"
+HINGE_WRITE_POLICIES = (DEPTH_ONLY, MINIMUM_NORM)
+
+
+def _hinge_min_norm_correction(pose: np.ndarray, valid: np.ndarray, field: str):
+    r"""Reach the historical operator's target offset by the smallest move.
+
+    docs/36. The depth-only operator displaces the middle joint along `e_y`.
+    Decompose that direction against the limb axis `a`:
+
+        e_y = u + a * a_y / |a|^2,      u = e_y - a * a_y / |a|^2
+
+    `u` is the part perpendicular to the axis, with `|u|^2 = f` exactly, and the
+    remainder is parallel to `a`. Only the perpendicular part can change the
+    perpendicular bend offset at all -- sliding the middle joint ALONG its own
+    limb leaves the bend direction, and therefore the branch, completely
+    unchanged. So the historical displacement
+
+        delta * e_y  =  delta * u  +  delta * a_y * a / |a|^2
+                        \_________/    \______________________/
+                         does the work     pure slide along the bone
+
+    carries a geometrically inert term whose size grows without bound as the
+    limb aligns with the camera depth axis. Dropping it gives
+
+        correction = delta * u,        delta = -2 * o_y / f   (unchanged)
+
+    which produces the IDENTICAL perpendicular offset, hence the identical bend
+    direction, branch, and full-3D hinge error, while being exactly `sqrt(f)`
+    times shorter -- and bounded by `2|o|` for every admissible geometry,
+    because `|o_y| <= sqrt(f) |o|` always.
+
+    No new constant, threshold, cap, clamp or step size: `delta` and the refusal
+    conditions are the historical ones.
+    """
+    joint = field[: -len("_forward_bend")]
+    proximal, middle, distal = HINGE_CHAINS_BY_JOINT[joint]
+    proximal_index = JOINT_INDEX[proximal]
+    middle_index = JOINT_INDEX[middle]
+    distal_index = JOINT_INDEX[distal]
+    if not (valid[proximal_index] and valid[middle_index] and valid[distal_index]):
+        return None, {"reason": "a chain joint is invalid, so the contract cannot read the branch back",
+                      "joints": [proximal, middle, distal]}
+
+    axis = pose[distal_index] - pose[proximal_index]
+    axis_squared = float(np.dot(axis, axis))
+    if axis_squared <= 1e-12:
+        return None, {"reason": "the proximal-distal axis is degenerate",
+                      "joints": [proximal, middle, distal]}
+
+    relative = pose[middle_index] - pose[proximal_index]
+    offset = relative - axis * (float(np.dot(relative, axis)) / axis_squared)
+    in_plane_fraction = float(axis[0] ** 2 + axis[2] ** 2) / axis_squared
+    # Identical observability guard: sqrt(f) is exactly the largest depth
+    # fraction any offset perpendicular to this axis can have, so below it the
+    # requested branch is unreadable no matter where the middle joint goes.
+    if np.sqrt(in_plane_fraction) < UNIT_FORWARD_EPSILON:
+        return None, {"reason": ("the proximal-distal axis lies within "
+                                 f"{UNIT_FORWARD_EPSILON} of the camera depth axis, so the requested "
+                                 "branch is not observable for any position of the middle joint"),
+                      "axis_in_plane_fraction": in_plane_fraction,
+                      "joints": [proximal, middle, distal]}
+
+    delta = -2.0 * float(offset[FORWARD_DEPTH_AXIS]) / in_plane_fraction
+    if not np.isfinite(delta):
+        return None, {"reason": "the closed-form depth correction is not finite",
+                      "joints": [proximal, middle, distal]}
+    perpendicular = np.zeros(3)
+    perpendicular[FORWARD_DEPTH_AXIS] = 1.0
+    perpendicular = perpendicular - axis * (float(axis[FORWARD_DEPTH_AXIS]) / axis_squared)
+    displacement = delta * perpendicular
+    corrected = pose.copy()
+    corrected[middle_index] = pose[middle_index] + displacement
+    return corrected, {"operation": ("minimum-norm displacement reaching the depth-only operator's "
+                                     "own target offset, with the axis-parallel slide removed"),
+                       "write_policy": MINIMUM_NORM,
+                       "predicted_offset_forward_m": float(offset[FORWARD_DEPTH_AXIS]),
+                       "axis_in_plane_fraction": in_plane_fraction,
+                       "depth_delta_m": float(displacement[FORWARD_DEPTH_AXIS]),
+                       "depth_only_delta_m": delta,
+                       "correction_vector_m": [float(v) for v in displacement],
+                       "correction_norm_m": float(np.linalg.norm(displacement)),
+                       "joints": [proximal, middle, distal]}
+
+
 def _hinge_correction(pose: np.ndarray, valid: np.ndarray, field: str):
     """Reflect the bend's forward-depth component, moving depth only.
 
@@ -225,16 +315,20 @@ def _hinge_correction(pose: np.ndarray, valid: np.ndarray, field: str):
                        "joints": [proximal, middle, distal]}
 
 
-def _correction(pose: np.ndarray, valid: np.ndarray, field: str, policy: str = ANCHOR_ONLY):
+def _correction(pose: np.ndarray, valid: np.ndarray, field: str, policy: str = ANCHOR_ONLY,
+                hinge_policy: str = DEPTH_ONLY):
     if field in _BILATERAL_PAIRS:
         return _bilateral_correction(pose, valid, field, policy)
-    # The docs/33 hinge operator is frozen: no policy reaches it.
+    if hinge_policy == MINIMUM_NORM:
+        return _hinge_min_norm_correction(pose, valid, field)
+    # docs/33's operator, unmodified and still the default.
     return _hinge_correction(pose, valid, field)
 
 
 def apply_branch_constraints(pose: np.ndarray, valid: np.ndarray, requested: np.ndarray, *,
                              fields: Iterable[str] | None = None,
                              bilateral_write_policy: str = ANCHOR_ONLY,
+                             hinge_write_policy: str = DEPTH_ONLY,
                              ) -> tuple[np.ndarray, dict[str, Any]]:
     """Enforce the requested branches on one predicted canonical pose.
 
@@ -245,6 +339,9 @@ def apply_branch_constraints(pose: np.ndarray, valid: np.ndarray, requested: np.
     if bilateral_write_policy not in WRITE_POLICIES:
         raise ValueError(f"unknown bilateral write policy {bilateral_write_policy!r}; "
                          f"known: {list(WRITE_POLICIES)}")
+    if hinge_write_policy not in HINGE_WRITE_POLICIES:
+        raise ValueError(f"unknown hinge write policy {hinge_write_policy!r}; "
+                         f"known: {list(HINGE_WRITE_POLICIES)}")
     pose, valid, requested = _validate(pose, valid, requested)
     selected = tuple(APPLICATION_ORDER) if fields is None else tuple(
         name for name in APPLICATION_ORDER if name in set(fields))
@@ -272,7 +369,8 @@ def apply_branch_constraints(pose: np.ndarray, valid: np.ndarray, requested: np.
         if before == want:
             accounting[field] = {"outcome": ALREADY_SATISFIED, "requested": want, "read_back_before": before}
             continue
-        candidate, detail = _correction(corrected, valid, field, bilateral_write_policy)
+        candidate, detail = _correction(corrected, valid, field, bilateral_write_policy,
+                                        hinge_write_policy)
         if candidate is None:
             accounting[field] = {"outcome": UNRESOLVED, "requested": want,
                                  "read_back_before": before, **detail}
@@ -302,6 +400,7 @@ def apply_branch_constraints(pose: np.ndarray, valid: np.ndarray, requested: np.
     return corrected, {
         "schema": BRANCH_CONSTRAINT_SCHEMA,
         "bilateral_write_policy": bilateral_write_policy,
+        "hinge_write_policy": hinge_write_policy,
         "fields": accounting,
         "final_sign_state": {name: int(final_state[position])
                              for position, name in enumerate(SIGN_FIELD_NAMES)},
@@ -317,7 +416,8 @@ def apply_branch_constraints(pose: np.ndarray, valid: np.ndarray, requested: np.
 
 def apply_branch_constraints_batch(poses: np.ndarray, valid: np.ndarray, requested: np.ndarray, *,
                                    fields: Iterable[str] | None = None,
-                                   bilateral_write_policy: str = ANCHOR_ONLY):
+                                   bilateral_write_policy: str = ANCHOR_ONLY,
+                                   hinge_write_policy: str = DEPTH_ONLY):
     """`apply_branch_constraints` over `(N, 17, 3)` predictions."""
     poses = np.asarray(poses, dtype=np.float64)
     if poses.ndim != 3:
@@ -327,7 +427,8 @@ def apply_branch_constraints_batch(poses: np.ndarray, valid: np.ndarray, request
     for index in range(len(poses)):
         frame, report = apply_branch_constraints(poses[index], valid[index], requested[index],
                                                  fields=fields,
-                                                 bilateral_write_policy=bilateral_write_policy)
+                                                 bilateral_write_policy=bilateral_write_policy,
+                                                 hinge_write_policy=hinge_write_policy)
         corrected[index] = frame
         reports.append(report)
     return corrected, reports

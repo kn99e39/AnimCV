@@ -66,3 +66,62 @@ things against the stored record:
 If the artifact lacks the machine-readable provenance for any of these, the
 result is recorded as **unverifiable with the reason**, never as a passing
 identity.
+
+## 4. Camera provenance
+
+Reused unchanged from docs/38: 3DPW's own `cam_intrinsics` and `cam_poses`, plus
+the repository's own `three_dpw_adapter._world_to_animcv_camera`. No camera
+parameter is inferred.
+
+Recorded per raw sequence so the run cannot silently depend on an unrecorded
+replacement pickle: sequence name, path, byte size, **SHA-256**, the full 3×3
+intrinsic matrix, the image size those intrinsics imply, actor count and frame
+count. 24 sequences.
+
+**The test split is not one camera.** 13 sequences are landscape
+(1920×1080, fx 1969.2) and 11 are portrait (1080×1920, fx 1961.9). A first
+implementation asserted a single shared image size and projected each field
+through one K; the guard rejected the run rather than projecting 3,159 frames
+through the wrong camera. Projection, normalization and the wrong-sign endpoint
+now all use **per-frame** intrinsics, and each frame's bank `image_size` is
+checked against that frame's own intrinsics.
+
+Reconstruction check, as in docs/38 and with the boundary now named in its own
+units: measured max 0.000030 mm against `RECONSTRUCTION_REFUSAL_MM = 1.0`.
+
+## 5. Oracle absolute-root placement — declared
+
+The stored prediction is root-relative and AnimCV does **not** know absolute root
+depth. To compare the two policies under one real camera, the prediction is
+placed at the target's absolute camera-space pelvis:
+
+```
+absolute_state = root_relative_state + absolute_target_pelvis      (identical root for all states)
+```
+
+`mode: oracle_absolute_root_placement`. **This is a diagnostic device, not
+production inference**, and the same root is used for H0, `DEPTH_ONLY` and
+`MINIMUM_NORM`, so the comparison cannot be an artefact of placement. A test
+pins that the three states share one root expression.
+
+## 6. Semantic identity holds — the comparison is fair
+
+Before anything else is reported, the diagnostic refuses unless both policies
+still enforce the same branch:
+
+| check | result |
+|---|---|
+| chain-frames compared | 25,095 |
+| max bend-direction difference | **5.07 × 10⁻¹⁵** |
+| sign states identical | **True** |
+
+So every difference below is *where the joint landed*, never *what was
+enforced*.
+
+3D aggregates are unchanged from docs/36:
+
+| state | MPJPE | PA-MPJPE | hinge flip | hinge MAE |
+|---|---|---|---|---|
+| H0 | 79.229 | 56.425 | 0.0189 | 24.099 |
+| `DEPTH_ONLY` | 79.366 | 56.694 | 0.0116 | 22.129 |
+| `MINIMUM_NORM` | **79.282** | **56.543** | 0.0116 | 22.129 |

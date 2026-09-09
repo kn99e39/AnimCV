@@ -1,5 +1,30 @@
 # Worklog — Who Owns the Residual Hinge Disagreement (2026-09-08)
 
+> **SUPERSEDED IN PART BY docs/38 (2026-09-09).** Two attribution gaps were
+> found after this batch closed and its ownership conclusion is stronger than
+> the evidence supports. Read this document together with docs/38.
+>
+> **Downgraded to PROVISIONAL** — do not cite these as settled:
+> "Outcome B failed", "Outcome C is refuted", "the complementary side is
+> directly observable from current `input_2d`", "no additional VLM evidence can
+> be useful". The correct standing statement is: *the complementary component
+> lies in a camera-parallel direction, but its observability from the current
+> perspective 2D contract is unresolved.*
+>
+> **Two specific defects.** (1) The `residual_flip_frames` accuracy in Section 7
+> was computed over all **279** residual historical flips, not the **83**
+> depth-correct residuals the central question is about — a population
+> mismatch. (2) Section 4 identifies the canonical X/Z line side with the
+> observed image line side, but the observation is a *perspective* projection
+> and the two signs are **not** algebraically identical; see docs/38 Section 3.
+>
+> **Still valid:** the local u/v hinge-plane decomposition; `sign(c_depth)`
+> matching the existing hinge SignState where readable; the axis-normalized
+> counterfactual; the finding that the 83 depth-correct residuals are strongly
+> associated, *in target-3D space*, with complementary local-plane disagreement
+> and/or limb-axis error; that no evidence justifies immediately adding another
+> SignState bit; and `MINIMUM_NORM`'s measured X/Z ownership cost.
+
 > One bounded diagnostic batch on `arch/single_frame_first`. **No training, no
 > sensor, no VLM, no RGB, no new SignState field, no new VLM output, no
 > threshold tuning, no default change, no Geometry Core change.**

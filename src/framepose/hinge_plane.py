@@ -34,12 +34,32 @@ from common.canonical_pose import (
 
 HINGE_PLANE_SCHEMA = "animcv_frame_pose_hinge_plane_v1"
 
-#: Measured from `bank_3dpw_paired_v2`, not assumed: over all 7,076 test frames
-#: the per-frame correlation of `input_2d[:, 0]` with canonical X is positive on
-#: 100% of frames (median r +0.975) and of `input_2d[:, 1]` with canonical Z is
-#: negative on 100% of frames (median r -0.992), with no cross-coupling
-#: (|r| <= 0.03). So the observation's image axes map to the canonical image
-#: plane as (X, Z) = (+x, -y): the standard convention with image y downward.
+#: BANK-SPECIFIC / DIAGNOSTIC -- **not** a FramePose invariant, and **not** a
+#: projection contract (docs/38 Section 5-6).
+#:
+#: This records an *axis correspondence* measured on `bank_3dpw_paired_v2`: over
+#: all 7,076 test frames the per-frame correlation of `input_2d[:, 0]` with
+#: canonical X is positive on 100% of frames (median r +0.975) and of
+#: `input_2d[:, 1]` with canonical Z is negative on 100% of frames (median
+#: r -0.992), with no cross-coupling (|r| <= 0.03).
+#:
+#: It establishes which image axis runs with which canonical axis and in which
+#: direction. It does **not** establish an affine or calibrated projection, and
+#: a median Pearson r is not a projection contract: the real observation is a
+#: perspective projection whose line-side sign depends on per-joint depth
+#: (docs/38 Section 3). Do not derive production behaviour from it, and do not
+#: promote this dataset-specific measurement into a generic invariant.
+EMPIRICAL_AXIS_CORRESPONDENCE = {
+    "status": "bank_specific_diagnostic",
+    "bank": "bank_3dpw_paired_v2",
+    "canonical_x_from": "+input_2d_x",
+    "canonical_z_from": "-input_2d_y",
+    "is_projection_contract": False,
+    "note": ("axis orientation only; the observation is a perspective projection and the "
+             "orthographic line side is not algebraically the projected line side"),
+}
+
+#: Retained under its historical name so docs/37's artifacts stay readable.
 IMAGE_TO_CANONICAL = {"canonical_x_from": "+input_2d_x", "canonical_z_from": "-input_2d_y"}
 
 
@@ -102,8 +122,16 @@ def observed_screen_side(input_2d: np.ndarray, input_valid: np.ndarray,
                          chain: tuple[str, str, str]) -> dict[str, Any]:
     """Which side of the proximal->distal line the middle joint is observed on.
 
+    **Scope (docs/38).** This is the line side of the *observed image points*.
+    It is NOT interchangeable with `sign(c_screen)`, which is computed from
+    root-relative 3D with depth discarded. Under a perspective camera the two
+    signs are different quantities -- equal only when the three chain joints
+    share a depth -- so comparing them measures a projection question, not a
+    detector question alone.
+
     A pure orientation predicate on the 2D observation: no magnitude, no learned
-    feature, no RGB, no ground truth. Derived, not fitted:
+    feature, no RGB, no ground truth. Derived, not fitted, in the ORTHOGRAPHIC
+    identification that docs/38 shows is not exact:
 
         c_screen = (o . v_hat) = (a_X * r_Z - a_Z * r_X) / sqrt(f)
 

@@ -210,9 +210,10 @@ def main() -> int:
             h0, valid, requested, fields=list(HINGE_FIELDS), hinge_write_policy=policy)
         states[policy] = corrected
         reports[policy] = policy_reports
-        wrong, _ = apply_branch_constraints_batch(
+        wrong, wrong_reports = apply_branch_constraints_batch(
             h0, valid, opposite, fields=list(HINGE_FIELDS), hinge_write_policy=policy)
         states[f"{policy}__opposite"] = wrong
+        reports[f"{policy}__opposite"] = wrong_reports
 
     # ---- semantic identity: the ONLY thing that makes this a fair comparison
     semantic: dict[str, Any] = {"checked_chain_frames": 0, "bend_direction_max_difference": 0.0,
@@ -390,16 +391,22 @@ def main() -> int:
                 for threshold in CONTINUITY_RANGES_MM},
         }
 
-        # wrong-sign endpoint, in observation space
+        # Wrong-sign endpoint, in observation space. The frames the OPPOSITE
+        # request corrects are a different set: where the oracle request was
+        # CORRECTED the pose already holds the opposite branch, so the opposite
+        # request is a no-op there. Selecting on the oracle reports would have
+        # measured an empty write.
         wrong_rows = usable & np.array([
-            reports[MINIMUM_NORM][o]["fields"][field]["outcome"] == CORRECTED for o in range(len(positions))
+            reports[f"{MINIMUM_NORM}__opposite"][o]["fields"][field]["outcome"] == CORRECTED
+            for o in range(len(positions))
         ]) & valid[:, middle] & observed_valid[:, middle]
         wrong_index = np.flatnonzero(wrong_rows)
         wrong_K = intrinsics[wrong_index]
         wrong_size = image_size[wrong_index]
         wrong_diagonal = np.linalg.norm(wrong_size, axis=-1)
         entry["wrong_sign_endpoint"] = {
-            policy: {
+            "corrected_frames": int(len(wrong_index)),
+            **{policy: {
                 "image_displacement": image_stats(
                     project(placed[f"{policy}__opposite"][wrong_index, middle], wrong_K),
                     project(placed["H0"][wrong_index, middle], wrong_K), wrong_diagonal),
@@ -409,7 +416,7 @@ def main() -> int:
                 "observation_consistency_error": image_stats(
                     project(placed[f"{policy}__opposite"][wrong_index, middle], wrong_K),
                     observation[wrong_index, middle, :2] * wrong_size, wrong_diagonal),
-            } for policy in (DEPTH_ONLY, MINIMUM_NORM)}
+            } for policy in (DEPTH_ONLY, MINIMUM_NORM)}}
         per_field[field] = entry
 
     totals["all_residual_flips"] = 0

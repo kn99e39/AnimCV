@@ -70,12 +70,22 @@ RECONSTRUCTION_REFUSAL_MM = 1.0
 
 
 def project(points_animcv: np.ndarray, intrinsics: np.ndarray) -> np.ndarray:
-    """AnimCV camera axes -> 3DPW OpenCV axes -> pixels (see docs/38)."""
+    """AnimCV camera axes -> 3DPW OpenCV axes -> pixels (see docs/38).
+
+    `intrinsics` may be one `(3, 3)` matrix or one per point. 3DPW's test split
+    mixes portrait and landscape sequences with different K, so a per-frame
+    matrix is the correct form here.
+    """
     x = points_animcv[..., 0]
     y = -points_animcv[..., 2]
     z = points_animcv[..., 1]
-    return np.stack([intrinsics[0, 0] * x / z + intrinsics[0, 2],
-                     intrinsics[1, 1] * y / z + intrinsics[1, 2]], axis=-1)
+    intrinsics = np.asarray(intrinsics, dtype=float)
+    if intrinsics.ndim == 2:
+        fx, fy, cx, cy = intrinsics[0, 0], intrinsics[1, 1], intrinsics[0, 2], intrinsics[1, 2]
+    else:
+        fx, fy = intrinsics[..., 0, 0], intrinsics[..., 1, 1]
+        cx, cy = intrinsics[..., 0, 2], intrinsics[..., 1, 2]
+    return np.stack([fx * x / z + cx, fy * y / z + cy], axis=-1)
 
 
 def load_absolute_sequences(raw_root: Path, split: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -263,12 +273,15 @@ def main() -> int:
                              "implemented_refusal_boundary_mm": RECONSTRUCTION_REFUSAL_MM}
     if reconstruction.max() > RECONSTRUCTION_REFUSAL_MM:
         raise ValueError(f"reconstruction disagrees with the bank by {reconstruction.max():.4f} mm")
-    # The intrinsics' own image size must agree with the bank's, or the pixel
-    # and normalized numbers below would not be in the same frame.
-    stated = np.stack([[entry["image_size_from_intrinsics"][0], entry["image_size_from_intrinsics"][1]]
-                       for entry in raw_provenance])
-    if not np.all(stated == stated[0]) or not np.all(image_size[usable] == stated[0]):
-        raise ValueError("bank image_size disagrees with the intrinsics' implied image size")
+    # Per frame, the intrinsics' own implied image size must agree with the
+    # bank's. 3DPW's test split mixes portrait and landscape sequences, so this
+    # is deliberately NOT a single-size check.
+    implied = np.stack([np.round(intrinsics[:, 0, 2] * 2), np.round(intrinsics[:, 1, 2] * 2)], axis=-1)
+    mismatched = int((implied[usable] != image_size[usable]).any(axis=-1).sum())
+    if mismatched:
+        raise ValueError(
+            f"{mismatched} frames' bank image_size disagrees with the intrinsics' implied size")
+    orientations = {tuple(int(v) for v in row) for row in image_size[usable]}
 
     # ---- ORACLE CAMERA PLACEMENT (diagnostic only) --------------------------
     root = absolute_target[:, JOINT_INDEX["pelvis"]][:, None, :]
@@ -291,18 +304,19 @@ def main() -> int:
             continue
 
         rows = np.flatnonzero(frame_usable)
-        K = intrinsics[rows[0]]
-        size = image_size[rows[0]]
+        K = intrinsics[rows]
+        size = image_size[rows]
+        diagonal = np.linalg.norm(size, axis=-1)
 
         pixels = {name: project(array[rows, middle], K) for name, array in placed.items()}
         reference_a = project(absolute_target[rows, middle], K)
         reference_b = observation[rows, middle, :2] * size          # normalized -> pixels
 
-        def image_stats(a, b):
+        def image_stats(a, b, scale=diagonal):
             delta = a - b
             magnitude = np.linalg.norm(delta, axis=-1)
             return {"pixel": _quantiles(magnitude),
-                    "normalized": _quantiles(magnitude / np.linalg.norm(size)),
+                    "normalized": _quantiles(magnitude / scale),
                     "abs_delta_image_x_px": _quantiles(np.abs(delta[:, 0])),
                     "abs_delta_image_y_px": _quantiles(np.abs(delta[:, 1]))}
 
@@ -381,17 +395,20 @@ def main() -> int:
             reports[MINIMUM_NORM][o]["fields"][field]["outcome"] == CORRECTED for o in range(len(positions))
         ]) & valid[:, middle] & observed_valid[:, middle]
         wrong_index = np.flatnonzero(wrong_rows)
+        wrong_K = intrinsics[wrong_index]
+        wrong_size = image_size[wrong_index]
+        wrong_diagonal = np.linalg.norm(wrong_size, axis=-1)
         entry["wrong_sign_endpoint"] = {
             policy: {
                 "image_displacement": image_stats(
-                    project(placed[f"{policy}__opposite"][wrong_index, middle], K),
-                    project(placed["H0"][wrong_index, middle], K)),
+                    project(placed[f"{policy}__opposite"][wrong_index, middle], wrong_K),
+                    project(placed["H0"][wrong_index, middle], wrong_K), wrong_diagonal),
                 "target_projection_error": image_stats(
-                    project(placed[f"{policy}__opposite"][wrong_index, middle], K),
-                    project(absolute_target[wrong_index, middle], K)),
+                    project(placed[f"{policy}__opposite"][wrong_index, middle], wrong_K),
+                    project(absolute_target[wrong_index, middle], wrong_K), wrong_diagonal),
                 "observation_consistency_error": image_stats(
-                    project(placed[f"{policy}__opposite"][wrong_index, middle], K),
-                    observation[wrong_index, middle, :2] * size),
+                    project(placed[f"{policy}__opposite"][wrong_index, middle], wrong_K),
+                    observation[wrong_index, middle, :2] * wrong_size, wrong_diagonal),
             } for policy in (DEPTH_ONLY, MINIMUM_NORM)}
         per_field[field] = entry
 
@@ -444,6 +461,8 @@ def main() -> int:
             "raw_sequences": raw_provenance,
             "frames_with_absolute_geometry": int(usable.sum()),
             "frames_without_absolute_geometry": dict(missing),
+            "image_orientations_present": sorted(tuple(v) for v in orientations),
+            "per_frame_intrinsics": True,
         },
         "historical_binding": _bind_history(args.historical,
                                             identity["prediction"]["sha256"], totals),

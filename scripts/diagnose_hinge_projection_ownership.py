@@ -315,11 +315,15 @@ def main() -> int:
                 "chain_depth_spread_m": _quantiles(data["depth_spread_m"]),
             }
         per_field[field] = field_report
+        # `depth_incorrect = all - depth_correct` is arithmetic, not evidence.
+        # It is recorded as a decomposition; independent binding against the
+        # accepted historical lineage lives in the docs/39 diagnostic.
         identities[field] = {
             "all_279_residual_flips": counts["all_279_residual_flips"],
             "depth_correct_83_residual_flips": counts["depth_correct_83_residual_flips"],
             "depth_incorrect_residual_flips": counts["all_279_residual_flips"] - counts["depth_correct_83_residual_flips"],
-            "identity_holds": True,
+            "decomposition_is_arithmetic_not_verification": True,
+            "historical_lineage_binding": "not attempted in this diagnostic",
         }
 
     totals = Counter()

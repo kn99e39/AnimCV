@@ -105,12 +105,21 @@ rebuilt for all 7,076 test frames and, after the adapter's own root subtraction,
 compared against the bank's stored `target_3d`.
 
 ```
-max |rebuilt − bank target_3d|  =  0.000030 mm     (all 7,076 frames)
+measured max |rebuilt − bank target_3d| = 0.000030 mm   (all 7,076 frames)
+implemented refusal boundary            = 1.0 mm
 ```
 
-The diagnostic refuses to attribute anything unless that is under 1 µm. So the
-projection used below is the actual camera that produced the observation, not a
-weak-perspective stand-in.
+**Correction (docs/39).** An earlier revision of this section claimed the
+diagnostic refuses unless the match is within 1 micrometre. It does not: the
+implemented boundary is `difference.max() > 1.0` with `difference` in
+millimetres, i.e. **1 mm**. The measured error happens to be 0.000030 mm —
+33,000× inside the boundary — but the *contract* is 1 mm and the prose
+overstated it. No repository contract mandates a stricter bound, so the
+documentation is corrected and the threshold is left alone rather than tightened
+to make the sentence true.
+
+So the projection used below is the actual camera that produced the observation,
+not a weak-perspective stand-in.
 
 ## 7. The population mismatch, fixed
 
@@ -142,8 +151,15 @@ Reading the middle column: **the perspective projection preserves the canonical
 screen-side sign at 0.918–0.996**. The projective ambiguity is real but modest —
 about 8 points on the 83, and ~4 points overall.
 
-Reading the right column: **the shipped detector recovers the true projected
-side at 0.845 on the 83**, against 0.862 across all frames.
+Reading the right column: **the Geometry Observation agrees with the true
+projected side at 0.845 on the 83**, against 0.862 across all frames.
+
+*Wording (docs/39).* This column is labelled **Geometry Observation vs
+projected-target mismatch**, not "detector fidelity". The two sides are not the
+same semantic object: `input_2d` carries OpenPose COCO landmarks while the
+projected target is a projected SMPL joint centre. The gap therefore mixes
+detector localization error, landmark-vs-joint-centre definition mismatch, and
+annotation geometry, and the current data cannot separate them.
 
 docs/37 reported 0.28–0.64 for "residual flip frames". The corrected figure on
 the population that matters is **0.748** against the canonical target and
@@ -155,7 +171,7 @@ Per field on the 83, `detector ~ projected-target`:
 
 | field | n | balanced accuracy | confusion |
 |---|---|---|---|
-| left_elbow | **63** | 0.927 | 46/14 correct, 1+2 wrong |
+| left_elbow | **63** | 0.927 | 46 + 14 agree, 1 + 2 disagree |
 | right_elbow | 10 | 0.438 | 7 correct, 3 wrong |
 | left_knee | 5 | 0.500 | 1 correct, 4 wrong |
 | right_knee | 5 | 0.500 | 3 correct, 2 wrong |
@@ -212,7 +228,7 @@ Why it is not higher, decomposed rather than blamed on the detector:
 | contribution | size on the 83 |
 |---|---|
 | projection degeneracy (canonical ≠ projected under foreshortening) | ~8 points (0.918 → 1.0) |
-| detector disagreement with the true projected side | ~15 points (0.845 → 1.0) |
+| Geometry Observation vs projected-target mismatch (detector localization + landmark/joint-centre definition + annotation geometry, not separable here) | ~15 points (0.845 → 1.0) |
 | compound, as measured against the canonical target | 0.748 |
 | unavailable projection provenance | **none** — the projection was recovered exactly |
 
@@ -231,9 +247,9 @@ perspective.
 
 C is nevertheless **unsupported**, on stronger grounds than docs/37 had: the
 complementary side survives the real projection at 0.918 balanced accuracy on
-the 83, so it is largely present in the image, and what is missing is recovered
-at 0.845 by the shipped detector. A residual that is 92% preserved by the camera
-and 85% read by the observation is not a demonstration of hidden evidence.
+the 83, so it is largely present in the image, and the Geometry Observation
+agrees with it at 0.845. A residual that is 92% preserved by the camera and 85%
+agreed by the observation is not a demonstration of hidden evidence.
 
 **This does not authorize a new SignState field, and none was added.**
 
@@ -241,7 +257,8 @@ and 85% read by the observation is not a demonstration of hidden evidence.
 
 The complementary side is largely observable in the image, and both remaining
 gaps — 8 points of projective ambiguity under foreshortening, 15 points of
-detector disagreement — are Geometry Observation questions. Neither is evidence
+Geometry-Observation-vs-projected-target mismatch — are Geometry Observation
+questions. Neither is evidence
 that a hidden bit is missing. The advisor's single depth bit is satisfied on all
 83 of these frames by construction.
 
@@ -279,8 +296,8 @@ dropped, and it fails measurably exactly under the foreshortening that
 characterises these frames (chain depth spread 3.2× the norm) — but it was a
 reasonable approximation, wrong by about 8 points here.
 
-The observation question is **answered but negative for hard use**: the shipped
-detector reads the true projected side at **0.845**, and the compound accuracy
+The observation question is **answered but negative for hard use**: the Geometry
+Observation agrees with the true projected side at **0.845**, and the compound accuracy
 against the canonical target is **0.748**. That is far better than docs/37's
 0.28–0.64, which measured the wrong population, but it is not a reliable supply
 for a hard constraint, and three of the four chains have n ≤ 10 so only the left

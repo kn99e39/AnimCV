@@ -255,8 +255,11 @@ reason is the same as Section 7: it spends its correction laterally.
 | 3D MPJPE (correct / wrong sign) | 79.366 / 93.561 | **79.282 / 92.099** |
 | ill-conditioned 3D tail | **unbounded** (3.1 m) | bounded by `2\|o\|` |
 
-Neither operator dominates. `DEPTH_ONLY` owns the image; `MINIMUM_NORM` owns
-the metric skeleton and the 3D tail.
+The two tested operators are non-dominated under the measured objectives;
+neither satisfies both image-space ownership and metric-skeleton ownership
+simultaneously. `DEPTH_ONLY` better preserves image-space observation than
+`MINIMUM_NORM` among the two tested policies; it does **not** preserve the
+image exactly. `MINIMUM_NORM` owns the metric skeleton and the 3D tail.
 
 ## 13. Classification: **B — `DEPTH_ONLY` observation ownership supported**
 
@@ -297,10 +300,13 @@ chain-frames, doubling to **+10 px** under a wrong sign.
 
 ## 15. A new write-policy architecture question does remain
 
-Neither operator is Pareto-optimal, and the trade is now explicit:
+The two tested operators are non-dominated under the measured objectives;
+neither satisfies both image-space ownership and metric-skeleton ownership
+simultaneously. The trade is now explicit:
 
 ```
-DEPTH_ONLY      owns image position, violates bone length, unbounded in 3D
+DEPTH_ONLY      better preserves image-space observation among the two tested policies,
+                violates bone length, unbounded in 3D
 MINIMUM_NORM    owns bone length and 3D bound, costs image position
 ```
 

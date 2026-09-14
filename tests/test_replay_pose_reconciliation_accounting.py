@@ -6,9 +6,12 @@ from pathlib import Path
 import numpy as np
 
 from common.canonical_pose import JOINT_INDEX
+from framepose.bank import BankRequest, build_bank
 from framepose.branch_constraints import ALREADY_SATISFIED, CORRECTED, UNRESOLVED
+from framepose.branch_constraints import _hinge_correction
 from framepose.pose_reconciliation import ProjectionContext
 from framepose.signs import SIGN_FIELD_NAMES, mask_fields, sign_state
+from framepose_fixtures import prepared_dataset
 
 
 _SCRIPT = Path(__file__).parents[1] / "scripts" / "replay_pose_reconciliation.py"
@@ -124,9 +127,68 @@ def test_c_keeps_unresolved_observation_rows_and_d_is_secondary_common_resolved(
     image_size = np.repeat(np.asarray([[640.0, 480.0]]), 2, axis=0)
     images = [replay._image_accounting(
         candidate, h0, h0, observation, target_absolute, image_size, contexts, cohorts, "C")
-        for candidate in ("H0", replay.DEPTH_ONLY, replay.MINIMUM_NORM, replay.R_SWIVEL_OBS)]
-    assert [image["fields"][field]["frames"] for image in images] == [2, 2, 2, 2]
+        for candidate in ("H0", replay.DEPTH_ONLY, replay.MINIMUM_NORM,
+                          replay.R_SWIVEL_OBS, replay.R_SWIVEL_ORACLE_2D)]
+    assert [image["fields"][field]["frames"] for image in images] == [2, 2, 2, 2, 2]
     assert cohorts["D"][field].sum() < cohorts["C"][field].sum()
+
+
+def test_field_bone_accounting_does_not_include_an_untouched_chain():
+    pose = _pose()
+    baseline = pose[None, :, :]
+    state = baseline.copy()
+    # Perturb a different chain heavily; the left-elbow exact field rows must
+    # still report only the left-elbow P-M and M-D ownership.
+    state[0, JOINT_INDEX["right_elbow"], 1] = 100.0
+    result = replay._field_bone_accounting(
+        state, baseline, replay.HINGE_FIELDS[0], np.asarray([0], dtype=np.int64))
+    assert result["chain_frame_count"] == 1
+    assert result["P-M_abs_change_mm"]["max"] == 0.0
+    assert result["M-D_abs_change_mm"]["max"] == 0.0
+
+
+def test_e_observation_metric_count_is_finite_count_not_frame_count():
+    h0, requested, valid, observed_valid, observation, target_absolute, contexts, reports = _two_frame_case()
+    observation[1, replay.MIDDLE_INDEX[replay.HINGE_FIELDS[0]], 0] = np.nan
+    cohorts = replay.build_cohorts(
+        h0, requested, valid, observed_valid, observation, target_absolute, contexts, reports)
+    image = replay._image_accounting(
+        "H0", h0, h0, observation, target_absolute, np.repeat([[640.0, 480.0]], 2, axis=0),
+        contexts, cohorts, "E")
+    assert image["fields"][replay.HINGE_FIELDS[0]]["frames"] == 2
+    assert image["fields"][replay.HINGE_FIELDS[0]]["observation_consistency_metric_count"] == 1
+
+
+def test_depth_only_comment_records_perspective_effect_without_changing_operator():
+    assert "perspective projection changing Y can still move image position" in _hinge_correction.__doc__
+
+
+def test_field_hinge_metrics_use_exact_chain_rows_and_union_metrics_remain_available(tmp_path):
+    requests = [BankRequest(
+        "3DPW", split,
+        prepared_dataset(tmp_path / f"{split}.json", split=split,
+                         sequences=[f"3dpw:{split}:actor0"]),
+    ) for split in ("train", "validation", "test")]
+    bank, _ = build_bank(requests, require_rgb=False)
+    positions = bank.indices("test")
+    field = replay.HINGE_FIELDS[0]
+    chain = replay.HINGE_CHAINS_BY_JOINT[field[: -len("_forward_bend")]]
+    indices = [JOINT_INDEX[name] for name in chain]
+    valid = bank.arrays["target_valid"][positions]
+    rows = np.flatnonzero(np.all(valid[:, indices], axis=1))[:1]
+    assert len(rows) == 1
+    state = bank.arrays["target_3d"][positions].astype(np.float64).copy()
+    state[rows[0], replay.MIDDLE_INDEX[field], 0] += 0.01
+
+    field_metrics = replay._field_hinge_accounting(
+        bank, positions, state, field, rows, "field-test")
+    union_metrics = replay._matched_evaluation(
+        bank, positions, state, "union-test", np.arange(len(positions)) < 2)
+
+    assert field_metrics["chain_frame_count"] == 1
+    assert field_metrics["middle_joint_3d_error_mm"]["count"] == 1
+    assert union_metrics["frame_count"] == 2
+    assert "mpjpe_mm" in union_metrics["aggregate"]
 
 
 def test_observation_coordinate_space_is_explicit_provenance():

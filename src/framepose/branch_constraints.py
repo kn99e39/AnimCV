@@ -266,8 +266,9 @@ def _hinge_correction(pose: np.ndarray, valid: np.ndarray, field: str):
         delta = -2 o_y |a|^2 / (a_x^2 + a_z^2)
 
     with no tuned magnitude. X and Z of every joint -- including the moved one
-    -- are untouched, so the advisor's near/far bit never moves anything in
-    image space. The factor `(a_x^2 + a_z^2)/|a|^2` is the squared in-image-plane
+    -- are untouched. DEPTH_ONLY preserves canonical X/Z exactly, but under
+    perspective projection changing Y can still move image position because
+    both X/Y and Z/Y change. The factor `(a_x^2 + a_z^2)/|a|^2` is the squared in-image-plane
     fraction of the limb axis and is the exact degeneracy of a depth-only
     correction: it vanishes when the limb points straight along the camera
     depth axis, where no change of the middle joint's depth can change the

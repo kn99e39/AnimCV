@@ -31,7 +31,8 @@ from common.canonical_pose import JOINT_INDEX, JOINT_NAMES, bend_direction, root
 from common.serialization import write_json
 from framepose.bank import load_bank
 from framepose.branch_constraints import (
-    CORRECTED, DEPTH_ONLY, MINIMUM_NORM, apply_branch_constraints_batch,
+    ALREADY_SATISFIED, CORRECTED, DEPTH_ONLY, MINIMUM_NORM, UNRESOLVED,
+    apply_branch_constraints_batch,
 )
 from framepose.evaluate import evaluate_predictions
 from framepose.pose_reconciliation import (
@@ -43,6 +44,7 @@ from pose.three_dpw_adapter import _SMPL_TO_CANONICAL
 
 
 SCHEMA = "animcv_frame_pose_reconciliation_replay_v1"
+OBSERVATION_COORDINATE_SPACE = "normalized_full_image"
 R_SWIVEL_OBS = "R_SWIVEL_OBS"
 R_SWIVEL_ORACLE_2D = "R_SWIVEL_ORACLE_2D"
 HINGE_JOINTS = tuple(field[: -len("_forward_bend")] for field in HINGE_FIELDS)
@@ -143,21 +145,163 @@ def _state_pixel_arrays(states: dict[str, np.ndarray], root: np.ndarray,
     return pixels
 
 
-def _reconciliation_outcome_counts(reports: list[dict[str, Any]]) -> dict[str, Any]:
-    result: dict[str, Any] = {}
+def _field_column(field: str) -> int:
+    return SIGN_FIELD_NAMES.index(field)
+
+
+def _hinge_sign_matrix(poses: np.ndarray, valid: np.ndarray) -> np.ndarray:
+    return np.asarray([
+        mask_fields(sign_state(pose, frame_valid)[None, :], list(HINGE_FIELDS))[0]
+        for pose, frame_valid in zip(poses, valid)
+    ], dtype=np.int64)
+
+
+def _valid_projection_context(context: ProjectionContext | None) -> bool:
+    return context is not None and context.validation_error() is None
+
+
+def _target_projection_is_available(order: int, field: str, target_absolute: np.ndarray,
+                                    contexts: list[ProjectionContext | None]) -> bool:
+    context = contexts[order]
+    middle = MIDDLE_INDEX[field]
+    if not _valid_projection_context(context) or not np.isfinite(target_absolute[order, middle]).all():
+        return False
+    try:
+        context.project_root_relative(
+            target_absolute[order, middle] - np.asarray(context.root_offset_camera))
+    except (TypeError, ValueError, FloatingPointError):
+        return False
+    return True
+
+
+def build_cohorts(h0: np.ndarray, requested: np.ndarray, valid: np.ndarray,
+                  observed_valid: np.ndarray, observation: np.ndarray,
+                  target_absolute: np.ndarray, contexts: list[ProjectionContext | None],
+                  reports_by_candidate: dict[str, list[dict[str, Any]]]) -> dict[str, dict[str, np.ndarray]]:
+    """Build the pre-declared A/B/C/D/E masks without candidate-specific row dropping.
+
+    Masks are per field because each hinge has its own chain validity and middle
+    joint.  C is the primary operational observation cohort; D is deliberately
+    secondary and requires every intervention mechanism to have corrected.
+    """
+    frame_count = len(h0)
+    h0_signs = _hinge_sign_matrix(h0, valid)
+    masks: dict[str, dict[str, np.ndarray]] = {
+        cohort: {field: np.zeros(frame_count, dtype=bool)
+                 for field in HINGE_FIELDS}
+        for cohort in ("A", "B", "C", "D", "E")
+    }
     for field in HINGE_FIELDS:
-        counts = Counter(report["fields"][field]["outcome"] for report in reports)
-        requested = sum(report["fields"][field]["requested_sign"] != 0 for report in reports)
-        satisfied = sum(
-            report["fields"][field].get("read_back_after") == report["fields"][field]["requested_sign"]
-            or report["fields"][field].get("read_back_before") == report["fields"][field]["requested_sign"]
-            for report in reports)
-        result[field] = {"requested": int(requested), "satisfied": int(satisfied),
-                         "outcomes": dict(counts), "unresolved": int(counts.get("unresolved", 0))}
+        column = _field_column(field)
+        joint = field[: -len("_forward_bend")]
+        proximal, _, distal = HINGE_CHAINS_BY_JOINT[joint]
+        p, m, d = (JOINT_INDEX[name] for name in (proximal, HINGE_CHAINS_BY_JOINT[joint][1], distal))
+        chain_valid = valid[:, p] & valid[:, m] & valid[:, d]
+        known = requested[:, column] != 0
+        conflict = known & (h0_signs[:, column] != requested[:, column]) & chain_valid
+        observation_ready = np.asarray([
+            conflict[order]
+            and _valid_projection_context(contexts[order])
+            and bool(observed_valid[order, m])
+            and bool(np.isfinite(observation[order, m, :2]).all())
+            for order in range(frame_count)
+        ], dtype=bool)
+        oracle_ready = np.asarray([
+            conflict[order] and _target_projection_is_available(
+                order, field, target_absolute, contexts)
+            for order in range(frame_count)
+        ], dtype=bool)
+        masks["A"][field] = np.ones(frame_count, dtype=bool)
+        masks["B"][field] = conflict
+        masks["C"][field] = observation_ready
+        masks["E"][field] = oracle_ready
+        common_resolved = observation_ready.copy()
+        for candidate in (DEPTH_ONLY, MINIMUM_NORM, R_SWIVEL_OBS):
+            candidate_reports = reports_by_candidate[candidate]
+            common_resolved &= np.asarray([
+                candidate_reports[order]["fields"][field]["outcome"] == CORRECTED
+                for order in range(frame_count)
+            ], dtype=bool)
+        masks["D"][field] = common_resolved
+    return masks
+
+
+def summarize_cohorts(cohorts: dict[str, dict[str, np.ndarray]]) -> dict[str, Any]:
+    summary: dict[str, Any] = {}
+    for cohort, fields in cohorts.items():
+        field_summary = {
+            field: {"frames": int(mask.sum()),
+                    "frame_indices": np.flatnonzero(mask).astype(int).tolist()}
+            for field, mask in fields.items()
+        }
+        summary[cohort] = {
+            "fields": field_summary,
+            "union_frames": int(np.logical_or.reduce(list(fields.values())).sum()) if fields else 0,
+            "union_frame_indices": np.flatnonzero(
+                np.logical_or.reduce(list(fields.values()))).astype(int).tolist() if fields else [],
+        }
+    return summary
+
+
+def _cohort_rows(cohorts: dict[str, dict[str, np.ndarray]], cohort: str, field: str) -> np.ndarray:
+    return np.flatnonzero(cohorts[cohort][field]).astype(np.int64)
+
+
+def _opposite_base_name(state_name: str) -> str:
+    suffix = "__opposite"
+    if not state_name.endswith(suffix):
+        raise ValueError(f"not an opposite state name: {state_name}")
+    return state_name[:-len(suffix)]
+
+
+def _reports_for_state(state_name: str, reports: dict[str, list[dict[str, Any]]],
+                       wrong_reports: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
+    """Bind an opposite state to the report keyed by its base candidate name."""
+    if state_name.endswith("__opposite"):
+        return wrong_reports[_opposite_base_name(state_name)]
+    return reports[state_name]
+
+
+def _reconciliation_outcome_counts(reports: list[dict[str, Any]], requested: np.ndarray,
+                                   cohorts: dict[str, dict[str, np.ndarray]],
+                                   final_state: np.ndarray, valid: np.ndarray) -> dict[str, Any]:
+    """Account only known requested signs and enforce the coverage identity."""
+    final_signs = _hinge_sign_matrix(final_state, valid)
+    result: dict[str, Any] = {}
+    for cohort, field_masks in cohorts.items():
+        result[cohort] = {}
+        for field in HINGE_FIELDS:
+            column = _field_column(field)
+            population = _cohort_rows(cohorts, cohort, field)
+            known_rows = population[requested[population, column] != 0]
+            outcomes = Counter(reports[int(order)]["fields"][field]["outcome"]
+                               for order in known_rows)
+            already = int(outcomes.get(ALREADY_SATISFIED, 0))
+            corrected = int(outcomes.get(CORRECTED, 0))
+            unresolved = int(outcomes.get(UNRESOLVED, 0))
+            requested_count = int(len(known_rows))
+            if requested_count != already + corrected + unresolved:
+                raise AssertionError(
+                    f"requested coverage identity failed for {cohort}/{field}: "
+                    f"{requested_count} != {already}+{corrected}+{unresolved}")
+            satisfied = int(np.sum(final_signs[known_rows, column] == requested[known_rows, column]))
+            result[cohort][field] = {
+                "requested_count": requested_count,
+                "satisfied_count": satisfied,
+                "already_satisfied": already,
+                "corrected": corrected,
+                "unresolved": unresolved,
+                "unknown_excluded": int(len(population) - requested_count),
+                "outcomes": dict(outcomes),
+                "identity_holds": True,
+            }
     return result
 
 
-def _bone_and_endpoint_accounting(state: np.ndarray, baseline: np.ndarray, valid: np.ndarray) -> dict[str, Any]:
+def _bone_and_endpoint_accounting(state: np.ndarray, baseline: np.ndarray, valid: np.ndarray,
+                                  frame_mask: np.ndarray | None = None) -> dict[str, Any]:
+    if frame_mask is not None:
+        state, baseline, valid = state[frame_mask], baseline[frame_mask], valid[frame_mask]
     endpoint_names = [name for field in HINGE_FIELDS for name in
                       (HINGE_CHAINS_BY_JOINT[field[: -len("_forward_bend")]][0],
                        HINGE_CHAINS_BY_JOINT[field[: -len("_forward_bend")]][2])]
@@ -177,7 +321,10 @@ def _bone_and_endpoint_accounting(state: np.ndarray, baseline: np.ndarray, valid
             "adjacent_bone_length_abs_change_mm": _quantiles(bone_changes)}
 
 
-def _global_accounting(state: np.ndarray, baseline: np.ndarray, valid: np.ndarray) -> dict[str, Any]:
+def _global_accounting(state: np.ndarray, baseline: np.ndarray, valid: np.ndarray,
+                       frame_mask: np.ndarray | None = None) -> dict[str, Any]:
+    if frame_mask is not None:
+        state, baseline, valid = state[frame_mask], baseline[frame_mask], valid[frame_mask]
     pairs = (("left_shoulder", "right_shoulder"), ("left_hip", "right_hip"))
     bilateral = {}
     for left, right in pairs:
@@ -195,21 +342,19 @@ def _global_accounting(state: np.ndarray, baseline: np.ndarray, valid: np.ndarra
     return {"root_yaw_delta_degrees": _quantiles(yaw), "bilateral": bilateral}
 
 
-def _image_accounting(name: str, state: np.ndarray, baseline: np.ndarray, targets: np.ndarray,
+def _image_accounting(name: str, state: np.ndarray, baseline: np.ndarray,
                       observation: np.ndarray, target_absolute: np.ndarray, image_size: np.ndarray,
-                      contexts: list[ProjectionContext | None], valid: np.ndarray,
-                      reports: list[dict[str, Any]] | None) -> dict[str, Any]:
+                      contexts: list[ProjectionContext | None], cohorts: dict[str, dict[str, np.ndarray]],
+                      cohort: str) -> dict[str, Any]:
     fields: dict[str, Any] = {}
     for field in HINGE_FIELDS:
         middle = MIDDLE_INDEX[field]
-        rows = np.asarray([
-            order for order, context in enumerate(contexts)
-            if context is not None and valid[order, middle] and
-            (reports is None or reports[order]["fields"][field]["outcome"] == CORRECTED)
-        ], dtype=np.int64)
+        rows = _cohort_rows(cohorts, cohort, field)
         if not len(rows):
             fields[field] = {"frames": 0}
             continue
+        if not all(_valid_projection_context(contexts[int(order)]) for order in rows):
+            raise AssertionError(f"{cohort}/{field} contains a frame without a valid projection context")
         current_px = _state_pixel_arrays({"state": state, "baseline": baseline},
                                          np.zeros((len(state), 3)), middle, rows, contexts)
         target_pixels = np.asarray([
@@ -226,74 +371,110 @@ def _image_accounting(name: str, state: np.ndarray, baseline: np.ndarray, target
             "baseline_target_projection_error_px": _stats(current_px["baseline"], target_pixels),
             "baseline_observation_consistency_error_px": _stats(current_px["baseline"], observed_pixels),
         }
-    return {"candidate": name, "fields": fields}
+    return {"candidate": name, "cohort": cohort, "fields": fields}
+
+
+def _matched_evaluation(bank, positions: np.ndarray, state: np.ndarray, candidate: str,
+                        frame_mask: np.ndarray) -> dict[str, Any]:
+    rows = np.flatnonzero(frame_mask).astype(np.int64)
+    if not len(rows):
+        return {"frame_count": 0, "aggregate": {"frame_count": 0}, "per_joint_mean_error_mm": {}}
+    evaluation = evaluate_predictions(bank, positions[rows], state[rows], candidate=candidate)
+    return {
+        "frame_count": int(len(rows)),
+        "aggregate": evaluation["aggregate"],
+        "per_joint_mean_error_mm": evaluation["per_joint_mean_error_mm"],
+    }
+
+
+def _pixel_displacement(state: np.ndarray, baseline: np.ndarray, order: int, middle: int,
+                        contexts: list[ProjectionContext | None]) -> float:
+    context = contexts[order]
+    if not _valid_projection_context(context):
+        return float("nan")
+    return float(np.linalg.norm(
+        context.project_root_relative(state[order, middle]) -
+        context.project_root_relative(baseline[order, middle])))
 
 
 def _reviews(bank, positions, field: str, states: dict[str, np.ndarray], reports: dict[str, list[dict[str, Any]]],
              wrong_reports: dict[str, list[dict[str, Any]]], observation: np.ndarray,
-             target_absolute: np.ndarray, image_size: np.ndarray, contexts: list[ProjectionContext | None],
-             valid: np.ndarray) -> list[dict[str, Any]]:
+             target_absolute: np.ndarray, contexts: list[ProjectionContext | None],
+             valid: np.ndarray, cohorts: dict[str, dict[str, np.ndarray]],
+             wrong_cohorts: dict[str, dict[str, np.ndarray]]) -> list[dict[str, Any]]:
     middle = MIDDLE_INDEX[field]
     chain = HINGE_CHAINS_BY_JOINT[field[: -len("_forward_bend")]]
     chain_indices = [JOINT_INDEX[name] for name in chain]
-    qualifying = [order for order in range(len(positions))
-                  if reports[R_SWIVEL_OBS][order]["fields"][field]["outcome"] == CORRECTED]
-    rows: dict[str, int] = {}
-    if qualifying:
-        displacement = {
-            order: float(np.linalg.norm(
-                contexts[order].project_root_relative(states[R_SWIVEL_OBS][order, middle]) -
-                contexts[order].project_root_relative(states["H0"][order, middle])))
-            for order in qualifying if contexts[order] is not None
-        }
-        if displacement:
-            rows["small_observation_motion"] = min(displacement, key=displacement.get)
-            rows["large_swivel_correction"] = max(
-                qualifying, key=lambda order: np.linalg.norm(states[R_SWIVEL_OBS][order, middle] - states["H0"][order, middle]))
-            rows["foreshortened_chain"] = min(
-                qualifying, key=lambda order: reports[R_SWIVEL_OBS][order]["fields"][field].get("in_plane_fraction", np.inf))
-            for label, comparator in (
-                ("r_swivel_better_than_both", lambda order: all(
-                    displacement[order] < np.linalg.norm(
-                        contexts[order].project_root_relative(states[name][order, middle]) -
-                        contexts[order].project_root_relative(states["H0"][order, middle]))
-                    for name in (DEPTH_ONLY, MINIMUM_NORM))),
-                ("r_swivel_worse_than_depth_only", lambda order: displacement[order] > np.linalg.norm(
-                    contexts[order].project_root_relative(states[DEPTH_ONLY][order, middle]) -
-                    contexts[order].project_root_relative(states["H0"][order, middle]))),
-                ("r_swivel_worse_than_minimum_norm", lambda order: displacement[order] > np.linalg.norm(
-                    contexts[order].project_root_relative(states[MINIMUM_NORM][order, middle]) -
-                    contexts[order].project_root_relative(states["H0"][order, middle]))),
-            ):
-                match = [order for order in qualifying if order in displacement and comparator(order)]
-                if match:
-                    rows[label] = match[0]
-    wrong = [order for order in range(len(positions))
-             if wrong_reports[R_SWIVEL_OBS][order]["fields"][field]["outcome"] == CORRECTED]
-    if wrong:
-        rows["wrong_sign_case"] = max(
-            wrong, key=lambda order: np.linalg.norm(
-                contexts[order].project_root_relative(states[f"{R_SWIVEL_OBS}__opposite"][order, middle]) -
-                contexts[order].project_root_relative(states["H0"][order, middle])))
-    unresolved = [order for order in range(len(positions))
-                  if wrong_reports[R_SWIVEL_OBS][order]["fields"][field]["outcome"] == "unresolved"]
-    if unresolved:
-        rows["unresolved_case"] = unresolved[0]
+    c_rows = _cohort_rows(cohorts, "C", field)
+    e_rows = _cohort_rows(cohorts, "E", field)
+    wrong_rows = _cohort_rows(wrong_cohorts, "C", field)
+    obs_report = reports[R_SWIVEL_OBS]
+    oracle_report = reports[R_SWIVEL_ORACLE_2D]
+    wrong_report = _reports_for_state(f"{R_SWIVEL_OBS}__opposite", reports, wrong_reports)
+
+    def outcome(report, order):
+        return report[int(order)]["fields"][field]["outcome"]
+
+    rows: dict[str, tuple[int, str, str, str]] = {}
+    corrected_obs = [int(order) for order in c_rows if outcome(obs_report, order) == CORRECTED]
+    if corrected_obs:
+        rows["OBS corrected successfully"] = (corrected_obs[0], R_SWIVEL_OBS, "C", R_SWIVEL_OBS)
+
+    obs_unresolved_oracle_corrected = [
+        int(order) for order in e_rows
+        if outcome(obs_report, order) == UNRESOLVED and outcome(oracle_report, order) == CORRECTED
+    ]
+    if obs_unresolved_oracle_corrected:
+        rows["OBS unresolved but ORACLE_2D corrected"] = (
+            obs_unresolved_oracle_corrected[0], R_SWIVEL_ORACLE_2D, "E", R_SWIVEL_ORACLE_2D)
+
+    both_unresolved = [
+        int(order) for order in e_rows
+        if outcome(obs_report, order) == UNRESOLVED and outcome(oracle_report, order) == UNRESOLVED
+    ]
+    if both_unresolved:
+        rows["both OBS and ORACLE_2D unresolved"] = (
+            both_unresolved[0], R_SWIVEL_OBS, "C", R_SWIVEL_OBS)
+
+    def finite_comparison_rows(predicate):
+        matches = []
+        for order in corrected_obs:
+            values = [_pixel_displacement(states[name], states["H0"], order, middle, contexts)
+                      for name in (R_SWIVEL_OBS, DEPTH_ONLY, MINIMUM_NORM)]
+            if all(np.isfinite(values)) and predicate(*values):
+                matches.append((order, values))
+        return matches
+
+    worse = finite_comparison_rows(lambda obs, depth, minimum: obs > depth)
+    if worse:
+        rows["OBS worse than DEPTH_ONLY on same C row"] = (worse[0][0], R_SWIVEL_OBS, "C", R_SWIVEL_OBS)
+    better = finite_comparison_rows(lambda obs, depth, minimum: obs < depth and obs < minimum)
+    if better:
+        rows["OBS better than both baselines on same C row"] = (better[0][0], R_SWIVEL_OBS, "C", R_SWIVEL_OBS)
+
+    wrong_corrected = [int(order) for order in wrong_rows if outcome(wrong_report, order) == CORRECTED]
+    if wrong_corrected:
+        wrong_case = max(
+            wrong_corrected,
+            key=lambda order: _pixel_displacement(
+                states[f"{R_SWIVEL_OBS}__opposite"], states["H0"], order, middle, contexts))
+        rows["wrong-sign large damage"] = (
+            wrong_case, f"{R_SWIVEL_OBS}__opposite", "wrong/C", R_SWIVEL_OBS)
 
     output = []
-    for label, order in rows.items():
+    for label, (order, after_name, cohort_name, report_name) in rows.items():
         context = contexts[order]
         before = states["H0"][order]
-        after_name = R_SWIVEL_OBS if label != "wrong_sign_case" else f"{R_SWIVEL_OBS}__opposite"
         after = states[after_name][order]
-        entry = reports[R_SWIVEL_OBS][order]["fields"][field] if label != "wrong_sign_case" \
-            else wrong_reports[R_SWIVEL_OBS][order]["fields"][field]
+        report_table = wrong_reports if after_name.endswith("__opposite") else reports
+        entry = _reports_for_state(after_name, reports, wrong_reports)[order]["fields"][field]
         projected_before = context.project_root_relative(before[middle]) if context else None
         projected_after = context.project_root_relative(after[middle]) if context else None
         target_root_relative = target_absolute[order, middle] - np.asarray(context.root_offset_camera) if context else None
         target_projection = context.project_root_relative(target_root_relative) if context else None
         output.append({
-            "category": label, "sample_id": bank.samples[int(positions[order])].sample_id,
+            "category": label, "cohort": cohort_name, "candidate": report_name,
+            "sample_id": bank.samples[int(positions[order])].sample_id,
             "sequence_id": bank.samples[int(positions[order])].sequence_id,
             "frame_index": int(bank.samples[int(positions[order])].frame_index), "chain": list(chain),
             "P_M_D_before_root_relative": before[chain_indices].tolist(),
@@ -362,9 +543,11 @@ def main() -> int:
     states[R_SWIVEL_ORACLE_2D], reports[R_SWIVEL_ORACLE_2D] = reconcile_pose_batch(
         h0, valid, requested, oracle_observation, contexts, fields=HINGE_FIELDS, observed_valid=valid)
 
+    normal_names = ("H0", DEPTH_ONLY, MINIMUM_NORM, R_SWIVEL_OBS, R_SWIVEL_ORACLE_2D)
+    intervention_names = (DEPTH_ONLY, MINIMUM_NORM, R_SWIVEL_OBS, R_SWIVEL_ORACLE_2D)
     evaluations = {
-        name: evaluate_predictions(bank, positions, state, candidate=f"{candidate}+{name}")
-        for name, state in states.items() if "__opposite" not in name
+        name: evaluate_predictions(bank, positions, states[name], candidate=f"{candidate}+{name}")
+        for name in normal_names
     }
     summaries = {
         name: {key: evaluation["aggregate"].get(key)
@@ -372,27 +555,71 @@ def main() -> int:
                            "hinge_direction_mae_degrees", "root_yaw_error_degrees")}
         for name, evaluation in evaluations.items()
     }
-    ownership = {
-        name: {"endpoint_and_bones": _bone_and_endpoint_accounting(state, h0, valid),
-               "global": _global_accounting(state, h0, valid),
-               "image": _image_accounting(name, state, h0, targets, observation,
-                                           absolute_target, image_size, contexts, valid,
-                                           reports.get(name))}
-        for name, state in states.items()
-        if "__opposite" not in name
+    cohorts = build_cohorts(
+        h0, requested, valid, observed_valid, observation, absolute_target, contexts,
+        {name: reports[name] for name in (DEPTH_ONLY, MINIMUM_NORM, R_SWIVEL_OBS)},
+    )
+    wrong_cohorts = build_cohorts(
+        h0, opposite, valid, observed_valid, observation, absolute_target, contexts,
+        {name: wrong_reports[name] for name in (DEPTH_ONLY, MINIMUM_NORM, R_SWIVEL_OBS)},
+    )
+
+    def matched_results(cohort_map: dict[str, dict[str, np.ndarray]], cohort_name: str,
+                        names: tuple[str, ...]) -> dict[str, Any]:
+        frame_mask = np.logical_or.reduce(list(cohort_map[cohort_name].values()))
+        results: dict[str, Any] = {}
+        for name in names:
+            results[name] = {
+                "matched_3d": _matched_evaluation(
+                    bank, positions, states[name], f"{candidate}+{name}+{cohort_name}", frame_mask),
+                "endpoint_and_bones": _bone_and_endpoint_accounting(
+                    states[name], h0, valid, frame_mask),
+                "global": _global_accounting(states[name], h0, valid, frame_mask),
+                "image": _image_accounting(
+                    name, states[name], h0, observation, absolute_target, image_size,
+                    contexts, cohort_map, cohort_name),
+            }
+        return {
+            "primary": cohort_name == "C",
+            "secondary": cohort_name == "D",
+            "frame_count": int(frame_mask.sum()),
+            "candidates": results,
+        }
+
+    matched_cohorts = {
+        "C": matched_results(cohorts, "C", ("H0", DEPTH_ONLY, MINIMUM_NORM, R_SWIVEL_OBS)),
+        "D": matched_results(cohorts, "D", ("H0", DEPTH_ONLY, MINIMUM_NORM, R_SWIVEL_OBS)),
+        "E": matched_results(cohorts, "E", normal_names),
     }
-    wrong_sign = {
-        name: {"evaluation": evaluate_predictions(bank, positions, state, candidate=f"{candidate}+{name}__opposite")["aggregate"],
-               "endpoint_and_bones": _bone_and_endpoint_accounting(state, h0, valid),
-               "image": _image_accounting(name, state, h0, targets, observation,
-                                           absolute_target, image_size, contexts, valid,
-                                           wrong_reports.get(name))}
-        for name, state in states.items() if name.endswith("__opposite")
-    }
+
+    wrong_sign = {}
+    for opposite_name, state in states.items():
+        if not opposite_name.endswith("__opposite"):
+            continue
+        base_name = _opposite_base_name(opposite_name)
+        wrong_sign[base_name] = {
+            "state_name": opposite_name,
+            "primary_cohort": "C",
+            "secondary_cohort": "D",
+            "cohorts": summarize_cohorts(wrong_cohorts),
+            "evaluation": evaluate_predictions(
+                bank, positions, state, candidate=f"{candidate}+{opposite_name}") ["aggregate"],
+            "requested_sign_accounting": _reconciliation_outcome_counts(
+                wrong_reports[base_name], opposite, wrong_cohorts, state, valid),
+            "matched_cohorts": {
+                "C": matched_results(wrong_cohorts, "C", ("H0", opposite_name)),
+                "D": matched_results(wrong_cohorts, "D", ("H0", opposite_name)),
+            },
+        }
     reviews = []
     for field in HINGE_FIELDS:
         reviews.extend(_reviews(bank, positions, field, states, reports, wrong_reports,
-                                observation, absolute_target, image_size, contexts, valid))
+                                observation, absolute_target, contexts, valid, cohorts, wrong_cohorts))
+
+    requested_sign_accounting = {
+        name: _reconciliation_outcome_counts(reports[name], requested, cohorts, states[name], valid)
+        for name in intervention_names
+    }
 
     report = {
         "schema": SCHEMA,
@@ -410,16 +637,30 @@ def main() -> int:
             "frames_with_camera_geometry": int(usable.sum()),
             "frames_without_camera_geometry": dict(missing),
         },
+        "observation_coordinate_space": OBSERVATION_COORDINATE_SPACE,
         "sign_ownership": "existing hinge SignState selects only readable hidden forward/depth branch",
         "observation_ownership": "stored input_2d middle joint, or exact projected target for R_SWIVEL_ORACLE_2D",
         "orientation_contract": "wrist/ankle orientation is not represented by canonical XYZ; downstream IK must lock it",
         "candidates": ["H0", DEPTH_ONLY, MINIMUM_NORM, R_SWIVEL_OBS, R_SWIVEL_ORACLE_2D],
         "aggregate_3d": summaries,
-        "requested_sign_accounting": {
-            name: _reconciliation_outcome_counts(reports[name])
-            for name in (R_SWIVEL_OBS, R_SWIVEL_ORACLE_2D)
+        "all_test": {
+            "cohort": "A",
+            "candidates": {
+                name: {"aggregate": evaluations[name]["aggregate"],
+                       "per_joint_mean_error_mm": evaluations[name]["per_joint_mean_error_mm"]}
+                for name in normal_names
+            },
         },
-        "ownership": ownership,
+        "cohorts": summarize_cohorts(cohorts),
+        "cohort_contract": {
+            "A": "all test frames; normal evaluator",
+            "B": "known oracle request, H0 conflict, valid P-M-D chain",
+            "C": "B plus valid ProjectionContext and observed middle in normalized_full_image",
+            "D": "C plus DEPTH_ONLY, MINIMUM_NORM, and R_SWIVEL_OBS all corrected; secondary diagnostic",
+            "E": "B plus camera context and target middle projection; oracle upper-bound cohort",
+        },
+        "requested_sign_accounting": requested_sign_accounting,
+        "matched_cohorts": matched_cohorts,
         "wrong_sign_endpoint": wrong_sign,
         "review_records": reviews,
         "no_training": True,

@@ -282,11 +282,50 @@ The original reference was rechecked on LabServer at `2026-09-15T09:14:55Z`:
 3080 Ti was idle (0%, 1/12,288 MiB). Local focused tests for batching,
 interleaving, bounded ordering, crop hashes, equivalence, resume identity, and
 malformed response handling pass (`12 passed`), and the three scripts pass
-`py_compile`. No benchmark or full batched inference has yet been started.
-Next, transfer the three new execution files into a distinct isolated input
-directory, run the bounded profile/equivalence benchmark into a new evidence
-directory, and only then decide whether to run a clean 7,076-frame batched
-evaluation in a separate output directory.
+`py_compile`; Ruff passes with the repository's existing script-path `E402`
+imports ignored. The committed scripts were transferred to a distinct
+`input-batched` directory, with all three remote SHA-256 values matching the
+local files. The benchmark used the pinned container, read-only sequential
+reference, model cache, FrameBank, and image root. It did not modify the
+reference JSONL.
+
+Bounded result at
+`LabServer63:/home/nd/animcv-output/framepose/sign_advisor_current_backend_full_test_20260915/throughput_benchmark_20260915/run1/`:
+
+- The short sequential profile replayed 8 frames/16 requests and reproduced
+  all raw outputs exactly. It measured `0.131346` frames/s (`0.262693`
+  requests/s), GPU average `28.94%` (max `73%`), peak host VRAM `5,246/12,288`
+  MiB. Stage seconds: crop/read `0.9364`, PIL `0.0048`, processor `0.2377`,
+  host-to-device `0.0258`, generate `59.6698`, decode/parse `0.0051`. Generation
+  dominates; data loading and CPU preparation do not.
+- N=4 (8 VLM requests) completed all 64 selected frames in `85.173` seconds:
+  `0.751412` frames/s, `1.502825` requests/s, or `5.72085×` the short serial
+  profile. Estimated 7,076-row steady-state time is `2.616` hours versus
+  `14.965` hours sequential. Batch latency median/p95 was `5.281/5.365` sec.
+  GPU average/max utilization was `52.36%/100%`; peak host VRAM was `9,612`
+  MiB and conservative remaining headroom `2,300.6` MiB (safety threshold
+  `2,048` MiB). Component timings overlap due to prefetch.
+- Equivalence on all 128 requests: parse validity/reason and final seven-field
+  SignState matched `128/128`; raw strings matched `126/128` (`98.4375%`). The
+  only raw differences were `3dpw:downtown_arguing_00:actor0#000030` real and
+  `3dpw:downtown_arguing_00:actor0#000345` real. Both parsed equivalently; no
+  evaluation-relevant mismatch occurred. Because raw output was not byte
+  identical, the sequential partial must not be resumed or mixed into the
+  competence artifact; full N=4 must start from zero in its own output path.
+- N=8 failed on its first request batch with CUDA OOM (attempted an additional
+  8 GiB); the benchmark stopped there and did not attempt N=16. N=4 is the
+  largest useful safe size in this bounded sweep. FlashAttention-2 is supported
+  by this pinned Transformers model class but `flash_attn` is not installed in
+  the pinned Docker image, so no runtime package or image was changed.
+
+The benchmark report SHA-256 is
+`557443b6390327afe2594f5a664512c759da3a1612728335bf6c3be76f4bd6ef`; its N=4
+candidate JSONL SHA-256 is
+`ceff2a7998a3ecf275d56ad0e0f5e84b284a83ebb97a50ee4cffe97ca35b14ab`. The
+original sequential JSONL remains 437 lines / 786,676 bytes with SHA-256
+`837ab1ef64ee7b57458500185dbf14e23056c86233d6e2de8d455aba79584ba3` after the
+benchmark. The next step is a clean, full 7,076-frame N=4 run under a distinct
+run identity and output directory.
 
 ## Tests, scope, and remaining owner actions
 
@@ -305,11 +344,10 @@ Remaining:
 1. The project owner reviews the neutral clips using the blank sheet and then
    separately consults `blind_key.json`; no architecture choice has been made
    for them.
-2. Run the bounded throughput/equivalence benchmark first. If it selects a
-   safe materially faster batch, run the full evaluation from zero in a new
-   output directory; never mix it with the sequential reference. Then verify
-   response and metrics hashes, report results, and assign V1/V2/V3 evidence
-   status without promoting any policy automatically.
+2. Run the selected N=4 full evaluation from zero in its new output directory;
+   never mix it with the sequential reference. Then verify response and
+   metrics hashes, report results, and assign V1/V2/V3 evidence status without
+   promoting any policy automatically.
 
 Until then, do not promote MINIMUM_NORM or R_SWIVEL, add a hybrid, alter
 H0-UNKNOWN refusal, or proceed to target-rig work.

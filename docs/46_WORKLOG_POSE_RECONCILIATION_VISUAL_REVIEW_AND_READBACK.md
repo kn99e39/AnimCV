@@ -327,6 +327,59 @@ original sequential JSONL remains 437 lines / 786,676 bytes with SHA-256
 benchmark. The next step is a clean, full 7,076-frame N=4 run under a distinct
 run identity and output directory.
 
+### Complete N=4 frozen Sign Advisor execution
+
+The clean N=4 run completed on LabServer63 at
+`/home/nd/animcv-output/framepose/sign_advisor_current_backend_full_test_20260915/batched_full_test_20260915/full_test_n4/`.
+It has one identity record plus all 7,076 requested frame records (7,077 JSONL
+lines); its manifest records `COMPLETE`, `records=7076`, and
+`expected_records=7076`. No Sign Advisor process remains running.
+
+- Raw response ledger SHA-256:
+  `bb586b82c1a14083af0b6bb222f361c6b759173d5448bc55d5224dea6f4dd514`.
+  Metrics SHA-256: `824de28b0b7c3d78c35b88110ca50a938dfd1ffeea918a4c799e83362b58fe71`.
+  Manifest SHA-256: `3178f74e648f998f5cb0feeee009988bb0fd8b68bdb40b866d14a8ca2bfade2d`.
+- Actual execution time was 9,729.952 seconds (2.703 hours): 0.727239
+  frames/s and 1.454478 VLM requests/s for 7,076 real/shuffled frame pairs.
+  This is 5.54× the short sequential reference profile (0.131346 frames/s),
+  while retaining the separately recorded N=4 execution identity and the
+  bounded-equivalence evidence. Generation remained dominant (9,701.661 sec);
+  crop/read, processor, and host-to-device time totaled 759.200 sec.
+- The original sequential reference was not changed or mixed into this result.
+  The N=4 run records the fixed request batch size 8, four crop workers, one
+  pending prepared batch, and the benchmark-equivalence report SHA-256.
+
+The competence result is unequivocal under the **frozen strict contract**:
+every real and shuffled response (7,076 each) began with a Markdown JSON code
+fence, so `parse_response` rejected every one as "response is not exactly one
+JSON object." All emitted SignStates are the neutral seven-UNKNOWN vector. The
+original raw ledger was directly audited: real valid `0/7076`, shuffled valid
+`0/7076`, and both modes have 7,076 parser failures. Consequently all
+evaluation-relevant coverage, accuracy, balanced accuracy, and real-vs-shuffled
+SignState change rates are zero. Raw text is not constant -- 3,055/7,076
+real/shuffled raw strings differ -- but none can enter the frozen sensor due to
+the parser contract. This is a valid negative competence finding for the
+specified backend/prompt/parser combination, **not** evidence that the image
+does not affect the model's unconstrained text.
+
+An aggregation defect was found during post-run audit: the
+`metrics.paired_real_vs_shuffled` convenience summaries had passed all-true
+parser-valid arrays into their per-mode and pooled metrics, even though the
+raw JSONL records are invalid. Their state/coverage/accuracy conclusions remain
+zero because every rejected response has the all-UNKNOWN state, but their
+`parsed_valid_rows` and strict-parse-success fields must not be cited from the
+hashed remote metrics JSON. The underlying ledger, the normal per-population
+`by_mode` parser accounting, and the negative competence conclusion remain
+unambiguous. The local evaluator is corrected and regression-tested so future
+runs propagate the real/shuffled validity arrays into these paired summaries;
+the completed immutable raw artifact is preserved rather than rerun or mixed.
+
+Therefore Track C's competence evidence is complete but negative for the
+frozen strict interface. It does not license VLM authority in H0-UNKNOWN or
+any automatic policy promotion. A separate, explicitly authorized future
+experiment could test a different output-interface contract; it must not be
+reported as this frozen competence evaluation.
+
 ## Tests, scope, and remaining owner actions
 
 Focused checks passed: `13 passed` across the new read-back, visual-selection,

@@ -330,12 +330,22 @@ def paired_bootstrap_hinge_metrics(real_prediction: np.ndarray,
 
 
 def _paired_control(real: np.ndarray, shuffled: np.ndarray, reference: np.ndarray,
-                    *, seed: int, bootstrap: bool) -> dict[str, Any]:
+                    *, real_valid: np.ndarray | None = None,
+                    shuffled_valid: np.ndarray | None = None,
+                    seed: int, bootstrap: bool) -> dict[str, Any]:
     real = np.asarray(real, dtype=np.int8)
     shuffled = np.asarray(shuffled, dtype=np.int8)
     reference = np.asarray(reference, dtype=np.int8)
-    real_metrics = field_metrics(real, np.ones(len(real), dtype=bool), reference)
-    shuffled_metrics = field_metrics(shuffled, np.ones(len(shuffled), dtype=bool), reference)
+    if real_valid is None:
+        real_valid = np.ones(len(real), dtype=bool)
+    if shuffled_valid is None:
+        shuffled_valid = np.ones(len(shuffled), dtype=bool)
+    real_valid = np.asarray(real_valid, dtype=bool)
+    shuffled_valid = np.asarray(shuffled_valid, dtype=bool)
+    if len(real_valid) != len(real) or len(shuffled_valid) != len(shuffled):
+        raise ValueError("paired validity arrays must align with paired predictions")
+    real_metrics = field_metrics(real, real_valid, reference)
+    shuffled_metrics = field_metrics(shuffled, shuffled_valid, reference)
     scored = reference != UNKNOWN
     result = {
         "rows": int(len(reference)),
@@ -406,7 +416,10 @@ def summarize_predictions(records: list[dict[str, Any]],
             result["paired_real_vs_shuffled"][key] = _paired_control(
                 prediction_matrices["real"][rows, column],
                 prediction_matrices["shuffled"][rows, column],
-                reference[rows, column], seed=20260915 + column
+                reference[rows, column],
+                real_valid=valid_matrices["real"][rows],
+                shuffled_valid=valid_matrices["shuffled"][rows],
+                seed=20260915 + column
                 + (100 if population_name == "C_READABLE_WRONG" else
                    200 if population_name == "C_H0_UNKNOWN" else 0),
                 bootstrap=is_hinge_cohort)
@@ -414,21 +427,28 @@ def summarize_predictions(records: list[dict[str, Any]],
                        for field in hinge_fields if field in rows_by_field]
         if pooled_rows:
             pooled_real, pooled_shuffled, pooled_reference = [], [], []
+            pooled_real_valid, pooled_shuffled_valid = [], []
             for field, rows in ((field, np.asarray(rows_by_field[field], dtype=np.int64))
                                 for field in hinge_fields if field in rows_by_field):
                 column = SIGN_FIELD_NAMES.index(field)
                 pooled_real.extend(prediction_matrices["real"][rows, column].tolist())
                 pooled_shuffled.extend(prediction_matrices["shuffled"][rows, column].tolist())
                 pooled_reference.extend(reference[rows, column].tolist())
+                pooled_real_valid.extend(valid_matrices["real"][rows].tolist())
+                pooled_shuffled_valid.extend(valid_matrices["shuffled"][rows].tolist())
             pooled_real = np.asarray(pooled_real, dtype=np.int8)
             pooled_shuffled = np.asarray(pooled_shuffled, dtype=np.int8)
             pooled_reference = np.asarray(pooled_reference, dtype=np.int8)
+            pooled_real_valid = np.asarray(pooled_real_valid, dtype=bool)
+            pooled_shuffled_valid = np.asarray(pooled_shuffled_valid, dtype=bool)
             population["pooled_hinge_rows"] = int(len(pooled_reference))
             for mode, prediction in (("real", pooled_real), ("shuffled", pooled_shuffled)):
+                valid = pooled_real_valid if mode == "real" else pooled_shuffled_valid
                 population["by_mode"][mode]["pooled_hinge"] = field_metrics(
-                    prediction, np.ones(len(prediction), dtype=bool), pooled_reference)
+                    prediction, valid, pooled_reference)
             result["paired_real_vs_shuffled"][f"{population_name}::pooled_hinge"] = _paired_control(
                 pooled_real, pooled_shuffled, pooled_reference,
+                real_valid=pooled_real_valid, shuffled_valid=pooled_shuffled_valid,
                 seed=20260915 + (100 if population_name == "C_READABLE_WRONG" else
                                  200 if population_name == "C_H0_UNKNOWN" else 300),
                 bootstrap=True)

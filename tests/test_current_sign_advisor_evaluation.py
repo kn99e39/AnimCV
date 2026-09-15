@@ -272,8 +272,8 @@ def test_summary_keeps_docs45_populations_separate_and_pools_hinge_rows():
         if row == 2:
             shuffled[0] *= -1
         records.append({
-            "real": {"state": real.tolist(), "valid": True},
-            "shuffled": {"state": shuffled.tolist(), "valid": True},
+            "real": {"state": real.tolist(), "valid": row != 3},
+            "shuffled": {"state": shuffled.tolist(), "valid": row != 2},
         })
     rows = np.arange(len(reference), dtype=np.int64)
     hinge_fields = [field for field in SIGN_FIELD_NAMES if field.endswith("_forward_bend")]
@@ -287,3 +287,9 @@ def test_summary_keeps_docs45_populations_separate_and_pools_hinge_rows():
     assert "pooled_hinge" in result["populations"]["C_H0_UNKNOWN"]["by_mode"]["real"]
     assert "C_H0_UNKNOWN::left_elbow_forward_bend" in result["paired_real_vs_shuffled"]
     assert "uncertainty" in result["paired_real_vs_shuffled"]["C_H0_UNKNOWN::pooled_hinge"]
+    paired = result["paired_real_vs_shuffled"]["all_readable_test::torso_facing"]
+    assert paired["real_metrics"]["strict_parse_failures"] == 1
+    assert paired["shuffled_metrics"]["strict_parse_failures"] == 1
+    pooled = result["paired_real_vs_shuffled"]["all_readable_test::pooled_hinge"]
+    assert pooled["real_metrics"]["strict_parse_failures"] == 4
+    assert pooled["shuffled_metrics"]["strict_parse_failures"] == 4

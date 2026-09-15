@@ -195,6 +195,7 @@ historical report.
 ```text
 source:                /Users/nadan/Projects/Lab/DATASET_Motion/sequenceFiles/test/*.pkl
 historical reference:  /data/datasets/3dpw/sequenceFiles/test
+historical LabServer63: /home/nd/animcv-data/datasets/3dpw/sequenceFiles/test/*.pkl
 ```
 
 Expected identity: 24 historical sequence entries, exact byte sizes and
@@ -271,8 +272,71 @@ mean 7.999° / P95 18.645°, MPJPE 79.229 mm, PA-MPJPE 56.425 mm, hinge flip
 
 All nine required artifacts pass identity verification; the two
 `sign_attr_v1_INVALID_mask_discarded` files are present only as evidence of
-correct exclusion. `real_replay_authorized: true` — the gate for the real
-docs/39-input Pose Reconciliation replay (docs/41–43's `R_SWIVEL_OBS` vs
-`DEPTH_ONLY`/`MINIMUM_NORM` comparison) is open. **No replay was run in this
-batch.** That remains the next step, on whichever cohort (A–E, docs/42–43)
-the replay script selects.
+correct exclusion. `real_replay_authorized: true` — this identity gate was
+completed before the real docs/39-input Pose Reconciliation replay documented
+in [`44_WORKLOG_POSE_RECONCILIATION_REAL_REPLAY.md`](44_WORKLOG_POSE_RECONCILIATION_REAL_REPLAY.md).
+
+## 6. Machine-readable recovery table
+
+This normalized record preserves the required columns for downstream
+verification. `UNVERIFIABLE` is used only for the evaluation schema's missing
+split field; the recovered ownership/docs/39 records cross-bind that identity.
+
+```json
+{
+  "schema": "animcv_historical_artifact_recovery_table_v1",
+  "required_inputs_pass": true,
+  "real_replay_authorized": true,
+  "artifacts": [
+    {
+      "artifact": "FrameBank JSON index + numeric arrays",
+      "status": "PASS",
+      "source_path": "/home/nd/animcv-output/framepose/bank_3dpw_paired_v2.json + /home/nd/animcv-output/framepose/bank_3dpw_paired_v2.npz",
+      "identity_method": "Original server SHA-256, load_bank content_digest, exact split/regime check, contemporaneous matrix cross-binding.",
+      "expected_identity": {"content_digest": "75519e6394a764e3749ddaa30555b58b73a01db582ccee14f661374b9a0ed536", "samples": 21817, "split_counts": {"train": 11334, "validation": 3407, "test": 7076}},
+      "measured_identity": {"schema": "animcv_frame_pose_bank_v2", "content_digest": "75519e6394a764e3749ddaa30555b58b73a01db582ccee14f661374b9a0ed536", "index_sha256": "6fe13cdc91e1fdec8defd647b230cf688fa514a2799956ed40e7f805b13e0fe5", "npz_sha256": "909090f7aa78f3c25f56fbd335eb5b2521f87c06e92d59a28010b0b28ba6b79e", "samples": 21817, "split_counts": {"train": 11334, "validation": 3407, "test": 7076}, "regime": "benchmark_detector_observation"}
+    },
+    {
+      "artifact": "O_BILATERAL prediction",
+      "status": "PASS",
+      "source_path": "/home/nd/animcv-output/framepose/sign_attr_v2/O_BILATERAL/prediction_test.npy",
+      "identity_method": "Exact SHA-256 cross-bound by ownership v3 and docs/39; verify_source_identity shape/candidate/split-frame check.",
+      "expected_identity": {"candidate": "O_BILATERAL_oracle_forward_depth_only", "sha256": "6df04c2031b2bde6a4f0af37fdae0a7f0228e9fc23401e15e1aa2b3bd35695a5", "frames": 7076, "joints": 17, "bank_content_digest": "75519e6394a764e3749ddaa30555b58b73a01db582ccee14f661374b9a0ed536"},
+      "measured_identity": {"sha256": "6df04c2031b2bde6a4f0af37fdae0a7f0228e9fc23401e15e1aa2b3bd35695a5", "shape_matches_test_split": true, "source_identity_check": "PASS"}
+    },
+    {
+      "artifact": "O_BILATERAL evaluation/provenance",
+      "status": "PASS",
+      "source_path": "/home/nd/animcv-output/framepose/sign_attr_v2/O_BILATERAL/evaluation_test.json",
+      "identity_method": "Exact evaluation SHA cross-bound by ownership v3/docs/39; candidate/frame/regime verifier.",
+      "expected_identity": {"schema": "animcv_frame_pose_evaluation_v1", "candidate": "O_BILATERAL_oracle_forward_depth_only", "sha256": "a5881850b3769ca2329271d327ee895dc646f236451f05c3ba2e0ff917f580a3", "frames": 7076, "regime": "benchmark_detector_observation"},
+      "measured_identity": {"sha256": "a5881850b3769ca2329271d327ee895dc646f236451f05c3ba2e0ff917f580a3", "candidate_matches": true, "frame_count_matches": true, "regime_matches": true, "split_field": "UNVERIFIABLE in evaluation schema; independently cross-bound by ownership v3/docs/39"}
+    },
+    {
+      "artifact": "Raw 3DPW test camera pickles",
+      "status": "PASS",
+      "source_path": "/Users/nadan/Projects/Lab/DATASET_Motion/sequenceFiles/test/*.pkl",
+      "identity_method": "Per-file byte size/SHA-256 equality across LabServer63 raw files, recovered docs/39 manifest, and local replay inputs; camera reconstruction/context preflight.",
+      "expected_identity": {"files": 24, "manifest_source": "/home/nd/animcv-output/framepose/hinge_write_policy_v3/hinge_write_policy_observation.json"},
+      "measured_identity": {"files": 24, "missing": 0, "extra": 0, "byte_or_sha_mismatches": 0, "camera_frames": 7076, "invalid_contexts": 0, "target_middle_projection_failures": 0}
+    },
+    {
+      "artifact": "Historical hinge ownership v3",
+      "status": "PASS",
+      "source_path": "/home/nd/animcv-output/framepose/hinge_ownership_v3/hinge_evidence_ownership.json",
+      "identity_method": "Exact artifact SHA plus internal source/bank/policy/residual cross-bind checks.",
+      "expected_identity": {"sha256": "46851e31d343e2fe054b89c0afbb9d27e1b84fcc56ea37fc71f38d5a52b9a4db", "historical_policy": "minimum_norm", "residual_total": 279, "depth_correct": 83},
+      "measured_identity": {"source_prediction_matches": true, "source_evaluation_matches": true, "bank_digest_matches": true, "policy_matches": true, "residual_total": 279, "depth_correct": 83, "all_checks_pass": true}
+    },
+    {
+      "artifact": "sign_attr_v1_INVALID_mask_discarded O_BILATERAL files",
+      "status": "FAIL",
+      "source_path": "/home/nd/animcv-output/framepose/sign_attr_v1_INVALID_mask_discarded/O_BILATERAL/{prediction_test.npy,evaluation_test.json}",
+      "identity_method": "SHA comparison against accepted sign_attr_v2 lineage and explicit invalid-directory disposition.",
+      "expected_identity": "Corrected sign_attr_v2 only.",
+      "measured_identity": "Both hashes differ from the accepted v2 prediction/evaluation.",
+      "disposition": "REJECTED_NOT_USED"
+    }
+  ]
+}
+```

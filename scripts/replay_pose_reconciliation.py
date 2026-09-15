@@ -716,8 +716,10 @@ def main() -> int:
             "primary_cohort": "C",
             "secondary_cohort": "D",
             "cohorts": summarize_cohorts(wrong_cohorts),
-            "evaluation": evaluate_predictions(
-                bank, positions, state, candidate=f"{candidate}+{opposite_name}") ["aggregate"],
+            "whole_pose_cohort": "wrong/C union frames",
+            "evaluation": _matched_evaluation(
+                bank, positions, state, f"{candidate}+{opposite_name}+wrong/C",
+                np.logical_or.reduce(list(wrong_cohorts["C"].values()))),
             "requested_sign_accounting": wrong_requested_sign_accounting[opposite_name],
             "matched_cohorts": {
                 "C": matched_results(

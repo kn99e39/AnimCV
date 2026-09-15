@@ -208,10 +208,34 @@ The run evaluates every one of the 7,076 docs/44 test rows with both the real
 image and a deterministic different-sequence shuffled image. Progress is
 checkpointed in
 `LabServer63:/home/nd/animcv-output/framepose/sign_advisor_current_backend_full_test_20260915/output/full_test_responses.jsonl`.
-At the latest check, 340/7,076 rows were complete at about 0.130 rows/s, with
-GPU memory stable at about 5.2 GiB. The estimated remaining runtime is roughly
-14.5 hours at that rate. No full-test metrics or competence conclusion exists
-until all rows and the final aggregation complete.
+At the pre-stop capture, 420/7,076 rows were complete at about 0.131 rows/s,
+with GPU utilization 25% and memory 5,244/12,288 MiB. No full-test metrics or
+competence conclusion exists until all rows and the final aggregation
+complete.
+
+### Sequential reference capture before throughput work
+
+Pre-stop snapshot captured at `2026-09-15T08:56:21Z` (remote file stat at
+`08:56:25Z`): 421 JSONL lines (one run identity plus 420 complete unique
+frames, orders 0–419), 758,159 bytes, SHA-256
+`9eb8437f2fa5503621c962259c2790970cf48e212d5970532953e3f8488b7396`.
+The persistent reference path above is not to be deleted or overwritten.
+
+- Branch `arch/single_frame_first`; run-start HEAD `e88d5a2521b095ad112b48300d7b941c332d3637`; HEAD at capture `f6c4bf28fcfb6109171b7faf814792ea6d4fb7b3`.
+- Evaluator SHA-256 `8ee645ec395a785ae6c12b2a8c88fc981e08b7c905dcc482dae1dce7aa9f2f9e`; started `2026-09-15T08:01:34Z`; measured sequential rate `0.131 rows/s`.
+- Container `0552172fae0ffa89c85bffcd744040bf9e373b8c54a8b33613b707a2c74f201a`, image `animcv-signadvisor:cuda118`, image ID `sha256:8e50fb38f1086a3b91ef7cfb0320469202bb031beecf9bec2dcd373ae2477e92`.
+- Model `Qwen/Qwen2-VL-2B-Instruct`, revision `895c3a49bc3fa70a340399125c650a463535e71c`, weight fingerprint `840bc66b30f80632ade2f1fd6f415c34bb2f89ff0460ecee98a572c8d77eabc0`; FP16, Transformers 4.49.0, torch 2.1.2+cu118, greedy decoding, 160 max new tokens, seed 1337, 448×448 crop, prompt SHA-256 `4529750c6835fbf4ae11b7d2874c4dbd61d6ed9ec5e4ca8d13062d2783405446f`.
+- GPU at capture: 25%, 5,244/12,288 MiB.
+
+Exact container command (run output is a bind mount and remains intact when the
+container is stopped):
+
+```sh
+ssh LabServer63 'docker run --rm --gpus all --network none --shm-size=1g --mount type=bind,source=/home/nd/AnimCV,target=/workspace/AnimCV,readonly --mount type=bind,source=/home/nd/animcv-output/framepose/sign_advisor_current_backend_full_test_20260915/input,target=/run/input,readonly --mount type=bind,source=/home/nd/animcv-output/framepose/sign_advisor_current_backend_full_test_20260915/output,target=/run/output --mount type=bind,source=/home/nd/animcv-output/framepose,target=/data/framepose,readonly --mount type=bind,source=/home/nd/animcv-data/datasets/3dpw/imageFiles,target=/data/3dpw/images,readonly --mount type=bind,source=/home/nd/animcv-hf-cache,target=/cache,readonly --workdir /workspace/AnimCV --env PYTHONPATH=/run/input:/workspace/AnimCV/scripts:/workspace/AnimCV/src --env HF_HOME=/cache --env HF_HUB_OFFLINE=1 --env TRANSFORMERS_OFFLINE=1 --entrypoint python3 animcv-signadvisor:cuda118 /run/input/evaluate_current_sign_advisor.py --bank /data/framepose/bank_3dpw_paired_v2.json --h0-prediction /data/framepose/sign_attr_v2/O_BILATERAL/prediction_test.npy --replay-report /run/input/pose_reconciliation_replay.json --attribution-report /run/input/pose_reconciliation_attribution.json --image-root 3dpw_images=/data/3dpw/images --out /run/output --revision 895c3a49bc3fa70a340399125c650a463535e71c --hf-cache /cache --started-utc 2026-09-15T08:01:34Z --resume'
+```
+
+The complete command arguments and run identity are also recorded in the
+container configuration and first JSONL record, respectively.
 
 Therefore Track C's identity result is **adopted Qwen research backend found**,
 but its competence result and V1/V2/V3 evidence classification are

@@ -186,14 +186,32 @@ per-field and pooled hinge metrics; confusion, abstention, and wrong-sign
 accounting; real/shuffled output and coverage changes; and stratified paired
 bootstrap intervals on both docs/45 hinge populations.
 
-**Inference did not start.** Security review rejected copying the new
-evaluation source and docs/44-45-derived reports to LabServer because explicit
-approval for exporting those payloads to that destination was absent. No
-source/report file was transferred; no model inference ran. An empty isolated
-staging directory may remain on the server. This is an authorization blocker,
-not a model/provenance or compute limitation. Focused local tests validate
-population, pairing, parser, metric, and bootstrap accounting, but do not
-substitute for inference.
+**Full-test inference is running.** On 2026-09-15 the project owner explicitly
+approved transfer of the evaluator, its two required helper scripts, and the
+exact docs/44-45 reports to an isolated LabServer directory. After the initial
+security-review rejection, the owner clarified that all required files were
+explicitly authorized. Read-only preflight reconfirmed the frozen runtime,
+cached Qwen snapshot, GPU, bank/prediction identities, and image root. The five
+transferred files were re-hashed remotely and exactly matched their local
+sources: evaluator `8ee645ec395a785ae6c12b2a8c88fc981e08b7c905dcc482dae1dce7aa9f2f9e`,
+attribution helper `4953a53f8c048547fe3804f921e211b072b8dcbad81093a03efae10cf890c1c0`,
+replay helper `81283cbf8bc336e128db2fa5bd0d911f660de8f31928ee4cccfdba35f13f394b`,
+docs/44 replay `61fde30e7e6d8d9769a0273450819478fc6c457af3841eae3d0333c1f8e16e8c`,
+and docs/45 attribution `c7d2c54be3aff937f8c88882bbabe6d18c1f107c2247c723d79480e4171e09eb`.
+The model is `Qwen/Qwen2-VL-2B-Instruct`, snapshot
+`895c3a49bc3fa70a340399125c650a463535e71c`, on the pinned
+`animcv-signadvisor:cuda118` image. The repo, FrameBank, H0 prediction, camera
+images, and HF cache are mounted read-only; only the dedicated run output is
+writable. No prompt, crop, parser, model, or source checkout was changed.
+
+The run evaluates every one of the 7,076 docs/44 test rows with both the real
+image and a deterministic different-sequence shuffled image. Progress is
+checkpointed in
+`LabServer63:/home/nd/animcv-output/framepose/sign_advisor_current_backend_full_test_20260915/output/full_test_responses.jsonl`.
+At the latest check, 340/7,076 rows were complete at about 0.130 rows/s, with
+GPU memory stable at about 5.2 GiB. The estimated remaining runtime is roughly
+14.5 hours at that rate. No full-test metrics or competence conclusion exists
+until all rows and the final aggregation complete.
 
 Therefore Track C's identity result is **adopted Qwen research backend found**,
 but its competence result and V1/V2/V3 evidence classification are
@@ -217,10 +235,10 @@ Remaining:
 1. The project owner reviews the neutral clips using the blank sheet and then
    separately consults `blind_key.json`; no architecture choice has been made
    for them.
-2. The project owner explicitly authorizes or declines transfer of the
-   evaluator and exact docs/44-45 reports to the isolated LabServer directory.
-   If authorized, run all 7,076 test rows and report real/shuffled results
-   before assigning V1/V2/V3 evidence status.
+2. Let the authorized LabServer run finish all 7,076 test rows and its final
+   real/shuffled aggregation. Then verify the response and metrics hashes,
+   report the results, and assign V1/V2/V3 evidence status without promoting
+   any policy automatically.
 
 Until then, do not promote MINIMUM_NORM or R_SWIVEL, add a hybrid, alter
 H0-UNKNOWN refusal, or proceed to target-rig work.

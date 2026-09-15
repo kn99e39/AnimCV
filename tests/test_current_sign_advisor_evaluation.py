@@ -1,8 +1,9 @@
 import hashlib
+from contextlib import nullcontext
 import numpy as np
 import pytest
 
-from framepose.sign_advisor import prompt_text
+from framepose.sign_advisor import parse_response, prompt_text
 from framepose.signs import SIGN_FIELD_NAMES, UNKNOWN
 from scripts.evaluate_current_sign_advisor import (
     EXPECTED_MODEL_ID,
@@ -11,6 +12,7 @@ from scripts.evaluate_current_sign_advisor import (
     EXPECTED_SEED,
     EXPECTED_WEIGHT_FINGERPRINT,
     EXPECTED_MAX_NEW_TOKENS,
+    _fixed_frame_batches,
     different_sequence_donors,
     field_metrics,
     paired_bootstrap_accuracy_difference,
@@ -19,6 +21,17 @@ from scripts.evaluate_current_sign_advisor import (
     validate_frozen_backend,
 )
 from framepose.sign_advisor import ADVISOR_CROP_RESOLUTION
+from scripts.sign_advisor_batching import (
+    OrderedBatchPreparer,
+    PreparedPairBatch,
+    compare_output_rows,
+    crop_sha256,
+    generate_prepared_batch,
+    interleave_pairs,
+    prefetch_ordered_batches,
+    split_interleaved,
+    validate_resume_identity,
+)
 
 
 def test_frozen_backend_provenance_and_prompt_are_pinned():
@@ -67,6 +80,153 @@ def test_shuffle_control_always_uses_a_different_sequence():
     assert np.array_equal(donors, different_sequence_donors(sequence_ids))
     assert all(sequence_ids[index] != sequence_ids[donor]
                for index, donor in enumerate(donors))
+
+
+def test_real_and_shuffled_requests_keep_receiver_pair_order():
+    real = ["real-a", "real-b", "real-c"]
+    shuffled = ["shuffled-a", "shuffled-b", "shuffled-c"]
+
+    interleaved = interleave_pairs(real, shuffled)
+    restored_real, restored_shuffled = split_interleaved(interleaved)
+
+    assert interleaved == ["real-a", "shuffled-a", "real-b", "shuffled-b",
+                           "real-c", "shuffled-c"]
+    assert restored_real == real
+    assert restored_shuffled == shuffled
+    assert list(_fixed_frame_batches(range(7), 3)) == [
+        [0, 1, 2], [3, 4, 5], [6]]
+
+
+def test_crop_digest_matches_sequential_c_order_rgb_hash_without_mutation():
+    crop = np.arange(8 * 8 * 3, dtype=np.uint8).reshape(8, 8, 3)[:, ::-1]
+    before = crop.copy()
+
+    assert crop_sha256(crop) == hashlib.sha256(crop.tobytes()).hexdigest()
+    assert np.array_equal(crop, before)
+
+
+def test_prefetched_processor_batches_remain_bounded_and_in_receiver_order():
+    class FakeProcessor:
+        def __call__(self, *, text, images, return_tensors):
+            assert return_tensors == "pt"
+            return {"text": text, "pixels": [image.getpixel((0, 0)) for image in images]}
+
+    def read_pair(entry):
+        real = np.full((448, 448, 3), entry + 1, dtype=np.uint8)
+        shuffled = np.full((448, 448, 3), entry + 101, dtype=np.uint8)
+        return real, shuffled
+
+    preparer = OrderedBatchPreparer(read_pair, FakeProcessor(), "same frozen prompt")
+    try:
+        batches = list(prefetch_ordered_batches([[0, 1], [2]], preparer))
+    finally:
+        preparer.close()
+
+    assert [batch.entries for batch in batches] == [[0, 1], [2]]
+    assert [batch.inputs["pixels"] for batch in batches] == [
+        [(1, 1, 1), (101, 101, 101), (2, 2, 2), (102, 102, 102)],
+        [(3, 3, 3), (103, 103, 103)],
+    ]
+    assert all(len(batch.crop_hash_pairs) == len(batch.entries) for batch in batches)
+
+
+def test_batched_output_equivalence_reports_raw_parse_and_state_separately():
+    reference = {
+        "sample-a": {
+            "real": {"raw": '{"sign":"left"}', "valid": True,
+                     "reason": None, "state": [1]},
+            "shuffled": {"raw": "malformed", "valid": False,
+                         "reason": "invalid json", "state": [0]},
+        },
+    }
+    candidate = [{
+        "sample_id": "sample-a",
+        "real": {"raw": '{ "sign": "left" }', "valid": True,
+                 "reason": None, "state": [1]},
+        "shuffled": {"raw": "malformed", "valid": False,
+                     "reason": "invalid json", "state": [0]},
+    }]
+
+    result = compare_output_rows(reference, candidate)
+
+    assert result["rows"] == 1
+    assert result["requests"] == 2
+    assert result["raw_exact_match_rate"] == 0.5
+    assert result["parse_status_exact_match_rate"] == 1.0
+    assert result["state_exact_match_rate"] == 1.0
+    assert result["evaluation_relevant_exact_match_rate"] == 1.0
+    assert result["raw_mismatches"] == [{"sample_id": "sample-a", "mode": "real"}]
+    assert result["evaluation_relevant_mismatches"] == []
+
+
+def test_resume_identity_pins_batch_mode_and_equivalence_evidence():
+    identity = {
+        "record_type": "run_identity",
+        "run_started_utc": "first start",
+        "execution_mode": "batched_pair",
+        "frame_batch_size": 8,
+        "request_batch_size": 16,
+        "equivalence_report_sha256": "evidence-sha",
+    }
+
+    validate_resume_identity(identity, {**identity, "run_started_utc": "resume"})
+    with pytest.raises(ValueError, match="frame_batch_size"):
+        validate_resume_identity(identity, {**identity, "frame_batch_size": 4})
+    with pytest.raises(ValueError, match="equivalence_report_sha256"):
+        validate_resume_identity(identity, {
+            **identity, "equivalence_report_sha256": "different-evidence"})
+
+
+def test_batched_generation_keeps_malformed_responses_as_parser_failures():
+    class FakeTensor:
+        shape = (2, 3)
+
+        def __getitem__(self, _):
+            return self
+
+    class FakeInputs(dict):
+        def to(self, _device):
+            return self
+
+    class FakeProcessor:
+        def batch_decode(self, _tokens, skip_special_tokens):
+            assert skip_special_tokens is True
+            return ["not json", '{"not_a_sign_field": "left"}']
+
+    class FakeModel:
+        device = "cpu"
+
+        def generate(self, **kwargs):
+            assert kwargs["do_sample"] is False
+            assert kwargs["max_new_tokens"] == EXPECTED_MAX_NEW_TOKENS
+            return FakeTensor()
+
+    class FakeCuda:
+        @staticmethod
+        def is_available():
+            return False
+
+    class FakeTorch:
+        cuda = FakeCuda()
+
+        @staticmethod
+        def inference_mode():
+            return nullcontext()
+
+    prepared = PreparedPairBatch(
+        entries=[(0, 1, 2)], crop_pairs=[], crop_hash_pairs=[],
+        inputs=FakeInputs(input_ids=FakeTensor()), crop_read_seconds=0.0,
+        pil_conversion_seconds=0.0, processor_seconds=0.0)
+
+    parsed, raw, _timings = generate_prepared_batch(
+        prepared, processor=FakeProcessor(), model=FakeModel(), torch=FakeTorch(),
+        parse_response=parse_response,
+        fields=SIGN_FIELD_NAMES, max_new_tokens=EXPECTED_MAX_NEW_TOKENS)
+
+    assert raw == ["not json", '{"not_a_sign_field": "left"}']
+    assert len(parsed) == 2
+    assert all(not response.valid for response in parsed)
+    assert all(np.all(response.state == 0) for response in parsed)
 
 
 def test_paired_bootstrap_uses_same_rows_for_real_and_shuffled():

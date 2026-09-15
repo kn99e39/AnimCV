@@ -186,7 +186,7 @@ per-field and pooled hinge metrics; confusion, abstention, and wrong-sign
 accounting; real/shuffled output and coverage changes; and stratified paired
 bootstrap intervals on both docs/45 hinge populations.
 
-**Full-test inference is running.** On 2026-09-15 the project owner explicitly
+**The sequential full-test inference was started, then stopped for throughput work.** On 2026-09-15 the project owner explicitly
 approved transfer of the evaluator, its two required helper scripts, and the
 exact docs/44-45 reports to an isolated LabServer directory. After the initial
 security-review rejection, the owner clarified that all required files were
@@ -237,10 +237,56 @@ ssh LabServer63 'docker run --rm --gpus all --network none --shm-size=1g --mount
 The complete command arguments and run identity are also recorded in the
 container configuration and first JSONL record, respectively.
 
+After this capture the recorded container was explicitly stopped for the
+throughput investigation. Post-stop validation found 437 valid JSONL lines
+(run identity plus 436 unique frames, orders 0–435), 786,676 bytes, SHA-256
+`837ab1ef64ee7b57458500185dbf14e23056c86233d6e2de8d455aba79584ba3`, stat
+time `2026-09-15T08:58:29Z`. The container exited 137 as a result of the
+explicit stop; no final metrics were written, and no inference error was
+reported. The original output remains at the sequential reference path and is
+not to be overwritten. Current local HEAD at stop was
+`b1e82c4`; the only commits after run start are Markdown worklog records.
+
 Therefore Track C's identity result is **adopted Qwen research backend found**,
 but its competence result and V1/V2/V3 evidence classification are
 **PENDING**. V0 does not apply. No competence claim is made from the historical
 sample.
+
+### Execution-throughput optimization
+
+The sequential reference is frozen at 436 completed frames and must not be
+resumed or overwritten by the new execution path. The optimization changes
+only inference grouping: each receiver contributes its real crop followed by
+the same deterministic shuffled donor crop; a receiver batch of N therefore
+uses one processor/generation call with 2N requests. The model, frozen weights,
+FP16 dtype, seven-field prompt, 448×448 crop bytes, 160-token greedy decoding,
+strict parser, donor assignment, full 7,076-row population, and metrics remain
+fixed.
+
+Added `scripts/sign_advisor_batching.py` for ordered real/shuffled interleaving,
+crop-byte hashes, bounded one-batch prefetch, batched generation, output
+equivalence comparison, and resume-identity checks. The evaluator retains its
+original serial path and exposes a distinct `--frame-batch-size` path whose run
+identity includes batch size, prefetch bounds, and the SHA-256 of the required
+equivalence report. Prefetch uses four ordered crop-read workers, a separate
+processor instance, and at most one pending batch. The bounded benchmark tests
+N=4, 8, then 16 over the same deterministic 64 completed reference rows, with
+an 8-frame serial component profile. It records crop/read, PIL, processor,
+host-to-device, generate, and decode/parse time; requests/s, frames/s, GPU
+utilization, peak VRAM/headroom, batch latency, and raw/parse/state equality.
+It stops on OOM, under 2 GiB headroom, or less than 10% throughput gain.
+
+The original reference was rechecked on LabServer at `2026-09-15T09:14:55Z`:
+437 JSONL lines (identity plus 436 frames), 786,676 bytes, unchanged SHA-256
+`837ab1ef64ee7b57458500185dbf14e23056c86233d6e2de8d455aba79584ba3`; the RTX
+3080 Ti was idle (0%, 1/12,288 MiB). Local focused tests for batching,
+interleaving, bounded ordering, crop hashes, equivalence, resume identity, and
+malformed response handling pass (`12 passed`), and the three scripts pass
+`py_compile`. No benchmark or full batched inference has yet been started.
+Next, transfer the three new execution files into a distinct isolated input
+directory, run the bounded profile/equivalence benchmark into a new evidence
+directory, and only then decide whether to run a clean 7,076-frame batched
+evaluation in a separate output directory.
 
 ## Tests, scope, and remaining owner actions
 
@@ -259,10 +305,11 @@ Remaining:
 1. The project owner reviews the neutral clips using the blank sheet and then
    separately consults `blind_key.json`; no architecture choice has been made
    for them.
-2. Let the authorized LabServer run finish all 7,076 test rows and its final
-   real/shuffled aggregation. Then verify the response and metrics hashes,
-   report the results, and assign V1/V2/V3 evidence status without promoting
-   any policy automatically.
+2. Run the bounded throughput/equivalence benchmark first. If it selects a
+   safe materially faster batch, run the full evaluation from zero in a new
+   output directory; never mix it with the sequential reference. Then verify
+   response and metrics hashes, report results, and assign V1/V2/V3 evidence
+   status without promoting any policy automatically.
 
 Until then, do not promote MINIMUM_NORM or R_SWIVEL, add a hybrid, alter
 H0-UNKNOWN refusal, or proceed to target-rig work.

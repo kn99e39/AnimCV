@@ -1,4 +1,5 @@
 import hashlib
+import json
 from contextlib import nullcontext
 import numpy as np
 import pytest
@@ -20,6 +21,7 @@ from scripts.evaluate_current_sign_advisor import (
     summarize_predictions,
     validate_frozen_backend,
 )
+from scripts.audit_sign_advisor_fence_normalized import parse_fence_normalized_response
 from framepose.sign_advisor import ADVISOR_CROP_RESOLUTION
 from scripts.sign_advisor_batching import (
     OrderedBatchPreparer,
@@ -227,6 +229,32 @@ def test_batched_generation_keeps_malformed_responses_as_parser_failures():
     assert len(parsed) == 2
     assert all(not response.valid for response in parsed)
     assert all(np.all(response.state == 0) for response in parsed)
+
+
+def test_diagnostic_fence_normalization_only_accepts_one_complete_outer_fence():
+    payload = json.dumps({
+        "torso_facing": "chest_toward_camera",
+        "shoulder_forward_depth": "their_right_shoulder_closer",
+        "hip_forward_depth": "their_right_hip_closer",
+        "left_elbow_forward_bend": "toward_camera",
+        "right_elbow_forward_bend": "toward_camera",
+        "left_knee_forward_bend": "toward_camera",
+        "right_knee_forward_bend": "toward_camera",
+    })
+
+    fenced_json = parse_fence_normalized_response(f"```json\n{payload}\n```")
+    fenced_plain = parse_fence_normalized_response(f"```\n{payload}\n```")
+    assert fenced_json.outer_fence == "json" and fenced_json.response.valid
+    assert fenced_plain.outer_fence == "plain" and fenced_plain.response.valid
+
+    for raw in (
+            f"answer:\n```json\n{payload}\n```",
+            f"```json\n```json\n{payload}\n```\n```",
+            "```json\n{not valid json}\n```",
+            "```json\n{\"torso_facing\": \"not_an_allowed_value\"}\n```"):
+        result = parse_fence_normalized_response(raw)
+        assert not result.response.valid
+        assert np.all(result.response.state == 0)
 
 
 def test_paired_bootstrap_uses_same_rows_for_real_and_shuffled():

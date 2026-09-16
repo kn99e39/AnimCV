@@ -380,6 +380,91 @@ any automatic policy promotion. A separate, explicitly authorized future
 experiment could test a different output-interface contract; it must not be
 reported as this frozen competence evaluation.
 
+### Diagnostic-only fence-normalized raw-content audit
+
+This is a deliberately separate post-hoc diagnostic, not a rerun and not a
+change to the frozen interface result. It reads only the immutable complete N=4
+raw ledger (`bb586b82c1a14083af0b6bb222f361c6b759173d5448bc55d5224dea6f4dd514`)
+and uses `DIAGNOSTIC_FENCE_NORMALIZED`: remove exactly one complete outer
+`````json` or ````` fence, then call the unchanged strict `parse_response`.
+It does not strip prose, remove nested/multiple fences, repair JSON/fields, or
+infer/reverse any categorical answer. The diagnostic script SHA-256 is
+`c88451c12a446d0ed9a5e9c42efe8a182201349acaa63c87b0542a913ef59d3b`.
+
+The isolated CPU-only audit output is
+`LabServer63:/home/nd/animcv-output/framepose/sign_advisor_current_backend_full_test_20260915/diagnostic_fence_normalized_20260916/`.
+Its JSON report SHA-256 is
+`66af1bc68c8050de4762a51c93b9798b8c75d3a1dc23bbdc38c1193c757e7745` and its
+state array SHA-256 is
+`d276b0a6b887c524f5d03423f1135dd521f1a84208f1be9d6e92d1c13814ca08`.
+The audit reuses the exact docs/45 C membership and asserts the frozen
+per-field counts `C_READABLE_WRONG=(406,306,268,410)` and
+`C_H0_UNKNOWN=(353,285,324,314)`.
+
+**Frozen interface result remains unchanged:** real `0/7076` and shuffled
+`0/7076` strict successes; operational SignState coverage remains zero in both
+modes. The diagnostic found that every one of the 14,152 stored replies is
+exactly a single ` ```json ... ``` ` response and all `14,152/14,152` become
+valid after this one allowed removal. There are no residual invalid responses
+or invalid-reason categories. Thus the entire frozen-interface failure here is
+an output-format interface mismatch, not malformed categorical JSON.
+
+The recovered all-test semantic metrics below are effective accuracy / balanced
+accuracy for real then shuffled, with the real-minus-shuffled effective
+accuracy difference. Coverage is 97.0--97.9% for every field; the small
+remainder is the model's explicit `unclear`, not parse failure.
+
+| Field | n | Real | Shuffled | Δ real−shuffled |
+|---|---:|---:|---:|---:|
+| torso_facing | 6,637 | 60.34% / 67.31% | 48.88% / 55.07% | +11.47pp |
+| shoulder_forward_depth | 6,725 | 49.71% / 48.87% | 48.97% / 48.14% | +0.74pp |
+| hip_forward_depth | 6,192 | 48.45% / 48.92% | 47.63% / 48.09% | +0.82pp |
+| left_elbow_forward_bend | 5,428 | 65.84% / 48.36% | 65.57% / 48.16% | +0.28pp |
+| right_elbow_forward_bend | 5,561 | 63.10% / 48.17% | 62.92% / 48.04% | +0.18pp |
+| left_knee_forward_bend | 6,049 | 28.96% / 49.35% | 29.06% / 49.52% | −0.10pp |
+| right_knee_forward_bend | 6,045 | 28.06% / 49.68% | 27.81% / 49.24% | +0.25pp |
+| pooled hinge | 23,083 | 45.62% / 48.67% | 45.48% / 48.51% | +0.15pp |
+
+Only torso exhibits a practically substantial image-grounding gap: its paired
+10,000-replicate 95% CI for the +11.47pp real-minus-shuffled accuracy change is
+`[+9.96pp, +12.99pp]`. The two depth fields have tiny but positive paired
+differences; they are not evidence for a useful all-seven-field sensor. The
+pooled hinge result is effectively chance-balanced and shows no material
+real-image advantage.
+
+The required hinge cohorts make this failure direct rather than merely an
+all-test average:
+
+| Cohort / hinge pool | n | Real correct / wrong / UNKNOWN | Shuffled correct / wrong / UNKNOWN | Real effective / balanced | Shuffled effective / balanced | Δ |
+|---|---:|---:|---:|---:|---:|---:|
+| C_READABLE_WRONG pooled | 1,390 | 636 / 729 / 25 | 633 / 730 / 27 | 45.76% / 49.00% | 45.54% / 48.77% | +0.22pp |
+| C_H0_UNKNOWN pooled | 1,276 | 601 / 644 / 31 | 603 / 642 / 31 | 47.10% / 48.39% | 47.26% / 48.55% | −0.16pp |
+
+For `C_H0_UNKNOWN`, no field provides reproducible positive RGB evidence over
+the shuffled control: left elbow −1.13pp, right elbow 0.00pp, left knee
+−0.93pp, and right knee +1.59pp. The pooled paired 95% CI is
+`[−1.02pp, +0.71pp]`, which includes zero. The isolated right-knee interval
+touches zero (`[0.00pp, +3.18pp]`) while the other three fields do not support
+a positive effect; it cannot establish the required four-field hinge role.
+
+Raw response text changes in 3,055/7,076 pairs (43.17%). Fence normalization
+shows these are real categorical changes rather than mere formatting: the
+whole normalized SignState changes in the same 3,055 pairs; torso changes in
+43.17%, while each remaining field changes in 4.45%. That variability still
+does not demonstrate usable hinge grounding, because the correct-image and
+shuffled-image hinge metrics remain essentially the same.
+
+**Semantic-content classification: S2 — FIELD-SPECIFIC / PARTIAL.** The Qwen
+raw content is fully recoverable by the predeclared one-fence normalization and
+torso orientation is materially image-grounded, so this is not S0 and not a
+pure sensor-perception collapse. However, the four required hinge fields have
+near-chance balanced accuracy and no pooled real-over-shuffled gain, including
+on `C_H0_UNKNOWN`; therefore it is not S3 and does not grant VLM authority for
+H0-UNKNOWN. The Sign Advisor abstraction may remain a field-specific research
+concept, but this Qwen2-VL-2B backend cannot own the required hinge role under
+the evidence recorded here. No production parser/model/prompt/reconciliation
+or H0-UNKNOWN refusal was changed.
+
 ## Tests, scope, and remaining owner actions
 
 Focused checks passed: `13 passed` across the new read-back, visual-selection,
@@ -397,10 +482,10 @@ Remaining:
 1. The project owner reviews the neutral clips using the blank sheet and then
    separately consults `blind_key.json`; no architecture choice has been made
    for them.
-2. Run the selected N=4 full evaluation from zero in its new output directory;
-   never mix it with the sequential reference. Then verify response and
-   metrics hashes, report results, and assign V1/V2/V3 evidence status without
-   promoting any policy automatically.
+2. Review the completed fence-normalized semantic audit beside the frozen
+   strict-interface failure. It closes the current Qwen competence question;
+   no policy promotion, parser change, or replacement-model selection is
+   authorized by this worklog.
 
 Until then, do not promote MINIMUM_NORM or R_SWIVEL, add a hybrid, alter
 H0-UNKNOWN refusal, or proceed to target-rig work.

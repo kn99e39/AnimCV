@@ -37,10 +37,11 @@ elbow/knee chains. Four `C_H0_UNKNOWN` rows with counterfactually feasible
 swivel geometry are selected separately, one per chain, and labelled as
 counterfactual diagnostics rather than normal-policy outputs.
 
-Review package (outside Git; media intentionally not committed):
+Review package (outside Git; media intentionally not committed; moved to the
+project-root owner-QE directory on 2026-09-16):
 
 ```
-/private/tmp/animcv-pose-reconciliation-visual-review-20260915-v4/
+/Users/nadan/Projects/AnimCV/user_QE/
 ```
 
 It contains 27 neutral Candidate-A/Candidate-B clips, 27 labelled

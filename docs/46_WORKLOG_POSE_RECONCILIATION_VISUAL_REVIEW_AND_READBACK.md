@@ -27,6 +27,48 @@ reconciliation.
 
 ## Track A - owner-facing visual A/B evidence
 
+### v5 keyframed-interpolated presentation correction (2026-09-16)
+
+The sparse v4 presentation was unsuitable for a human movement review: only
+the independently reconstructed FrameBank timestamps received a pose overlay,
+so most RGB context frames correctly said that no independent FrameBank row was
+available. That message was scientifically accurate but prevented continuous
+inspection of the candidate motion.
+
+The current owner-review package therefore uses a **display-only keyframed
+presentation**. Every exact FrameBank timestamp remains an independent,
+framewise prediction and is marked with a green active-chain bone plus the
+banner `KEYFRAME - independent FrameBank prediction`. Between adjacent
+keyframes, H0 and both candidate poses are linearly interpolated for display
+only and marked with an orange active-chain bone plus the persistent banner
+`INTERPOLATED VISUALIZATION - not an independent prediction`. The RGB
+projection in an interpolated frame is the linear blend of the two keyframes'
+projected P-M-D endpoint pixels; it does not assert a camera-pose estimate for
+the intervening raw RGB frame. The 2D-observation panel is deliberately blank
+on these frames: it never fabricates an independently observed 2D joint.
+
+This is not temporal model output, neighboring-frame input, temporal
+inference, production smoothing, a metric input, or evidence for a policy
+change. It is only a legible visualization layer for the already frozen,
+independent per-FrameBank-row predictions. The `user_QE/` root now contains
+the current v5 review package; the previous sparse v4 package is retained at
+`user_QE/legacy_sparse_context_v4/` rather than deleted. The historical v4
+record below is preserved unchanged as evidence of the original export.
+
+The v5 renderer completed 27 primary events: 27 blind MP4s, 27 labelled MP4s,
+27 technical stills, and four separate Oracle upper-bound stills (**54 MP4s
+and 31 PNGs**). It deliberately omits the non-primary H0-UNKNOWN
+counterfactual clips: their frozen v4 form remains only in the legacy archive,
+and their recomputed feasibility count is not used to choose, render, or judge
+the v5 primary A/B events. The new package has 85 media files in total.
+
+| v5 review artifact | SHA-256 |
+| --- | --- |
+| `review_manifest.json` | `4b7fa72bed301ccb1d906a4c0deeab35462597c0d91c988bb16c2131c6bac033` |
+| `blind_key.json` | `ca3a20db4974d9f5e361d897b9cdcfd9e3762aa7712f092926fd3310e3cbddbe` |
+| `labelled/technical_manifest.json` | `1af4a2f80469485a95a9b7d6eb294c2a0c26501335d27e963e84e60429c8c2aa` |
+| `artifact_hashes.json` | `56b32126bc44e0661ce1f9a78f23bcce3910d6cd4c7e9eac6fcf86e2c3fe6edd` |
+
 The exporter verifies the fixed bank, prediction, evaluation, replay, and
 camera identities, then writes the manifest and blind assignment before any
 video writer is opened. Selection is deterministic over the exact docs/45
@@ -37,11 +79,11 @@ elbow/knee chains. Four `C_H0_UNKNOWN` rows with counterfactually feasible
 swivel geometry are selected separately, one per chain, and labelled as
 counterfactual diagnostics rather than normal-policy outputs.
 
-Review package (outside Git; media intentionally not committed; moved to the
-project-root owner-QE directory on 2026-09-16):
+Historical v4 review package (outside Git; media intentionally not committed;
+retained at the project-root owner-QE archive on 2026-09-16):
 
 ```
-/Users/nadan/Projects/AnimCV/user_QE/
+/Users/nadan/Projects/AnimCV/user_QE/legacy_sparse_context_v4/
 ```
 
 It contains 27 neutral Candidate-A/Candidate-B clips, 27 labelled

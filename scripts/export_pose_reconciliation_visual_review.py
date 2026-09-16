@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """Export a deterministic, blinded visual review of MINIMUM_NORM vs R_SWIVEL_OBS.
 
-Predictions are reconstructed independently per available test frame. The
-surrounding 3DPW RGB frames are visual context only; there is no temporal input,
-interpolation, smoothing, or other pose inference in this exporter.
+Predictions are reconstructed independently per available test frame. By
+default surrounding 3DPW RGB frames are visual context only. An explicit
+display-only mode may linearly interpolate between those independent keyframes;
+it is never model inference, a metric input, or production smoothing.
 """
 
 from __future__ import annotations
 
 import argparse
+import bisect
 import csv
 import hashlib
 import json
@@ -55,6 +57,8 @@ COLORS = {
     "observed": (210, 210, 210),
     "h0": (0, 210, 0),
     "candidate": (255, 0, 220),
+    "keyframe": (60, 220, 60),
+    "interpolated": (0, 170, 255),
     "text": (245, 245, 245),
     "muted": (130, 130, 130),
 }
@@ -136,7 +140,6 @@ def _candidate_metrics(state: np.ndarray, h0: np.ndarray, target: np.ndarray,
     target_point = context.project_root_relative(
         target_absolute[m_idx] - np.asarray(context.root_offset_camera))
     observation_point = observed[m_idx, :2] * image_size
-    h0_m = h0[m_idx]
     bone_before = (float(np.linalg.norm(h0[m_idx] - h0[p_idx])),
                    float(np.linalg.norm(h0[d_idx] - h0[m_idx])))
     bone_after = (float(np.linalg.norm(pose[m_idx] - pose[p_idx])),
@@ -451,7 +454,8 @@ def _draw_point(canvas: np.ndarray, point: tuple[int, int] | None,
 
 
 def _draw_chain_rgb(canvas: np.ndarray, pixels: np.ndarray, transform: tuple[float, float, float],
-                    *, observed_middle: np.ndarray | None = None) -> None:
+                    *, observed_middle: np.ndarray | None = None,
+                    chain_color: tuple[int, int, int] | None = None) -> None:
     scale, left, top = transform
     chain_points = [_pix(point, scale, left, top) for point in pixels]
     if observed_middle is not None:
@@ -460,7 +464,7 @@ def _draw_chain_rgb(canvas: np.ndarray, pixels: np.ndarray, transform: tuple[flo
     for first, second in ((0, 1), (1, 2)):
         if chain_points[first] is not None and chain_points[second] is not None:
             cv2.line(canvas, chain_points[first], chain_points[second],
-                     COLORS["candidate"], 3, cv2.LINE_AA)
+                     chain_color or COLORS["candidate"], 3, cv2.LINE_AA)
     for point, key, label in zip(chain_points, ("p", "m", "d"), ("P", "M", "D")):
         _draw_point(canvas, point, COLORS[key], label)
 
@@ -497,7 +501,8 @@ def _bounds_for_view(poses: list[np.ndarray], chain_indices: tuple[int, int, int
 def _draw_3d(canvas: np.ndarray, pose: np.ndarray | None,
              chain_indices: tuple[int, int, int], view: str,
              bounds: tuple[float, float, float, float], label: str,
-             valid_mask: np.ndarray | None = None) -> None:
+             valid_mask: np.ndarray | None = None,
+             chain_color: tuple[int, int, int] | None = None) -> None:
     if pose is None:
         cv2.putText(canvas, "No independent prediction at this timestamp",
                     (16, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.55, COLORS["muted"], 1, cv2.LINE_AA)
@@ -530,8 +535,9 @@ def _draw_3d(canvas: np.ndarray, pose: np.ndarray | None,
 
     projected = projected_all[list(chain_indices)]
     pts = [pixel(point) for point in projected]
-    cv2.line(canvas, pts[0], pts[1], COLORS["candidate"], 4, cv2.LINE_AA)
-    cv2.line(canvas, pts[1], pts[2], COLORS["candidate"], 4, cv2.LINE_AA)
+    color = chain_color or COLORS["candidate"]
+    cv2.line(canvas, pts[0], pts[1], color, 4, cv2.LINE_AA)
+    cv2.line(canvas, pts[1], pts[2], color, 4, cv2.LINE_AA)
     for point, key, marker in zip(pts, ("p", "m", "d"), ("P", "M", "D")):
         _draw_point(canvas, point, COLORS[key], marker, 7)
     if view == "camera_aligned":
@@ -558,20 +564,25 @@ def _draw_video_frame(image: np.ndarray | None, sample: Any | None,
                       event: dict[str, Any], method_map: dict[str, str],
                       status: str, bounds: dict[str, tuple[float, float, float, float]],
                       center_override: np.ndarray | None = None,
-                      *, blind: bool = False, counterfactual: bool = False) -> np.ndarray:
+                      *, blind: bool = False, counterfactual: bool = False,
+                      pose_overrides: dict[str, np.ndarray] | None = None,
+                      projected_overrides: dict[str, np.ndarray] | None = None,
+                      visual_status: str = "keyframe") -> np.ndarray:
     canvas = np.zeros((VIDEO_H, VIDEO_W, 3), dtype=np.uint8)
     source_rgb = np.zeros((PANEL_H, PANEL_W, 3), dtype=np.uint8)
     if image is not None:
         source_rgb = _fit_rgb(image)[0]
     title = _panel(canvas, 0, "Original RGB - source sequence")
     title[34:, :] = source_rgb[34:, :]
-    title = _panel(canvas, 1, "Observed 2D joints on original RGB")
-    if image is not None and sample is not None and row is not None:
+    observation_title = ("Observed 2D joints on original RGB" if visual_status == "keyframe"
+                         else "No independent 2D observation at this frame")
+    title = _panel(canvas, 1, observation_title)
+    if image is not None and sample is not None and row is not None and visual_status == "keyframe":
         fitted, scale, left, top = _fit_rgb(image)
         title[:] = fitted
         # Restore the panel heading after the RGB copy.
         cv2.rectangle(title, (0, 0), (PANEL_W - 1, 30), (24, 24, 24), -1)
-        cv2.putText(title, "Observed 2D joints on original RGB", (10, 21),
+        cv2.putText(title, observation_title, (10, 21),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.49, COLORS["text"], 1, cv2.LINE_AA)
         observed = data_by_field[event["field"]]["observation"][row]
         size = data_by_field[event["field"]]["image_size"][row]
@@ -583,6 +594,9 @@ def _draw_video_frame(image: np.ndarray | None, sample: Any | None,
                 is_active = joint_index in data_by_field[event["field"]]["chain_indices"]
                 _draw_point(title, point, COLORS["m"] if is_active else COLORS["observed"],
                             replay.JOINT_NAMES[joint_index][:2] if is_active else None, 4 if is_active else 2)
+    elif visual_status == "interpolated":
+        cv2.putText(title, "Interpolation display only: no measured 2D joints here.",
+                    (14, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.45, COLORS["muted"], 1, cv2.LINE_AA)
     else:
         cv2.putText(title, "No independently predicted FrameBank row",
                     (14, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.55, COLORS["muted"], 1, cv2.LINE_AA)
@@ -597,6 +611,9 @@ def _draw_video_frame(image: np.ndarray | None, sample: Any | None,
         poses[METHOD_SWIVEL] = states[METHOD_SWIVEL][row]
         if METHOD_ORACLE in states:
             poses[METHOD_ORACLE] = states[METHOD_ORACLE][row]
+    if pose_overrides is not None:
+        poses.update({method: pose_overrides[method] for method in poses
+                      if method in pose_overrides})
     if counterfactual:
         poses[METHOD_SWIVEL] = center_override
     elif center_override is not None:
@@ -610,10 +627,15 @@ def _draw_video_frame(image: np.ndarray | None, sample: Any | None,
         cv2.rectangle(tile, (0, 0), (PANEL_W - 1, 30), (24, 24, 24), -1)
         cv2.putText(tile, "H0 projection on original RGB", (10, 21),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.51, COLORS["text"], 1, cv2.LINE_AA)
-        h0 = field_data["h0"][row]
-        pixels = _project(field_data["contexts"][row], h0[list(chain_indices)])
-        observed_middle = field_data["observation"][row, chain_indices[1], :2] * field_data["image_size"][row]
-        _draw_chain_rgb(tile, pixels, (scale, left, top), observed_middle=observed_middle)
+        h0 = (pose_overrides["h0"] if pose_overrides is not None
+              else field_data["h0"][row])
+        pixels = (projected_overrides["h0"] if projected_overrides is not None
+                  else _project(field_data["contexts"][row], h0[list(chain_indices)]))
+        observed_middle = (field_data["observation"][row, chain_indices[1], :2]
+                           * field_data["image_size"][row] if visual_status == "keyframe" else None)
+        _draw_chain_rgb(tile, pixels, (scale, left, top), observed_middle=observed_middle,
+                        chain_color=COLORS["keyframe"] if visual_status == "keyframe"
+                        else COLORS["interpolated"])
     else:
         cv2.putText(tile, "No independently predicted FrameBank row",
                     (14, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.55, COLORS["muted"], 1, cv2.LINE_AA)
@@ -637,9 +659,15 @@ def _draw_video_frame(image: np.ndarray | None, sample: Any | None,
                             (10, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.43,
                             COLORS["muted"], 1, cv2.LINE_AA)
             else:
-                pixels = _project(field_data["contexts"][row], pose[list(chain_indices)])
-                observed_middle = field_data["observation"][row, chain_indices[1], :2] * field_data["image_size"][row]
-                _draw_chain_rgb(tile, pixels, (scale, left, top), observed_middle=observed_middle)
+                pixels = (projected_overrides[method] if projected_overrides is not None
+                          and method in projected_overrides else
+                          _project(field_data["contexts"][row], pose[list(chain_indices)]))
+                observed_middle = (field_data["observation"][row, chain_indices[1], :2]
+                                   * field_data["image_size"][row]
+                                   if visual_status == "keyframe" else None)
+                _draw_chain_rgb(tile, pixels, (scale, left, top), observed_middle=observed_middle,
+                                chain_color=COLORS["keyframe"] if visual_status == "keyframe"
+                                else COLORS["interpolated"])
         else:
             cv2.putText(tile, "No independently predicted FrameBank row",
                         (14, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.55, COLORS["muted"], 1, cv2.LINE_AA)
@@ -658,7 +686,19 @@ def _draw_video_frame(image: np.ndarray | None, sample: Any | None,
         view_label = "camera-aligned" if view == "camera_aligned" else "fixed oblique"
         tile = _panel(canvas, idx, f"{candidate_label} 3D - {view_label}")
         _draw_3d(tile, poses[method], chain_indices, view, bounds[view], candidate_label,
-                 field_data["valid"][row] if row is not None else None)
+                 (pose_overrides["valid"] if pose_overrides is not None else
+                  field_data["valid"][row] if row is not None else None),
+                 chain_color=COLORS["keyframe"] if visual_status == "keyframe"
+                 else COLORS["interpolated"])
+
+    if visual_status != "keyframe":
+        cv2.rectangle(canvas, (8, 34), (400, 59), (16, 74, 115), -1)
+        cv2.putText(canvas, "INTERPOLATED VISUALIZATION - not an independent prediction",
+                    (14, 51), cv2.FONT_HERSHEY_SIMPLEX, 0.39, COLORS["text"], 1, cv2.LINE_AA)
+    else:
+        cv2.rectangle(canvas, (8, 34), (338, 59), (32, 110, 50), -1)
+        cv2.putText(canvas, "KEYFRAME - independent FrameBank prediction",
+                    (14, 51), cv2.FONT_HERSHEY_SIMPLEX, 0.42, COLORS["text"], 1, cv2.LINE_AA)
 
     # Persistent annotation prevents the contextual clip from being mistaken
     # for a temporal inference or smoothed animation.
@@ -671,11 +711,58 @@ def _draw_video_frame(image: np.ndarray | None, sample: Any | None,
         footer_y = VIDEO_H - 8
     else:
         footer_y = VIDEO_H - 11
-    footer = ("Framewise independent predictions; video context is visualization only. "
+    footer = ("Framewise independent keyframes; intervening poses are visualization-only linear interpolation."
+              if visual_status != "sparse_context" else
+              "Framewise independent predictions; video context is visualization only. "
               "No temporal input or pose smoothing; unscored timestamps have no pose overlay.")
     cv2.putText(canvas, footer, (12, footer_y), cv2.FONT_HERSHEY_SIMPLEX,
                 0.40, COLORS["text"], 1, cv2.LINE_AA)
     return canvas
+
+
+def _interpolate_keyframe_states(data: dict[str, Any], event: dict[str, Any],
+                                 before: int, after: int, weight: float) -> dict[str, np.ndarray]:
+    """Linear display-only interpolation between two independent FrameBank rows."""
+    if not 0.0 <= weight <= 1.0:
+        raise ValueError("interpolation weight must be in [0, 1]")
+    states = data.get("wrong_states") if event.get("request_mode") == "deliberately_wrong" else data
+    def blend(first: np.ndarray, second: np.ndarray) -> np.ndarray:
+        return ((1.0 - weight) * np.asarray(first, dtype=np.float64)
+                + weight * np.asarray(second, dtype=np.float64))
+    result = {"h0": blend(data["h0"][before], data["h0"][after]),
+              "valid": np.asarray(data["valid"][before], dtype=bool)
+              & np.asarray(data["valid"][after], dtype=bool)}
+    for method in (METHOD_MINIMUM_NORM, METHOD_SWIVEL):
+        result[method] = blend(states[method][before], states[method][after])
+    if METHOD_ORACLE in states:
+        result[METHOD_ORACLE] = blend(states[METHOD_ORACLE][before], states[METHOD_ORACLE][after])
+    return result
+
+
+def _interpolate_keyframe_projections(data: dict[str, Any], event: dict[str, Any],
+                                      before: int, after: int, weight: float
+                                      ) -> dict[str, np.ndarray]:
+    """Blend endpoint image positions, avoiding a claim of camera pose interpolation."""
+    if not 0.0 <= weight <= 1.0:
+        raise ValueError("interpolation weight must be in [0, 1]")
+    states = data.get("wrong_states") if event.get("request_mode") == "deliberately_wrong" else data
+    chain_indices = data["chain_indices"]
+    def blend(first: np.ndarray, second: np.ndarray) -> np.ndarray:
+        return ((1.0 - weight) * np.asarray(first, dtype=np.float64)
+                + weight * np.asarray(second, dtype=np.float64))
+    result = {
+        "h0": blend(_project(data["contexts"][before], data["h0"][before, list(chain_indices)]),
+                    _project(data["contexts"][after], data["h0"][after, list(chain_indices)])),
+    }
+    for method in (METHOD_MINIMUM_NORM, METHOD_SWIVEL):
+        result[method] = blend(
+            _project(data["contexts"][before], states[method][before, list(chain_indices)]),
+            _project(data["contexts"][after], states[method][after, list(chain_indices)]))
+    if METHOD_ORACLE in states:
+        result[METHOD_ORACLE] = blend(
+            _project(data["contexts"][before], states[METHOD_ORACLE][before, list(chain_indices)]),
+            _project(data["contexts"][after], states[METHOD_ORACLE][after, list(chain_indices)]))
+    return result
 
 
 def _metrics_for_event(event: dict[str, Any], bank, positions: np.ndarray,
@@ -736,8 +823,9 @@ def _selection_and_context_data(args) -> tuple[dict[str, Any], list[dict[str, An
     if int(usable.sum()) != 7076 or missing or len(camera_provenance) != 24:
         raise ValueError("raw 3DPW camera coverage does not match docs/44")
     expected_raw = report["projection_context"]["raw_provenance"]
-    digest_map = lambda records: {Path(item["path"]).stem: (int(item["bytes"]), item["sha256"])
-                                  for item in records}
+    def digest_map(records):
+        return {Path(item["path"]).stem: (int(item["bytes"]), item["sha256"])
+                for item in records}
     if digest_map(camera_provenance) != digest_map(expected_raw):
         raise ValueError("raw 3DPW camera provenance differs from docs/44")
     oracle_observation = replay._oracle_observation(
@@ -762,18 +850,21 @@ def _selection_and_context_data(args) -> tuple[dict[str, Any], list[dict[str, An
                                     HINGE_CHAINS_BY_JOINT[field[: -len("_forward_bend")]]),
         })
         fields_data[field] = computed
-        rows = attribution._cohort_rows_from_report(report, "C", field)
-        column = SIGN_FIELD_NAMES.index(field)
-        unknown_rows = rows[(requested[rows, column] != UNKNOWN)
-                            & (h0_signs[rows, column] == UNKNOWN)]
-        unknown_results = {}
-        middle = replay.MIDDLE_INDEX[field]
-        for row in unknown_rows:
-            unknown_results[int(row)] = attribution.counterfactual_swivel_without_prestate_refusal(
-                h0[int(row)], valid[int(row)], int(requested[int(row), column]),
-                observation[int(row), middle], contexts[int(row)], field,
-                observed_valid=bool(observed_valid[int(row), middle]))
-        counterfactuals[field] = unknown_results
+        if args.no_counterfactual_diagnostics:
+            counterfactuals[field] = {}
+        else:
+            rows = attribution._cohort_rows_from_report(report, "C", field)
+            column = SIGN_FIELD_NAMES.index(field)
+            unknown_rows = rows[(requested[rows, column] != UNKNOWN)
+                                & (h0_signs[rows, column] == UNKNOWN)]
+            unknown_results = {}
+            middle = replay.MIDDLE_INDEX[field]
+            for row in unknown_rows:
+                unknown_results[int(row)] = attribution.counterfactual_swivel_without_prestate_refusal(
+                    h0[int(row)], valid[int(row)], int(requested[int(row), column]),
+                    observation[int(row), middle], contexts[int(row)], field,
+                    observed_valid=bool(observed_valid[int(row), middle]))
+            counterfactuals[field] = unknown_results
 
     standard, diagnostics = _select_review_events(
         bank, positions, requested, h0_signs, report, fields_data, counterfactuals)
@@ -781,19 +872,24 @@ def _selection_and_context_data(args) -> tuple[dict[str, Any], list[dict[str, An
     for event in standard:
         for regime in event["selection_regimes"]:
             by_regime[regime] = by_regime.get(regime, 0) + 1
-    by_regime["h0_unknown_counterfactual_swivel_feasible"] = len(diagnostics)
-    missing_regimes = [regime for regime in REGIME_ORDER if by_regime.get(regime, 0) == 0]
+    if not args.no_counterfactual_diagnostics:
+        by_regime["h0_unknown_counterfactual_swivel_feasible"] = len(diagnostics)
+    required_regimes = (REGIME_ORDER if not args.no_counterfactual_diagnostics else
+                        tuple(regime for regime in REGIME_ORDER
+                              if regime != "h0_unknown_counterfactual_swivel_feasible"))
+    missing_regimes = [regime for regime in required_regimes if by_regime.get(regime, 0) == 0]
     if missing_regimes:
         raise AssertionError(f"selection did not find required review regimes: {missing_regimes}")
-    expected_unknown = {"left_elbow_forward_bend": 207,
-                        "right_elbow_forward_bend": 173,
-                        "left_knee_forward_bend": 142,
-                        "right_knee_forward_bend": 246}
-    for field, expected in expected_unknown.items():
-        actual = sum(result.get("status") == "feasible_requested_sign_solution"
-                     for result in counterfactuals[field].values())
-        if actual != expected:
-            raise AssertionError(f"docs/45 OBS counterfactual feasibility changed for {field}: {actual}")
+    if not args.no_counterfactual_diagnostics:
+        expected_unknown = {"left_elbow_forward_bend": 207,
+                            "right_elbow_forward_bend": 173,
+                            "left_knee_forward_bend": 142,
+                            "right_knee_forward_bend": 246}
+        for field, expected in expected_unknown.items():
+            actual = sum(result.get("status") == "feasible_requested_sign_solution"
+                         for result in counterfactuals[field].values())
+            if actual != expected:
+                raise AssertionError(f"docs/45 OBS counterfactual feasibility changed for {field}: {actual}")
     return {
         "bank": bank,
         "positions": positions,
@@ -848,7 +944,8 @@ def _render_clip(event: dict[str, Any], destination: Path, bank,
                  positions: np.ndarray, fields_data: dict[str, Any], image_root: Path,
                  method_map: dict[str, str], window_seconds: float,
                  *, blind: bool, counterfactual: np.ndarray | None = None,
-                 still_path: Path | None = None) -> dict[str, Any]:
+                 still_path: Path | None = None,
+                 interpolate_keyframes: bool = False) -> dict[str, Any]:
     sample = bank.samples[bank.position(event["sample_id"])]
     fps = float(sample.fps or 30.0)
     if not np.isfinite(fps) or fps <= 0:
@@ -869,8 +966,10 @@ def _render_clip(event: dict[str, Any], destination: Path, bank,
     row_lookup = {(bank.samples[int(position)].sequence_id,
                    int(bank.samples[int(position)].frame_index)): order
                   for order, position in enumerate(positions)}
+    sequence_keyframes = sorted((frame, row) for (sequence, frame), row in row_lookup.items()
+                                if sequence == event["sequence_id"])
+    keyframe_numbers = [frame for frame, _ in sequence_keyframes]
     data = fields_data[event["field"]]
-    center_order = row_lookup[(event["sequence_id"], event["center_frame"])]
     bounds = _view_bounds_for_event(
         event, data, row_lookup, (first_frame, last_frame), counterfactual)
 
@@ -883,13 +982,31 @@ def _render_clip(event: dict[str, Any], destination: Path, bank,
     for frame in range(first_frame, last_frame + 1):
         path = image_dir / f"image_{frame:05d}.jpg"
         image = cv2.imread(str(path), cv2.IMREAD_COLOR) if path.is_file() else None
-        row = row_lookup.get((event["sequence_id"], frame))
+        exact_row = row_lookup.get((event["sequence_id"], frame))
+        row, pose_overrides, projected_overrides, visual_status = exact_row, None, None, "keyframe"
+        if interpolate_keyframes and exact_row is None:
+            insertion = bisect.bisect_left(keyframe_numbers, frame)
+            if 0 < insertion < len(sequence_keyframes):
+                before_frame, before_row = sequence_keyframes[insertion - 1]
+                after_frame, after_row = sequence_keyframes[insertion]
+                weight = (frame - before_frame) / (after_frame - before_frame)
+                row = before_row if weight <= 0.5 else after_row
+                pose_overrides = _interpolate_keyframe_states(
+                    data, event, before_row, after_row, weight)
+                projected_overrides = _interpolate_keyframe_projections(
+                    data, event, before_row, after_row, weight)
+                visual_status = "interpolated"
+            else:
+                raise ValueError("requested review window extends beyond available FrameBank keyframes")
         sample_at_frame = bank.samples[int(positions[row])] if row is not None else None
         override = counterfactual if frame == event["center_frame"] else None
         frame_canvas = _draw_video_frame(
             image, sample_at_frame, fields_data, row, event, method_map,
             "sampled" if row is not None else "no_sample", bounds, override,
-            blind=blind, counterfactual=counterfactual is not None)
+            blind=blind, counterfactual=counterfactual is not None,
+            pose_overrides=pose_overrides, projected_overrides=projected_overrides,
+            visual_status=(
+                visual_status if interpolate_keyframes else "sparse_context"))
         if frame == event["center_frame"]:
             central_frame = frame_canvas.copy()
         writer.write(frame_canvas)
@@ -906,6 +1023,8 @@ def _render_clip(event: dict[str, Any], destination: Path, bank,
         "start_frame": first_frame,
         "end_frame": last_frame,
         "center_frame": int(event["center_frame"]),
+        "display_mode": ("keyframe_linear_interpolation_visualization"
+                         if interpolate_keyframes else "sparse_independent_context"),
     }
 
 
@@ -1058,7 +1177,11 @@ def export_review(args) -> dict[str, Any]:
         "requested_sign_source": "ground-truth canonical SignState as a shared evaluation input; no VLM output",
         "primary_input_boundary": "real detector observations are shown as reference; no oracle target projection or neighboring-frame input enters the primary candidates",
         "baseline": "H0 is the common projection/reference panel",
-        "temporal_scope": "framewise independent predictions; video context is visualization only; no temporal input/interpolation/smoothing",
+        "temporal_scope": ("independent FrameBank keyframes with display-only linear interpolation "
+                           "between them; interpolation is not a model prediction, temporal input, "
+                           "or production smoothing" if args.interpolate_keyframes else
+                           "framewise independent predictions; video context is visualization only; "
+                           "no temporal input/interpolation/smoothing"),
         "source": {
             "bank_content_digest": package["bank"].content_digest(),
             "docs44_replay_sha256": package["report_sha"],
@@ -1113,13 +1236,15 @@ def export_review(args) -> dict[str, Any]:
         blind_path = out / "blind" / f"{event['review_id']}.mp4"
         _render_clip(event, blind_path, package["bank"], package["positions"],
                      package["fields_data"], args.image_root, mapping,
-                     args.window_seconds, blind=True)
+                     args.window_seconds, blind=True,
+                     interpolate_keyframes=args.interpolate_keyframes)
         labelled_mapping = {"A": METHOD_MINIMUM_NORM, "B": METHOD_SWIVEL}
         labelled_path = out / "labelled" / f"{event['review_id']}_labelled.mp4"
         still_path = out / "technical_stills" / f"{event['review_id']}.png"
         _render_clip(event, labelled_path, package["bank"], package["positions"],
                      package["fields_data"], args.image_root, labelled_mapping,
-                     args.window_seconds, blind=False, still_path=still_path)
+                     args.window_seconds, blind=False, still_path=still_path,
+                     interpolate_keyframes=args.interpolate_keyframes)
 
     # Four isolated upper-bound stills: the oracle 2D endpoint is never blended
     # into the blind comparison.
@@ -1129,8 +1254,8 @@ def export_review(args) -> dict[str, Any]:
         if candidate is None:
             continue
         path = out / "oracle_diagnostic" / f"{candidate['review_id']}_oracle_upper_bound.png"
-        result = _oracle_still(candidate, path, package["bank"],
-                               package["fields_data"], args.image_root)
+        _oracle_still(candidate, path, package["bank"],
+                      package["fields_data"], args.image_root)
 
     # H0-UNKNOWN feasible rows are labelled counterfactuals, not normal OBS
     # outputs and not blind primary comparisons.
@@ -1140,13 +1265,13 @@ def export_review(args) -> dict[str, Any]:
         state = np.asarray(event["counterfactual_pose"], dtype=np.float64)
         video_path = out / event["diagnostic_video"]
         still_path = out / event["diagnostic_still"]
-        sample = package["bank"].samples[bank_position]
         mapping = {"A": METHOD_MINIMUM_NORM, "B": METHOD_SWIVEL}
         event["diagnostic_render"] = _render_clip(
             event, video_path, package["bank"], package["positions"],
             package["fields_data"], args.image_root, mapping,
             args.window_seconds, blind=False, counterfactual=state,
-            still_path=still_path)
+            still_path=still_path,
+            interpolate_keyframes=args.interpolate_keyframes)
 
     # Include hashes of every media artifact and of the two blinded-control
     # files. The manifest's own hash is recorded in the worklog to avoid a
@@ -1186,6 +1311,10 @@ def main() -> int:
     parser.add_argument("--image-root", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--window-seconds", type=float, default=3.0)
+    parser.add_argument("--interpolate-keyframes", action="store_true",
+                        help="display-only linear interpolation between independent FrameBank rows")
+    parser.add_argument("--no-counterfactual-diagnostics", action="store_true",
+                        help="omit non-primary H0-UNKNOWN diagnostic exports")
     args = parser.parse_args()
     if args.window_seconds <= 0:
         raise ValueError("window-seconds must be positive")

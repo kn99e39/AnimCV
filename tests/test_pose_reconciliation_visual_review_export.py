@@ -6,6 +6,8 @@ from scripts.export_pose_reconciliation_visual_review import (
     METHOD_SWIVEL,
     _blind_mapping,
     _bounds_for_view,
+    _interpolate_keyframe_projections,
+    _interpolate_keyframe_states,
     _median_representative,
     _p90_representative,
 )
@@ -53,3 +55,46 @@ def test_three_dimensional_bounds_are_shared_and_cover_the_whole_skeleton():
 
     assert bounds == reversed_bounds
     assert bounds[2] <= projected_head[1] <= bounds[3]
+
+
+def test_keyframe_display_interpolation_is_linear_and_never_changes_validity_to_true():
+    joints = len(replay.JOINT_NAMES)
+    first = np.zeros((joints, 3), dtype=np.float64)
+    second = np.ones((joints, 3), dtype=np.float64)
+    data = {
+        "h0": np.asarray([first, second]),
+        "valid": np.asarray([[True] * joints, [True] * (joints - 1) + [False]]),
+        METHOD_MINIMUM_NORM: np.asarray([first, second]),
+        METHOD_SWIVEL: np.asarray([first * 2, second * 2]),
+    }
+
+    result = _interpolate_keyframe_states(data, {"request_mode": "oracle_correct"}, 0, 1, 0.25)
+
+    assert np.allclose(result["h0"], 0.25)
+    assert np.allclose(result[METHOD_MINIMUM_NORM], 0.25)
+    assert np.allclose(result[METHOD_SWIVEL], 0.5)
+    assert not result["valid"][-1]
+
+
+def test_keyframe_projection_display_interpolates_projected_endpoints():
+    class IdentityContext:
+        def project_root_relative(self, point):
+            return np.asarray(point[:2], dtype=np.float64)
+
+    joints = len(replay.JOINT_NAMES)
+    poses = np.zeros((2, joints, 3), dtype=np.float64)
+    chain = (0, 1, 2)
+    poses[1, list(chain), :2] = 8.0
+    data = {
+        "h0": poses,
+        "chain_indices": chain,
+        "contexts": [IdentityContext(), IdentityContext()],
+        METHOD_MINIMUM_NORM: poses,
+        METHOD_SWIVEL: poses * 2,
+    }
+
+    result = _interpolate_keyframe_projections(data, {"request_mode": "oracle_correct"}, 0, 1, 0.25)
+
+    assert np.allclose(result["h0"], 2.0)
+    assert np.allclose(result[METHOD_MINIMUM_NORM], 2.0)
+    assert np.allclose(result[METHOD_SWIVEL], 4.0)

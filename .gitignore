@@ -16,6 +16,10 @@ __pycache__/
 # intentionally excluded from Git because it is 263 MB of regenerable review artifacts.
 /user_QE/
 
+# Regenerable temporal-context diagnostic rows and report.  Their immutable
+# server path and SHA-256 values are recorded in docs/47.
+/output/temporal_context_evidence_20260917/
+
 # Reassembled from datasets/mpi_inf_3dhp/**/annot.mat.part-* by
 # scripts/training/reassemble_mpi_inf_3dhp.sh; only the split parts are committed.
 datasets/mpi_inf_3dhp/**/annot.mat

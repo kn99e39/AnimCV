@@ -269,7 +269,7 @@ def _replay_actor(
             for frame in h0_sequence.frames
         ]
 
-        translation_o = translation_r0 = translation_r1 = None
+        translation_o = translation_r0 = translation_r1 = translation_r1_t1 = None
         if world_frames is not None and reference is not None:
             oracle_camera_relative_ankle = [
                 point.position if (point := frame.points.get(f"{foot}_ankle")) is not None and point.observation_valid
@@ -284,6 +284,14 @@ def _replay_actor(
             )
             translation_r1 = summarize_translation(
                 run_control_experiment(world_frames, h0_camera_relative_ankle, foot, candidate_h0_t0)
+            )
+            # Supplementary: R1 recomputed with the T1 (H0-train-calibrated)
+            # contact selector, not asked for by name in the directive but
+            # necessary to tell "H0 geometry is the bottleneck" apart from
+            # "T0-on-H0 contact selection is the bottleneck" -- R1 above uses
+            # T0, which section 6 already shows collapses H0 recall to ~0.
+            translation_r1_t1 = summarize_translation(
+                run_control_experiment(world_frames, h0_camera_relative_ankle, foot, candidate_h0_t1)
             )
 
         per_foot[foot] = {
@@ -301,6 +309,7 @@ def _replay_actor(
             "translation_control_O_oracle_contact_oracle_geometry": translation_o,
             "translation_control_R0_oracle_contact_h0_geometry": translation_r0,
             "translation_control_R1_h0_contact_h0_geometry": translation_r1,
+            "translation_control_R1_T1_h0_contact_h0_geometry": translation_r1_t1,
             "_candidate_oracle": candidate_oracle, "_candidate_h0_t0": candidate_h0_t0, "_reference": reference,
             "_joint_errors": joint_errors,
         }
@@ -459,7 +468,8 @@ def _aggregate(
                     "specificity": specificity, "balanced_accuracy": balanced_accuracy}
 
         translation_summary = {}
-        for condition in ("O_oracle_contact_oracle_geometry", "R0_oracle_contact_h0_geometry", "R1_h0_contact_h0_geometry"):
+        for condition in ("O_oracle_contact_oracle_geometry", "R0_oracle_contact_h0_geometry",
+                          "R1_h0_contact_h0_geometry", "R1_T1_h0_contact_h0_geometry"):
             key = f"translation_control_{condition}"
             errors = [a["per_foot"][foot][key]["naive_camera_mean_error_m"] for a in actors
                       if a["per_foot"][foot][key] is not None and a["per_foot"][foot][key]["naive_camera_mean_error_m"] is not None]

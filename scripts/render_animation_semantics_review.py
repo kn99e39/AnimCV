@@ -131,8 +131,12 @@ def _rgb_panel(image, frame, sample, input_2d, input_valid, context, height, cro
             except ValueError:
                 pass
         projected = (projected - offset) * scale
-        _draw_skeleton(canvas, projected, valid, 3)
-        _ankle_markers(canvas, projected, frame)
+        if np.isfinite(projected).any():
+            _draw_skeleton(canvas, projected, valid, 3)
+            _ankle_markers(canvas, projected, frame)
+        else:
+            _put(canvas, "GT root anchoring unusable on this frame (non-positive depth): H0 not drawn on RGB",
+                 (10, height - 40), 0.5, (0, 0, 255))
     else:
         _put(canvas, "no GT root/camera for display anchoring", (10, height - 40), 0.6, (0, 0, 255))
     _draw_skeleton(canvas, observed, np.ones(len(observed), bool), 1, INPUT_2D_COLOR)

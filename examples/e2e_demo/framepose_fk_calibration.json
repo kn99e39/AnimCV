@@ -1,0 +1,7 @@
+{
+  "rig_id": "BaseRig",
+  "root_orientation_target_bone": "spine_01",
+  "left_shoulder_target_bone": "upperarm_l",
+  "right_shoulder_target_bone": "upperarm_r",
+  "up_target_bone": "spine_05"
+}

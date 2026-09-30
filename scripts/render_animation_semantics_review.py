@@ -38,6 +38,7 @@ from replay_pose_reconciliation import _load_camera_state  # noqa: E402
 from common.canonical_pose import BONES, JOINT_INDEX  # noqa: E402
 from framepose.bank import load_bank  # noqa: E402
 from motion.animation_semantics import load_animation_semantics  # noqa: E402
+from motion.animation_semantics_v2 import load_animation_semantics_v2  # noqa: E402
 from pose.contact import ContactState  # noqa: E402
 
 LEFT, RIGHT, CENTER = (255, 160, 60), (60, 140, 255), (220, 220, 220)  # BGR
@@ -174,11 +175,12 @@ def _view_panel(frame, width, height, bounds):
         yaw = orientation.yaw_radians
         fwd = np.array([-math.sin(yaw), math.cos(yaw)])
         tip = pelvis + np.array([fwd[0], -fwd[1]]) * 90
-        color = HELD_COLOR if orientation.yaw_held else KNOWN_COLOR
+        held = getattr(orientation, "yaw_held", False)
+        color = HELD_COLOR if held else KNOWN_COLOR
         cv2.arrowedLine(canvas, tuple(int(v) for v in pelvis), tuple(int(v) for v in tip), color, 3,
                         cv2.LINE_AA, tipLength=0.2)
         gap = abs((math.degrees(yaw - raw) + 180) % 360 - 180)
-        label = f"semantic yaw {math.degrees(yaw):.1f} deg" + ("  HELD (last accepted value)" if orientation.yaw_held else "")
+        label = f"semantic yaw {math.degrees(yaw):.1f} deg" + ("  HELD (last accepted value)" if held else "  CURRENT" if not hasattr(orientation, "yaw_held") else "")
         _put(canvas, label, (8, half - 30), 0.5, color)
         _put(canvas, f"thin grey = this frame's shoulder heading; gap {gap:.0f} deg", (8, half - 10), 0.45)
     else:
@@ -196,7 +198,7 @@ def _timeline(frames, cursor, width):
     canvas = np.full((TIMELINE_H, width, 3), 18, np.uint8)
     n = len(frames)
     x = lambda i: int(90 + (width - 100) * i / max(1, n))  # noqa: E731
-    rows = (("yaw", lambda f: HELD_COLOR if f.root_orientation.known and f.root_orientation.yaw_held
+    rows = (("yaw", lambda f: HELD_COLOR if f.root_orientation.known and getattr(f.root_orientation, "yaw_held", False)
              else KNOWN_COLOR if f.root_orientation.known else UNKNOWN_YAW_COLOR),
             ("L foot", lambda f: STATE_COLOR[f.foot_motion.left]),
             ("R foot", lambda f: STATE_COLOR[f.foot_motion.right]),
@@ -207,7 +209,9 @@ def _timeline(frames, cursor, width):
         for i, f in enumerate(frames):
             cv2.rectangle(canvas, (x(i), y0), (max(x(i) + 1, x(i + 1) - 1), y0 + 20), color_of(f), -1)
     cv2.rectangle(canvas, (x(cursor) - 1, 6), (x(cursor + 1), 12 + 4 * 26), (255, 255, 255), 2)
-    _put(canvas, "yaw: red=HELD  grey=known  dark=unknown   |   valid: red = some joint invalid", (8, TIMELINE_H - 34), 0.45)
+    yaw_legend = ("yaw: red=HELD  grey=known  dark=unknown" if hasattr(frames[0].root_orientation, "yaw_held")
+                  else "yaw: grey=CURRENT  dark=unknown")
+    _put(canvas, yaw_legend + "   |   valid: red = some joint invalid", (8, TIMELINE_H - 34), 0.45)
     _put(canvas, "foot: green square=CONTACT-like  orange=MOVING  grey ring=UNKNOWN   |   white box = current frame",
          (8, TIMELINE_H - 12), 0.45)
     return canvas
@@ -216,7 +220,8 @@ def _timeline(frames, cursor, width):
 def _header(frame, category, sequence_id, width):
     canvas = np.full((HEADER_H, width, 3), 10, np.uint8)
     o = frame.root_orientation
-    yaw = ("UNKNOWN" if not o.known else f"{math.degrees(o.yaw_radians):.1f}deg" + (" HELD" if o.yaw_held else ""))
+    yaw = ("UNKNOWN" if not o.known else f"{math.degrees(o.yaw_radians):.1f}deg" +
+           (" HELD" if getattr(o, "yaw_held", False) else " CURRENT" if not hasattr(o, "yaw_held") else ""))
     _put(canvas, f"{category} | {sequence_id} | frame {frame.frame_index} | t={frame.timestamp:.2f}s", (10, 24), 0.6)
     _put(canvas, f"yaw {yaw} | L {frame.foot_motion.left.value} | R {frame.foot_motion.right.value} | "
                  f"valid joints {sum(frame.reliability.joint_observation_valid)}/17", (10, 50), 0.55, (200, 230, 255))
@@ -243,7 +248,8 @@ def main() -> None:
     args.out.mkdir(parents=True, exist_ok=True)
     manifest = []
     for category, case in report["owner_cases"].items():
-        semantics = load_animation_semantics(args.semantics_dir / files[case["sequence_id"]])
+        loader = load_animation_semantics_v2 if report["schema"] == "animcv_animation_semantics_v2_replay_v1" else load_animation_semantics
+        semantics = loader(args.semantics_dir / files[case["sequence_id"]])
         frames = list(semantics.frames)
         center = next(i for i, f in enumerate(frames) if f.frame_index == case["frame_index"])
         lo_row, hi_row = max(0, center - args.radius_rows), min(len(frames), center + args.radius_rows + 1)

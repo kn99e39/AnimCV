@@ -1,0 +1,15 @@
+{
+  "schema": "animcv_framepose_two_bone_ik_chains_v1",
+  "rig_id": "BaseRig",
+  "chains": [
+    {
+      "name": "left_arm",
+      "source_root": "left_shoulder",
+      "source_mid": "left_elbow",
+      "source_end": "left_wrist",
+      "target_proximal": "upperarm_l",
+      "target_distal": "lowerarm_l",
+      "target_end_anchor": "hand_l"
+    }
+  ]
+}

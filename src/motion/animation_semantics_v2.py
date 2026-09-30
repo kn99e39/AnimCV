@@ -18,7 +18,8 @@ from pose.contact_time_aware import RULE_VERSION, TimeAwareThresholds
 
 SEMANTICS_SCHEMA_V2 = "animcv_animation_semantics_v2"
 CALIBRATION_SCHEMA_V2 = "animcv_contact_calibration_v2"
-ROOT_POLICY_V2 = "framepose_current_bilateral_v1"
+LEGACY_ROOT_POLICY_V2 = "framepose_current_bilateral_v1"
+ROOT_POLICY_V2 = "framepose_current_valid_bilateral_v1"
 
 
 @dataclass(frozen=True)
@@ -115,13 +116,15 @@ class AnimationSemanticsV2:
     joint_names: tuple[str, ...]
     frames: tuple[SemanticFrameV2, ...]
     provenance: SemanticsProvenance
+    allow_legacy_policy: bool = field(default=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         indices = [frame.frame_index for frame in self.frames]
         if any(b <= a for a, b in zip(indices, indices[1:])):
             raise ValueError("semantic frames must have increasing indices")
-        if self.provenance.root_orientation.get("policy") != ROOT_POLICY_V2:
-            raise ValueError("v2 requires current bilateral orientation policy")
+        policy = self.provenance.root_orientation.get("policy")
+        if policy != ROOT_POLICY_V2 and not (self.allow_legacy_policy and policy == LEGACY_ROOT_POLICY_V2):
+            raise ValueError("v2 requires the valid-only bilateral policy; old v2 requires explicit legacy loading")
         if self.provenance.contact.get("rule_version") != RULE_VERSION:
             raise ValueError("v2 requires time-aware contact policy")
         for frame in self.frames:
@@ -136,12 +139,12 @@ class AnimationSemanticsV2:
                 "provenance": self.provenance.to_dict(), "frames": [frame.to_dict() for frame in self.frames]}
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "AnimationSemanticsV2":
+    def from_dict(cls, data: dict[str, Any], *, allow_legacy_policy: bool = False) -> "AnimationSemanticsV2":
         if data.get("schema") != SEMANTICS_SCHEMA_V2 or data.get("ownership") != ownership_table():
             raise ValueError("not an AnimationSemantics v2 payload")
         return cls(data["sequence_id"], float(data["source_fps"]), data["coordinate_frame"],
                    tuple(data["joint_names"]), tuple(SemanticFrameV2.from_dict(v) for v in data["frames"]),
-                   SemanticsProvenance.from_dict(data["provenance"]))
+                   SemanticsProvenance.from_dict(data["provenance"]), allow_legacy_policy)
 
     def content_digest(self) -> str:
         payload = json.dumps(self.to_dict(), sort_keys=True, separators=(",", ":"))
@@ -152,5 +155,5 @@ def save_animation_semantics_v2(semantics: AnimationSemanticsV2, path: str | Pat
     write_json(path, semantics.to_dict())
 
 
-def load_animation_semantics_v2(path: str | Path) -> AnimationSemanticsV2:
-    return AnimationSemanticsV2.from_dict(read_json(path))
+def load_animation_semantics_v2(path: str | Path, *, allow_legacy_policy: bool = False) -> AnimationSemanticsV2:
+    return AnimationSemanticsV2.from_dict(read_json(path), allow_legacy_policy=allow_legacy_policy)

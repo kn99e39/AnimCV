@@ -239,6 +239,8 @@ def main() -> None:
     parser.add_argument("--raw-3dpw", required=True, type=Path, help=".../DATASET_Motion")
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--radius-rows", type=int, default=20)
+    parser.add_argument("--allow-legacy-v2-policy", action="store_true",
+                        help="explicitly read preserved docs/56 v2 sidecars with the old partial-valid fusion")
     args = parser.parse_args()
 
     bank = load_bank(args.bank)
@@ -248,8 +250,11 @@ def main() -> None:
     args.out.mkdir(parents=True, exist_ok=True)
     manifest = []
     for category, case in report["owner_cases"].items():
-        loader = load_animation_semantics_v2 if report["schema"] == "animcv_animation_semantics_v2_replay_v1" else load_animation_semantics
-        semantics = loader(args.semantics_dir / files[case["sequence_id"]])
+        path = args.semantics_dir / files[case["sequence_id"]]
+        semantics = (load_animation_semantics_v2(path, allow_legacy_policy=args.allow_legacy_v2_policy)
+                     if report["schema"] in ("animcv_animation_semantics_v2_replay_v1",
+                                             "animcv_root_orientation_validity_replay_v1")
+                     else load_animation_semantics(path))
         frames = list(semantics.frames)
         center = next(i for i, f in enumerate(frames) if f.frame_index == case["frame_index"])
         lo_row, hi_row = max(0, center - args.radius_rows), min(len(frames), center + args.radius_rows + 1)

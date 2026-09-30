@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import math
 import statistics
 
 import numpy as np
 
+from common.canonical_pose import YAW_PAIRS
 from framepose.contract import COORDINATE_FRAME, FrameBank, JOINT_NAMES
 from framepose.nonlinear_reconstruction import in_frame_mask
 from motion.animation_semantics import FootMotion, LocalArticulation, ObservationReliability, SemanticsProvenance
@@ -17,7 +19,6 @@ from pose.contact_time_aware import (
     RULE_VERSION, TimeAwareThresholds, classify_time_aware_contact, fit_time_aware_thresholds,
 )
 from pose.framepose_bridge import H0Identity, build_h0_lifted_sequence, sequence_frame_positions, sequence_ids_in_split
-from pose.root_orientation_diagnostic import observe_yaw
 
 
 def calibrate_time_aware_contact_from_h0_train(
@@ -59,18 +60,40 @@ def calibrate_time_aware_contact_from_h0_train(
     )
 
 
+def _valid_bilateral_evidence(frame) -> list[tuple[str, float, float]]:
+    """The docs/55 pair geometry and weights, excluding invalid observations."""
+    evidence = []
+    for label, (left_name, right_name) in zip(("shoulders", "hips"), YAW_PAIRS):
+        left = frame.points.get(left_name)
+        right = frame.points.get(right_name)
+        if left is None or right is None or not (left.observation_valid and right.observation_valid):
+            continue
+        dx = right.position[0] - left.position[0]
+        dy = right.position[1] - left.position[1]
+        length = math.hypot(dx, dy)
+        if length <= 1e-6:
+            continue
+        angle = math.atan2(dy, dx)
+        confidence = (left.confidence + right.confidence) / 2.0
+        weight = length * confidence
+        if weight > 1e-6:
+            evidence.append((label, angle, weight))
+    return evidence
+
+
+def valid_bilateral_sources(frame) -> tuple[str, ...]:
+    """Sources that can actually contribute to this frame's production yaw."""
+    return tuple(label for label, _, _ in _valid_bilateral_evidence(frame))
+
+
 def current_root_orientation(lifted) -> list[CurrentRootOrientation]:
-    """docs/55 current fused yaw, requiring a valid bilateral pair for production."""
+    """Current-frame circular fusion of valid shoulder/hip evidence only."""
     output = []
-    for frame, observation in zip(lifted.frames, observe_yaw(lifted)):
-        # A diagnostic can compute a yaw from invalid joints to measure its
-        # failures. Production refuses a frame with no valid bilateral pair.
-        has_valid_pair = any(
-            frame.points.get(left) is not None and frame.points.get(right) is not None
-            and frame.points[left].observation_valid and frame.points[right].observation_valid
-            for left, right in (("left_shoulder", "right_shoulder"), ("left_hip", "right_hip"))
-        )
-        yaw = observation.yaw_radians if has_valid_pair else None
+    for frame in lifted.frames:
+        evidence = _valid_bilateral_evidence(frame)
+        x = sum(math.cos(angle) * weight for _, angle, weight in evidence)
+        y = sum(math.sin(angle) * weight for _, angle, weight in evidence)
+        yaw = math.atan2(y, x) if math.hypot(x, y) > 1e-6 else None
         output.append(CurrentRootOrientation(yaw is not None, yaw))
     return output
 
@@ -101,8 +124,8 @@ def build_animation_semantics_v2(
                     "split": _single(sample.split for sample in samples),
                     "coordinate_frame": COORDINATE_FRAME, "units": lifted.units},
         root_orientation={"policy": ROOT_POLICY_V2,
-                          "estimator": "pose.root_orientation_diagnostic.observe_yaw",
-                          "yaw_reference_frame": "camera", "evidence": "docs/55 H0-CURRENT"},
+                          "estimator": "motion.animation_semantics_v2_bridge.current_root_orientation",
+                          "yaw_reference_frame": "camera", "evidence": "valid-only docs/55 bilateral geometry"},
         contact={"rule_version": RULE_VERSION, "calibration": contact_calibration.to_dict(),
                  "sequence_time_basis": "timestamps_or_frame_index_over_source_fps"},
         reliability={"joint_observation_valid": "bank.input_valid AND finite Frame Pose output",

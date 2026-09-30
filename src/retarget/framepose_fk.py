@@ -226,7 +226,10 @@ def load_fk_result(path: str | Path) -> FkResult:
 def solve_framepose_fk(
     semantics: AnimationSemanticsV2, rest: TargetRigRestPose,
     mapping: BoneMappingProfile, calibration: RigFkCalibration,
+    *, root_orientation_owner: str = "bone",
 ) -> FkResult:
+    if root_orientation_owner not in ("bone", "armature_object"):
+        raise ValueError("unsupported Root Orientation owner")
     if semantics.coordinate_frame != COORDINATE_FRAME or semantics.provenance.root_orientation.get("policy") != ROOT_POLICY_V2:
         raise ValueError("FK requires current-policy canonical AnimationSemantics v2")
     if rest.rig_id != mapping.rig_id or rest.rig_id != calibration.rig_id:
@@ -241,7 +244,7 @@ def solve_framepose_fk(
     for entry in entries:
         if len(entry.source_names) != 2 or entry.target_bone not in rest.bones:
             raise ValueError(f"invalid direction mapping: {entry.target_bone}")
-        if entry.target_bone == owner or not _is_ancestor(rest, owner, entry.target_bone):
+        if entry.target_bone == owner or (root_orientation_owner == "bone" and not _is_ancestor(rest, owner, entry.target_bone)):
             raise ValueError(f"root orientation owner is not an ancestor of {entry.target_bone}")
     entries.sort(key=lambda entry: (_depth(rest, entry.target_bone), entry.target_bone))
     names = {entry.target_bone for entry in entries}
@@ -250,21 +253,22 @@ def solve_framepose_fk(
             raise ValueError(f"source joint absent: {entry.source_names}")
 
     samples = []
-    owner_rest_rotation = _rest_rotation(rest, owner)
+    owner_rest_rotation = _rest_rotation(rest, owner) if root_orientation_owner == "bone" else None
     for frame in semantics.frames:
         yaw = frame.root_orientation.yaw_radians
-        root_local = None
-        if yaw is not None:
-            source_yaw = quaternion_from_axis_angle((0, 0, 1), yaw)
-            rig_yaw = quaternion_multiply(quaternion_multiply(alignment, source_yaw),
-                                          quaternion_conjugate(alignment))
-            root_local = _q_unit(quaternion_multiply(quaternion_multiply(
-                quaternion_conjugate(owner_rest_rotation), rig_yaw), owner_rest_rotation))
-        samples.append(FkSample(
-            frame.frame_index, frame.timestamp, owner, None,
-            "known" if yaw is not None else "unknown", None, yaw, None, None,
-            "known" if root_local is not None else "unavailable", root_local,
-            None if root_local is not None else "root_orientation_unknown"))
+        if root_orientation_owner == "bone":
+            root_local = None
+            if yaw is not None:
+                source_yaw = quaternion_from_axis_angle((0, 0, 1), yaw)
+                rig_yaw = quaternion_multiply(quaternion_multiply(alignment, source_yaw),
+                                              quaternion_conjugate(alignment))
+                root_local = _q_unit(quaternion_multiply(quaternion_multiply(
+                    quaternion_conjugate(owner_rest_rotation), rig_yaw), owner_rest_rotation))
+            samples.append(FkSample(
+                frame.frame_index, frame.timestamp, owner, None,
+                "known" if yaw is not None else "unknown", None, yaw, None, None,
+                "known" if root_local is not None else "unavailable", root_local,
+                None if root_local is not None else "root_orientation_unknown"))
 
         world_deltas: dict[str, Quaternion | None] = {}
         for entry in entries:
@@ -311,9 +315,9 @@ def solve_framepose_fk(
         "rig_calibration": calibration.to_dict(),
         "rig_calibration_digest": _digest(calibration.to_dict()),
         "canonical_heading_zero_to_armature_xyzw": list(alignment),
-        "root_yaw_owner": owner,
-        "root_yaw_uncovered_bones": sorted(name for name in rest.bones
-                                           if name != owner and not _is_ancestor(rest, owner, name)),
+        "root_yaw_owner": "Blender Armature Object" if root_orientation_owner == "armature_object" else owner,
+        "root_yaw_uncovered_bones": ([] if root_orientation_owner == "armature_object" else sorted(
+            name for name in rest.bones if name != owner and not _is_ancestor(rest, owner, name))),
         "rotation_convention": "xyzw; Blender bone-local pose delta; shortest-arc swing; zero axial twist",
         "root_translation": "unavailable", "ground_placement": "unavailable",
     }, tuple(samples))

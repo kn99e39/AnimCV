@@ -37,6 +37,13 @@ from pose.three_dpw_adapter import _world_to_animcv_camera  # noqa: E402
 SIGN_FIELDS = ("shoulder_forward_depth", "hip_forward_depth")
 ARM_IDX = [JOINT_INDEX[n] for n in ARM]
 SMPL_ARM = (16, 18, 20)
+CLOSURE_KEYS = (("oracle_2d_all_joints", "oracle_all_full_3d_angle_degrees"),
+                ("oracle_2d_left_arm_only", "oracle_arm_full_3d_angle_degrees"),
+                ("h0_image_plane_gt_depth", "h0_component_h0_image_plane_gt_depth"),
+                ("gt_image_plane_h0_depth", "h0_component_gt_image_plane_h0_depth"),
+                ("gt_upper_h0_lower", "h0_segment_gt_upper_h0_lower"),
+                ("h0_upper_gt_lower", "h0_segment_h0_upper_gt_lower"),
+                ("h0_upper_h0_lower_gt_lengths", "h0_segment_h0_upper_h0_lower"))
 
 
 def _stats(values):
@@ -60,7 +67,7 @@ def _pearson(x, y):
 
 
 def _summary(rows, keys):
-    return {k: _stats([r[k] for r in rows]) for k in keys}
+    return {k: _stats([r.get(k) for r in rows]) for k in keys}
 
 
 def main():
@@ -111,14 +118,54 @@ def main():
         K = intrinsics[sid]
         if tuple(sample.image_size) != (int(round(K[0, 2] * 2)), int(round(K[1, 2] * 2))):
             raise SystemExit(f"{sid}: bank image size differs from 3DPW intrinsics")
-        pixels = project_animcv_to_pixels(absolute, K)
         det = np.asarray(bank.arrays["input_2d"][position], float)
         detector_inputs.append(det)
-        oracle_all.append(oracle_input_2d(pixels, sample.image_size, det))
-        oracle_arm.append(oracle_input_2d(pixels, sample.image_size, det, joints=ARM))
+        if (absolute[:, 1] <= 0).any():
+            # Official extrinsics place GT behind the camera: no legitimate
+            # oracle_geometry projection exists for this row.
+            pixels = None
+            oracle_all.append(det)
+            oracle_arm.append(det)
+        else:
+            pixels = project_animcv_to_pixels(absolute, K)
+            oracle_all.append(oracle_input_2d(pixels, sample.image_size, det))
+            oracle_arm.append(oracle_input_2d(pixels, sample.image_size, det, joints=ARM))
         valids.append(np.asarray(bank.arrays["input_valid"][position], bool))
         gt_root_rel.append(absolute - absolute[0])
         gt_pixels.append(pixels)
+
+    # GT camera consistency (evaluation diagnostic): official projection vs the
+    # detector, and official rotation with a least-squares translation.
+    from scipy.optimize import least_squares
+    direct = [JOINT_INDEX[n] for n in ("left_shoulder", "right_shoulder", "left_elbow", "right_elbow",
+                                       "left_wrist", "right_wrist", "left_hip", "right_hip",
+                                       "left_knee", "right_knee", "left_ankle", "right_ankle")]
+    smpl_direct = [16, 17, 18, 19, 20, 21, 1, 2, 4, 5, 7, 8]
+    camera_check = {}
+    for sid in sorted(gt_abs):
+        official, fitted, behind = [], [], 0
+        for k, (row, position) in enumerate(zip(w62_rows, positions)):
+            if row["sequence_id"] != sid:
+                continue
+            w, h = bank.samples[position].image_size
+            keep = [i for i, j in enumerate(direct) if valids[k][j]]
+            img = detector_inputs[k][[direct[i] for i in keep], :2] * [w, h]
+            rel = gt_root_rel[k][[smpl_direct[i] for i in keep]]
+            K = intrinsics[sid]
+            if gt_pixels[k] is None:
+                behind += 1
+            else:
+                official.append(float(np.median(np.linalg.norm(
+                    gt_pixels[k][[smpl_direct[i] for i in keep]] - img, axis=1))))
+            z0 = K[0, 0] * np.ptp(rel[:, [0, 2]], 0).max() / max(np.ptp(img, 0).max(), 1.0)
+            c0 = img.mean(0)
+            t0 = np.array([(c0[0] - K[0, 2]) * z0 / K[0, 0], z0, -(c0[1] - K[1, 2]) * z0 / K[1, 1]])
+            fit = least_squares(lambda t: (project_animcv_to_pixels(rel + t, K) - img).ravel()
+                                if (rel[:, 1] + t[1] > 0).all() else np.full(img.size, 1e4), t0)
+            fitted.append(float(np.median(np.linalg.norm(fit.fun.reshape(-1, 2), axis=1))))
+        camera_check[sid] = {"rows_gt_behind_camera_official": behind,
+                             "official_projection_vs_detector_px": _stats(official),
+                             "official_rotation_fitted_translation_vs_detector_px": _stats(fitted)}
 
     model, checkpoint = load_checkpoint(args.checkpoint, device=args.device)
     signs = mask_fields(oracle_sign_states(bank.arrays["target_3d"], bank.arrays["target_valid"]),
@@ -144,7 +191,8 @@ def main():
         sample = bank.samples[position]
         w, h = sample.image_size
         det_px = detector_inputs[k][ARM_IDX, :2] * [w, h]
-        ora_px = gt_pixels[k][list(SMPL_ARM)]
+        has_oracle = gt_pixels[k] is not None
+        ora_px = gt_pixels[k][list(SMPL_ARM)] if has_oracle else None
         gt3 = gt_root_rel[k][list(SMPL_ARM)]
         out = {"sequence_id": row["sequence_id"], "frame_index": row["frame_index"],
                "bank_position": position,
@@ -153,13 +201,17 @@ def main():
                "w62_reach_fraction_error": row["reach_fraction_error"],
                "w62_bend_plane_error_degrees": row["bend_plane_error_degrees"],
                "w62_fk_h0_endpoint_error": row["fk_h0_endpoint_error"],
-               "w62_ik_h0_endpoint_error": row["ik_h0_endpoint_error"]}
-        out.update(detector_vs_oracle_2d(det_px, ora_px))
-        out["gt_xz_vs_oracle_2d_degrees"] = xz_vs_image_direction(gt3[2] - gt3[0], ora_px[2] - ora_px[0])
+               "w62_ik_h0_endpoint_error": row["ik_h0_endpoint_error"],
+               "oracle_2d_available": has_oracle}
+        if has_oracle:
+            out.update(detector_vs_oracle_2d(det_px, ora_px))
+            out["gt_xz_vs_oracle_2d_degrees"] = xz_vs_image_direction(gt3[2] - gt3[0], ora_px[2] - ora_px[0])
         for tag, prediction in regimes.items():
             short = {"benchmark_detector_observation": "h0",
                      "oracle_geometry_all_joints": "oracle_all",
                      "oracle_geometry_left_arm_only": "oracle_arm"}[tag]
+            if short != "h0" and not has_oracle:
+                continue
             p3 = prediction[k][ARM_IDX]
             for key, value in chain_direction_row(p3, gt3).items():
                 out[f"{short}_{key}"] = value
@@ -186,14 +238,20 @@ def main():
     joint_suffix = [f"{j}_{a}" for j in ARM for a in ("x_error_m", "y_error_m", "z_error_m", "error_m")]
 
     def block(subset):
-        out = {"n": len(subset), "two_d": _summary(subset, two_d)}
-        for short in ("h0", "oracle_all", "oracle_arm"):
-            out[short] = _summary(subset, [f"{short}_{s}" for s in three_d_suffix])
-            out[short + "_abs_axis"] = {k: _stats([abs(r[f"{short}_{k}"]) for r in subset])
-                                       for k in joint_suffix}
-            out[short + "_depth_sign_disagree"] = sum(r[f"{short}_depth_sign_disagrees"] for r in subset)
-            out[short + "_abs_depth_elevation_error"] = _stats(
-                [abs(r[f"{short}_depth_elevation_error_degrees"]) for r in subset])
+        out = {"n": len(subset), "oracle_2d_rows": sum(r["oracle_2d_available"] for r in subset),
+               "two_d": _summary(subset, two_d)}
+        oracle_rows = [r for r in subset if r["oracle_2d_available"]]
+        for label, short, rows_used in (("h0", "h0", subset), ("h0_on_oracle_rows", "h0", oracle_rows),
+                                        ("oracle_all", "oracle_all", oracle_rows),
+                                        ("oracle_arm", "oracle_arm", oracle_rows)):
+            if not rows_used:
+                continue
+            out[label] = _summary(rows_used, [f"{short}_{x}" for x in three_d_suffix])
+            out[label + "_abs_axis"] = {k: _stats([abs(r[f"{short}_{k}"]) for r in rows_used])
+                                        for k in joint_suffix}
+            out[label + "_depth_sign_disagree"] = sum(r[f"{short}_depth_sign_disagrees"] for r in rows_used)
+            out[label + "_abs_depth_elevation_error"] = _stats(
+                [abs(r[f"{short}_depth_elevation_error_degrees"]) for r in rows_used])
         return out
 
     sequences = sorted({r["sequence_id"] for r in rows})
@@ -208,33 +266,41 @@ def main():
         "substitution": "only input_2d x,y replaced; input_valid, confidence, crop rule, signs, weights unchanged",
         "oracle_2d_convention": "SMPL joints 16-21/1,2,4,5,7,8 direct; head=SMPL15 (detector uses nose); neck/pelvis/spine midpoints; thorax=neck",
         "reproduction_max_abs_m": reproduction, "w62_direction_consistency_max_degrees": w62_consistency,
-        "rows": len(rows), "pooled": block(rows),
+        "rows": len(rows), "camera_consistency": camera_check,
+        "oracle_2d_limitation": "rows whose official extrinsics put GT behind the camera have no oracle_geometry 2D; excluded from 2D and sensor-substitution analyses",
+        "pooled": block(rows),
+        "pooled_excluding_crosscountry": block([r for r in rows if "crosscountry" not in r["sequence_id"]]),
         "per_sequence": {sid: block([r for r in rows if r["sequence_id"] == sid]) for sid in sequences},
     }
     pooled = report["pooled"]
-    factors = {k: [r[k] for r in rows] for k in ("shoulder_wrist_2d_direction_error_degrees",
+    factors = {k: [r.get(k) for r in rows] for k in ("shoulder_wrist_2d_direction_error_degrees",
                                                  "h0_xz_image_plane_angle_degrees",
                                                  "h0_depth_elevation_error_degrees",
                                                  "h0_segment_upper_direction_error_degrees",
                                                  "h0_segment_lower_direction_error_degrees")}
     target = [r["h0_full_3d_angle_degrees"] for r in rows]
     report["correlation_with_h0_full_3d_angle"] = {
-        k: _pearson([abs(v) for v in vals], target) for k, vals in factors.items()}
+        k: _pearson([abs(v) if v is not None else None for v in vals], target) for k, vals in factors.items()}
     # Fraction of H0 full-angle error closed by each oracle substitution (paired medians).
+    def closure(subset, key):
+        subset = [r for r in subset if r.get(key) is not None]
+        base = np.mean([r["h0_full_3d_angle_degrees"] for r in subset])
+        return {"n": len(subset),
+                "h0_mean_degrees": float(base),
+                "variant_mean_degrees": float(np.mean([r[key] for r in subset])),
+                "variant_median_degrees": float(np.median([r[key] for r in subset])),
+                "median_paired_reduction_degrees": float(np.median([r["h0_full_3d_angle_degrees"] - r[key] for r in subset])),
+                "mean_fraction_of_h0_error_remaining": float(np.mean([r[key] for r in subset]) / base)}
     report["closure"] = {
-        name: {"median_reduction_degrees": float(np.median([r["h0_full_3d_angle_degrees"] - r[key] for r in rows])),
-               "mean_fraction_closed": float(np.mean([r[key] for r in rows]) / np.mean(target))}
-        for name, key in (("oracle_2d_all_joints", "oracle_all_full_3d_angle_degrees"),
-                          ("oracle_2d_left_arm_only", "oracle_arm_full_3d_angle_degrees"),
-                          ("gt_depth_component", "h0_component_h0_image_plane_gt_depth"),
-                          ("gt_image_plane_component", "h0_component_gt_image_plane_h0_depth"),
-                          ("gt_upper_segment", "h0_segment_gt_upper_h0_lower"),
-                          ("gt_lower_segment", "h0_segment_h0_upper_gt_lower"))}
-
+        scope: {name: closure(subset, key) for name, key in CLOSURE_KEYS}
+        for scope, subset in [("pooled", rows), ("pooled_excluding_crosscountry",
+                                                  [r for r in rows if "crosscountry" not in r["sequence_id"]])]
+        + [(sid, [r for r in rows if r["sequence_id"] == sid]) for sid in sequences]}
     cases = {label: (c["sequence_id"], c["frame_index"]) for label, c in w62_cases.items()}
     for label, key in (("largest_2d_shoulder_wrist_direction_error", "shoulder_wrist_2d_direction_error_degrees"),
                        ("largest_depth_component_error", "h0_depth_elevation_error_degrees")):
-        best = max(rows, key=lambda r: (abs(r[key]), r["sequence_id"], r["frame_index"]))
+        candidates = [r for r in rows if r.get(key) is not None]
+        best = max(candidates, key=lambda r: (abs(r[key]), r["sequence_id"], r["frame_index"]))
         cases[label] = (best["sequence_id"], best["frame_index"])
     by_key = {(r["sequence_id"], r["frame_index"]): r for r in rows}
     report["owner_cases"] = {

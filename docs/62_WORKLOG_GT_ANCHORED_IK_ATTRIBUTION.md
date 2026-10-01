@@ -180,7 +180,7 @@ On LabServer63, `~/animcv-output/framepose_ik_gt_attribution/` contains:
 - `attribution_table.csv`
 - `rows.json`
 
-A local copy is in `~/animcv-output/62_framepose_ik_gt_attribution/`. The regime is `benchmark_detector_observation`. No renders were produced.
+These are machine-readable outputs and stay on the server. The regime is `benchmark_detector_observation`. No renders were produced.
 
 ## Architecture classification
 

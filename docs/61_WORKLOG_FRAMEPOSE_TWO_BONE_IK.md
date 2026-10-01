@@ -183,7 +183,7 @@ Each case has a front view and a side view (depth × up), both aligned to the ch
 
 Blender's evaluated wrists match the Python FK and IK endpoints to ≤ 1.4e-5 cm (float32). The IK lengths in Blender are 27.7712 / 27.2511, and object location and scale were unchanged. The endpoint errors seen in Blender reproduce the replay: FK 0.025–20.95 cm, IK ≤ 1.4e-5 cm.
 
-Output is in `~/animcv-output/framepose_two_bone_ik_blender_review/` (`report.json` SHA-256 `7ead5311551e99e3f95b837adc2aa641651a357b119d94a7384ac1544c9263e3`, 14 PNGs, 7 `.blend` files), with local copies in `~/animcv-output/61_framepose_two_bone_ik_blender_review/` and `~/animcv-output/61_framepose_two_bone_ik_replay/`. This is a pose-geometry review, not a claim about visual motion quality.
+Output is in `~/animcv-output/framepose_two_bone_ik_blender_review/` (`report.json` SHA-256 `7ead5311551e99e3f95b837adc2aa641651a357b119d94a7384ac1544c9263e3`, 14 PNGs, 7 `.blend` files), with the review PNGs copied locally to `~/animcv-output/61_framepose_two_bone_ik_blender_review/`. This is a pose-geometry review, not a claim about visual motion quality.
 
 ## Files and tests
 

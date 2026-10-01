@@ -104,6 +104,9 @@ def main():
         eligible = masks[positions].all(axis=1) & arm_in & np.all([plane_ok[n] for n in SEGMENT_NAMES], axis=0)
         rows = []
         per = {}
+        # Ineligible rows (degenerate observed segment) are excluded below; give
+        # them a placeholder plane so vectorized reconstruction stays defined.
+        planes = {name: np.where(plane_ok[name][:, None], planes[name], [[1.0, 0.0]]) for name in planes}
         for k, name in enumerate(SEGMENT_NAMES):
             g = gt_vec[name]
             gu = g / np.linalg.norm(g, axis=1, keepdims=True)

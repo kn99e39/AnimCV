@@ -228,6 +228,42 @@ def main():
         "donor_rule": "sorted by (sequence, frame); donor = half-way rotation, next row from a different sequence; donor's own overlay",
     }
 
+    # Selector null controls (primary disagreement population, where shuffled votes exist).
+    donor_of = population["shuffled_donor_sample_id"]
+    identity_matches = sum(
+        (responses["shuffled"][sid]["states"] == responses["real"][donor]["states"]) for sid, donor in donor_of.items()
+        if sid in responses["shuffled"])
+    null_controls = {"shuffled_equals_donor_real_rate": identity_matches / max(1, len(donor_of))}
+    primary_rows = [r for r in rows if r["primary"]]
+    for name in SEGMENT_NAMES:
+        field = SEGMENT_FIELD[name]
+        conflict = [r for r in primary_rows if np.sign(r[f"{name}_f_h0"]) != np.sign(r[f"{name}_f_d1"])
+                    and np.sign(r[f"{name}_f_h0"]) != 0 and np.sign(r[f"{name}_f_d1"]) != 0]
+        fg = np.array([r[f"{name}_f_gt"] for r in conflict])
+        h0e = np.abs(np.array([r[f"{name}_f_h0"] for r in conflict]) - fg)
+        d1e = np.abs(np.array([r[f"{name}_f_d1"] for r in conflict]) - fg)
+        v0e = np.abs(np.array([r[f"{name}_f_v0"] for r in conflict]) - fg)
+        shuffled_v0 = []
+        for r in conflict:
+            st = responses["shuffled"][r["sample_id"]]["states"]
+            f, _ = v0_select(r[f"{name}_f_h0"], r[f"{name}_f_d1"], st[field] if st else "UNKNOWN")
+            shuffled_v0.append(f)
+        sve = np.abs(np.array(shuffled_v0) - fg)
+        q = float(np.mean([r[f"{name}_v0_source"] == "d1_vlm_agrees" for r in conflict])) if conflict else None
+        oracle = np.minimum(h0e, d1e)
+        null_controls[name] = {
+            "h0_d1_conflict_rows": len(conflict), "v0_chooses_d1_share": q,
+            "h0_abs_f_mean": float(h0e.mean()), "d1_abs_f_mean": float(d1e.mean()),
+            "v0_abs_f_mean": float(v0e.mean()), "v0_with_shuffled_votes_abs_f_mean": float(sve.mean()),
+            "same_rate_random_mixture_abs_f_mean": float((1 - q) * h0e.mean() + q * d1e.mean()),
+            "oracle_branch_abs_f_mean": float(oracle.mean()),
+            "d1_correct_branch_share": float(np.mean(d1e < h0e)),
+            "v0_picks_d1_when_d1_better": float(np.mean([r[f"{name}_v0_source"] == "d1_vlm_agrees"
+                                                          for r, a, b in zip(conflict, h0e, d1e) if b < a])),
+            "v0_picks_d1_when_h0_better": float(np.mean([r[f"{name}_v0_source"] == "d1_vlm_agrees"
+                                                          for r, a, b in zip(conflict, h0e, d1e) if a <= b])),
+        }
+
     per_sequence = {}
     for name in SEGMENT_NAMES:
         better_h0 = better_d1 = 0
@@ -268,7 +304,7 @@ def main():
         "complementarity": {scope: {n: complementarity(scopes[scope], n) for n in SEGMENT_NAMES}
                             for scope in ("all_heldout", "primary_disagreement_frames")},
         "continuous": {k: continuous(v) for k, v in scopes.items()},
-        "per_sequence": per_sequence, "owner_cases": owner,
+        "per_sequence": per_sequence, "owner_cases": owner, "selector_null_controls": null_controls,
     }
     args.out_dir.mkdir(parents=True, exist_ok=True)
     path = args.out_dir / "analysis.json"

@@ -73,7 +73,8 @@ def test_same_target_objective_splits_and_no_gt_gating_or_threshold():
     # Inputs come only from frozen H0 and Worklog 65 relations; GT bins appear only in evaluation.
     assert "inputs = {name: fusion_inputs(h0_f, relations, name) for name in CANDIDATES}" in script
     assert script.index("F_BINS:") > script.index("def metrics")
-    assert not re.search(r"\bthreshold\b|STABLE_SINE|F_BINS", module)
+    code = module.split('"""', 2)[2]  # skip the module docstring
+    assert not re.search(r"\bthreshold\b|STABLE_SINE|F_BINS", code)
     assert list(inspect.signature(predict_fusion).parameters) == ["model", "inputs", "positions"]
 
 

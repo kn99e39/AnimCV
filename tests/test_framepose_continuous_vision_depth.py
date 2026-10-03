@@ -12,7 +12,12 @@ ROOT = Path(__file__).resolve().parent.parent
 def test_pair_order_matches_worklog64_segments_and_target_identity():
     from framepose.arm_depth_probe import SEGMENT_NAMES
 
+    from framepose import continuous_vision_depth as cvd
+    from framepose import learned_vision_sensor as lvs
+
     assert SEGMENT_OF_PAIR == SEGMENT_NAMES == ("upper", "lower", "chain")
+    assert (cvd.PAIRS, cvd.GEOMETRY_FEATURES, cvd.VISUAL_PROJECTION, cvd.HIDDEN) == \
+        (lvs.PAIRS, lvs.GEOMETRY_FEATURES, lvs.VISUAL_PROJECTION, lvs.HIDDEN)
     script = (ROOT / "scripts/run_continuous_visual_arm_depth.py").read_text()
     assert 'forward_targets(bank.arrays["target_3d"], bank.arrays["target_valid"])' in script
     assert "Worklog 68 visual cache identity mismatch" in script and 'manifest["readout_npz_sha256"]' in script

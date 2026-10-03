@@ -14,7 +14,12 @@ from typing import Any
 
 import numpy as np
 
-from framepose.learned_vision_sensor import GEOMETRY_FEATURES, HIDDEN, PAIRS, VISUAL_PROJECTION
+# Worklog 68 sensor-head constants, restated (not imported) so that the
+# Worklog 68 module keeps having no importer under src/.
+GEOMETRY_FEATURES = 13
+VISUAL_PROJECTION = 64
+HIDDEN = 64
+PAIRS = (("shoulder_elbow", 0, 1, "upper"), ("elbow_wrist", 1, 2, "lower"), ("shoulder_wrist", 0, 2, "chain"))
 
 CANDIDATES = ("C0_ZERO_VISION", "C1_QWEN_VISION")
 # Worklog 68 pair order (S-E, E-W, S-W) is the Worklog 64 segment order (upper, lower, chain).

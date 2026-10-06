@@ -1,10 +1,14 @@
 #!/bin/bash
 # Worklog 73: fetch the BEDLAM v1 6fps image tars, the official processed
 # training labels (all_npz_12_training) and the SMPL-X v1.1 body model from
-# the official MPI-IS download service.  Run BY THE OWNER on LabServer63; the
-# script reads ~/.animcv_credentials/{bedlam,smplx} (username=/password= lines)
-# and never prints them.  Restart-safe (wget --continue); each file's size and
-# sha256 are appended to $ROOT/download_manifest.tsv.
+# the official MPI-IS download service.  Run BY THE OWNER on LabServer63,
+# preferably inside tmux so it survives a disconnect.  Login: the BEDLAM
+# website email/password is asked once at the prompt and kept only in this
+# shell's memory (optional alternative: ~/.animcv_credentials/bedlam with
+# username=/password= lines).  The SMPL-X zip is skipped when it is already
+# present (e.g. copied from a browser download).  Restart-safe (wget
+# --continue); each file's size and sha256 are appended to
+# $ROOT/download_manifest.tsv.
 #
 # Scene list = the 30 BEDLAM v1 scene folders of the official BEDLAM repo
 # (pixelite1201/BEDLAM@f1828fd data_processing/bedlam_scene_names.csv; the
@@ -17,8 +21,18 @@ mkdir -p "$ROOT/images" "$ROOT/labels" "$ROOT/body_models"
 LOG="$ROOT/download.log"
 
 field() { sed -n "s/^$2=//p" "$CRED/$1" | head -n1; }
+declare -A USERS PASSWORDS
+login() {  # credential-name prompt-label
+  if [ -f "$CRED/$1" ]; then USERS[$1]=$(field "$1" username); PASSWORDS[$1]=$(field "$1" password); return; fi
+  read -r -p "$2 website email/username: " u; read -r -s -p "$2 website password: " pw; echo
+  USERS[$1]=$u; PASSWORDS[$1]=$pw
+}
 urle() { local LANG=C i x; for (( i = 0; i < ${#1}; i++ )); do x="${1:i:1}"; [[ "${x}" == [a-zA-Z0-9.~_-] ]] && printf '%s' "${x}" || printf '%%%02X' "'${x}"; done; }
-post() { printf 'username=%s&password=%s' "$(urle "$(field "$1" username)")" "$(urle "$(field "$1" password)")"; }
+# The login body goes through a private temp file (--post-file) so the password
+# never appears on a command line visible in `ps` on this shared server.
+POSTDIR=$(umask 077; mktemp -d)
+trap 'rm -rf "$POSTDIR"' EXIT
+post() { (umask 077; printf 'username=%s&password=%s' "$(urle "${USERS[$1]}")" "$(urle "${PASSWORDS[$1]}")" > "$POSTDIR/$1"); echo "$POSTDIR/$1"; }
 
 fetch() {  # domain credential sfile dest
   local domain=$1 cred=$2 sfile=$3 dest=$4
@@ -27,7 +41,7 @@ fetch() {  # domain credential sfile dest
   echo "GET $domain:$sfile -> $dest" | tee -a "$LOG"
   local ok=0
   for attempt in 1 2 3; do
-    if wget -q --post-data "$(post "$cred")" \
+    if wget -q --post-file "$(post "$cred")" \
         "https://download.is.tue.mpg.de/download.php?domain=${domain}&resume=1&sfile=${sfile}" \
         -O "$dest" --continue; then ok=1; break; fi
     echo "  retry $attempt failed" | tee -a "$LOG"; sleep 5
@@ -40,7 +54,11 @@ fetch() {  # domain credential sfile dest
   echo "  OK $(stat -c%s "$dest") bytes" | tee -a "$LOG"
 }
 
-fetch smplx smplx models_smplx_v1_1.zip "$ROOT/body_models/models_smplx_v1_1.zip"
+if [ ! -s "$ROOT/body_models/models_smplx_v1_1.zip" ]; then
+  login smplx SMPL-X
+  fetch smplx smplx models_smplx_v1_1.zip "$ROOT/body_models/models_smplx_v1_1.zip"
+fi
+login bedlam BEDLAM
 fetch bedlam bedlam bedlam_labels/all_npz_12_training.zip "$ROOT/labels/all_npz_12_training.zip"
 
 SCENES_6FPS="20221010_3_1000_batch01hand 20221010_3-10_500_batch01hand_zoom_suburb_d

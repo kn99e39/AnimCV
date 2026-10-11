@@ -17,6 +17,7 @@ an image).  The renderer import is stubbed for the same reason.  Output: one
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 import tarfile
@@ -41,6 +42,9 @@ def main():
     parser.add_argument("--png-tars", type=Path, required=True)
     parser.add_argument("--body-models", type=Path, required=True, help="directory containing smplx/SMPLX_NEUTRAL.npz")
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--scene", action="append", default=None,
+                        help="consistency check: a TRAINING scene whose official all_npz_12 labels are reproduced")
+    parser.add_argument("--compare-with", type=Path, default=None, help="all_npz_12_training directory (with --scene)")
     args = parser.parse_args()
 
     work = Path(tempfile.mkdtemp(prefix="bedlam_val_"))
@@ -55,11 +59,18 @@ def main():
     os.chdir(cwd)
 
     args.out.mkdir(parents=True, exist_ok=True)
-    for scene in SCENES_VALIDATION:
+    for scene in args.scene or SCENES_VALIDATION:
+        base = next(p for p in (args.gt_dir / scene, *args.gt_dir.glob(f"**/{scene}")) if (p / "be_seq.csv").exists())
         names = []
-        for part in sorted(args.png_tars.glob(f"{scene}_png.*.tar")):
-            with tarfile.open(part, "r:") as tf:
-                names += [m.name for m in tf.getmembers() if m.name.endswith(".png")]
+        if args.scene:
+            # Training scenes ship only 6fps tars; the full 30fps frame list comes from the per-sequence camera CSV.
+            for cam_csv in sorted((base / "ground_truth/camera").glob("*_camera.csv")):
+                seq = cam_csv.name[: -len("_camera.csv")]
+                names += [f"{scene}/png/{seq}/{seq}_{i:04d}.png" for i in range(len(pd.read_csv(cam_csv)))]
+        else:
+            for part in sorted(args.png_tars.glob(f"{scene}_png.*.tar")):
+                with tarfile.open(part, "r:") as tf:
+                    names += [m.name for m in tf.getmembers() if m.name.endswith(".png")]
         if not names:
             raise SystemExit(f"{scene}: no PNG archives")
         fake = work / "images" / scene / "png"
@@ -73,7 +84,6 @@ def main():
             official.SENSOR_W, official.SENSOR_H, official.IMG_W, official.IMG_H, rotate = 36, 20.25, 1280, 720, False
         for key in LIST_KEYS:
             getattr(official, key).clear()
-        base = next(p for p in (args.gt_dir / scene, *args.gt_dir.glob(f"**/{scene}")) if (p / "be_seq.csv").exists())
         csv_data = pd.read_csv(base / "be_seq.csv").to_dict("list")
         cam_base = base / "ground_truth/camera"
         for idx, comment in enumerate(csv_data["Comment"]):
@@ -98,6 +108,21 @@ def main():
                  gtkps=official.gtkps, cam_int=official.cam_int, cam_ext=official.cam_ext, gender=official.genders,
                  proj_verts=official.proj_verts, motion_info=official.motion_infos, sub=official.subs)
         print(scene, len(official.imgnames), "rows", len(set(official.imgnames)), "images", flush=True)
+        if args.compare_with is not None:
+            compare(args.out / f"{scene}_6fps.npz", next(args.compare_with.glob(f"{scene}_*fps.npz")))
+
+
+def compare(ours_path: Path, official_path: Path) -> None:
+    """Row-level agreement with the official processed labels, keyed by (image name, betas)."""
+    a, b = np.load(ours_path), np.load(official_path)
+    key = lambda z, i: (str(z["imgname"][i]), tuple(np.round(z["shape"][i].astype(np.float64), 4)))
+    index = {key(b, i): i for i in range(len(b["imgname"]))}
+    matched = [(i, index[key(a, i)]) for i in range(len(a["imgname"])) if key(a, i) in index]
+    ia, ib = (np.array(v) for v in zip(*matched)) if matched else (np.zeros(0, int), np.zeros(0, int))
+    out = {"ours_rows": int(len(a["imgname"])), "official_rows": int(len(b["imgname"])), "matched": len(matched)}
+    for field in ("pose_cam", "trans_cam", "cam_ext", "cam_int", "gtkps"):
+        out[f"{field}_max_abs_diff"] = float(np.abs(a[field][ia].astype(np.float64) - b[field][ib].astype(np.float64)).max()) if len(ia) else None
+    print("CONSISTENCY", json.dumps(out), flush=True)
 
 
 if __name__ == "__main__":

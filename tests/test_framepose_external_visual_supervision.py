@@ -6,7 +6,7 @@ import pytest
 
 from framepose.bedlam_supervision import (
     CANONICAL_SMPLX, COCO_LIMB_TO_SMPLX, SCENES_VALIDATION, SMPL_TO_CANONICAL, ExternalBank, ExternalSample, ImageRef,
-    PersonIndex, associate, canonical_target, is_closeup, is_validation_subject, opencv_to_animcv, project, scene_of,
+    SceneBodyIndex, associate, canonical_target, is_closeup, is_validation_subject, opencv_to_animcv, project, scene_of,
     select_rows, select_rows_by_person, subject_key,
 )
 from framepose.openpose_coco18 import COCO18, to_canonical_input
@@ -204,16 +204,31 @@ def test_select_rows_by_person_keeps_only_requested_people():
     assert len(rows) == 3 * 3 and all(persons[r] == "b" for r in rows)
 
 
-def test_person_index_recovers_person_from_betas(tmp_path):
+def test_scene_body_index_recovers_person_within_the_sequence(tmp_path):
     rng = np.random.default_rng(4)
-    table = {}
-    for person in ("rp_aaron_posed_002", "male_30_us_1377"):
-        for motion in ("0001", "0002"):
-            d = tmp_path / person / motion
-            d.mkdir(parents=True)
-            b = rng.normal(size=11)
-            np.savez(d / "motion_seq.npz", betas=b)
-            table[(person, motion)] = b
-    index = PersonIndex(tmp_path)
-    assert index.lookup(table[("male_30_us_1377", "0002")].astype(np.float32)) == "male_30_us_1377"
-    assert index.lookup(table[("rp_aaron_posed_002", "0001")] + 1e-3) is None
+    motion = tmp_path / "motion"
+    betas = {}
+    for person, mid in (("rp_aaron_posed_002", "0001"), ("male_30_us_1377", "0002"), ("female_25_us_0231", "0003")):
+        d = motion / person / mid
+        d.mkdir(parents=True)
+        betas[person] = rng.normal(size=11)
+        np.savez(d / "motion_seq.npz", betas=betas[person])
+    scene = tmp_path / "gt" / "20221020_3-8_250_scene"
+    scene.mkdir(parents=True)
+    (scene / "be_seq.csv").write_text(
+        "Index,Type,Body,X,Y,Z,Yaw,Pitch,Roll,Comment\n"
+        "0,Comment,None,0,0,0,0,0,0,bodies_min=1\n"
+        "1,Group,None,0,0,0,0,0,0,sequence_name=seq_000000;frames=10\n"
+        "2,Body,rp_aaron_posed_002_0001,0,0,0,0,0,0,start_frame=0\n"
+        "3,Body,male_30_us_1377_0002,0,0,0,0,0,0,start_frame=0\n"
+        "4,Group,None,0,0,0,0,0,0,sequence_name=seq_000001;frames=10\n"
+        "5,Body,female_25_us_0231_0003,0,0,0,0,0,0,start_frame=0\n")
+    index = SceneBodyIndex(tmp_path / "gt", motion)
+    # dash/underscore scene-name variants resolve to the same official folder
+    assert index.lookup("20221020-3-8_250_scene", "seq_000000", betas["male_30_us_1377"].astype(np.float32))[0] == "male_30_us_1377"
+    drifted = betas["female_25_us_0231"] + 0.01  # refit drift: only candidate in its sequence
+    assert index.lookup("20221020_3-8_250_scene", "seq_000001", drifted)[0] == "female_25_us_0231"
+    # a person from another sequence is never returned
+    person, info = index.lookup("20221020_3-8_250_scene", "seq_000001", betas["male_30_us_1377"])
+    assert person is None and info["reason"] == "no_candidate_close_enough"
+    assert index.lookup("20221020_3-8_250_scene", "seq_000009", drifted)[0] is None

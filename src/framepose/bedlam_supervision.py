@@ -25,8 +25,9 @@ person name (``rp_<name>``, all its scans) or the synthetic body id; a subject
 is a validation subject iff sha256(key) mod 5 == 0.  External TRAIN keeps only
 non-validation subjects from training scenes; external validation keeps only
 validation subjects from validation scenes.  Person identity comes from the
-label's ``sub`` field when present, otherwise from the label's SMPL-X betas,
-which are unique per (person, motion) file of the official motion release.
+label's ``sub`` field when present, otherwise from the official scene CSV's
+body list for the row's sequence, disambiguated by the label's SMPL-X betas
+(``SceneBodyIndex``).
 
 Observation contract: GT never enters the model input.  The 2D input is the
 re-run OpenPose COCO-18 detector (``openpose_coco18``) converted with the
@@ -65,7 +66,8 @@ COCO_LIMB_TO_SMPLX = {2: 17, 3: 19, 4: 21, 5: 16, 6: 18, 7: 20, 8: 2, 9: 5, 10: 
 ASSOCIATION = {"min_correct_limb_joints": 6, "tolerance_of_gt_limb_box_diagonal": 0.1}
 ROWS_PER_SEQUENCE = 3
 VALIDATION_SUBJECT_MODULUS = 5
-BETA_MATCH_TOLERANCE = 1e-4
+IDENTITY_MAX_BETA_DISTANCE = 0.05
+IDENTITY_MIN_MARGIN = 0.1
 
 
 def scene_of(label_path: str | Path) -> str:
@@ -125,20 +127,64 @@ def is_validation_subject(person: str) -> bool:
     return int(hashlib.sha256(key.encode()).hexdigest(), 16) % VALIDATION_SUBJECT_MODULUS == 0
 
 
-class PersonIndex:
-    """SMPL-X betas -> BEDLAM person, from the official neutral motion release (one betas vector per motion file)."""
+class SceneBodyIndex:
+    """Sequence-restricted person recovery for label rows without a ``sub`` field.
 
-    def __init__(self, motion_dir: str | Path):
-        files = sorted(Path(motion_dir).glob("*/*/motion_seq.npz"))
-        if not files:
-            raise SystemExit(f"no motion files under {motion_dir}")
-        self.persons = np.array([f.parent.parent.name for f in files])
-        self.betas = np.stack([np.load(f)["betas"].astype(np.float64) for f in files])
+    The official per-scene ground truth (``be_seq.csv``) lists the bodies
+    (``<person>_<motion>``) of every sequence; the row's SMPL-X betas choose
+    among those candidates only (betas are per official motion file; the
+    training release can carry a slightly refit copy, so the nearest candidate
+    is taken).  Accepted when the nearest is within
+    ``IDENTITY_MAX_BETA_DISTANCE`` and every other candidate person is at least
+    ``IDENTITY_MIN_MARGIN`` farther.
+    """
 
-    def lookup(self, shape: np.ndarray) -> str | None:
-        d = np.abs(self.betas - np.asarray(shape, np.float64)[None]).max(axis=1)
-        i = int(np.argmin(d))
-        return str(self.persons[i]) if d[i] < BETA_MATCH_TOLERANCE else None
+    def __init__(self, gt_dir: str | Path, motion_dir: str | Path):
+        self.gt_dir, self.motion_dir = Path(gt_dir), Path(motion_dir)
+        self._scenes: dict[str, dict[str, list[tuple[str, str]]]] = {}
+        self._betas: dict[tuple[str, str], np.ndarray] = {}
+
+    def bodies(self, scene: str) -> dict[str, list[tuple[str, str]]]:
+        if scene not in self._scenes:
+            import csv
+
+            norm = scene.replace("-", "_")
+            path = next((p / "be_seq.csv" for p in sorted(self.gt_dir.iterdir())
+                         if p.name.replace("-", "_") == norm and (p / "be_seq.csv").exists()), None)
+            if path is None:
+                raise SystemExit(f"no official be_seq.csv for scene {scene}")
+            out: dict[str, list[tuple[str, str]]] = {}
+            seq = None
+            with open(path, newline="") as fh:
+                for row in csv.DictReader(fh):
+                    if row["Type"] == "Group":
+                        seq = row["Comment"].split(";")[0].split("=")[-1]
+                    elif row["Type"] == "Body":
+                        parts = row["Body"].split("_")
+                        out.setdefault(seq, []).append(("_".join(parts[:-1]), parts[-1]))
+            self._scenes[scene] = out
+        return self._scenes[scene]
+
+    def betas(self, person: str, motion: str) -> np.ndarray:
+        if (person, motion) not in self._betas:
+            self._betas[(person, motion)] = np.load(self.motion_dir / person / motion / "motion_seq.npz")["betas"].astype(np.float64)
+        return self._betas[(person, motion)]
+
+    def lookup(self, scene: str, seq: str, shape: np.ndarray) -> tuple[str | None, dict]:
+        candidates = self.bodies(scene).get(seq, [])
+        if not candidates:
+            return None, {"reason": "sequence_not_in_scene_csv"}
+        shape = np.asarray(shape, np.float64)
+        ranked = sorted((float(np.abs(self.betas(p, m) - shape).max()), p) for p, m in candidates)
+        best, person = ranked[0]
+        rivals = [d for d, p in ranked[1:] if p != person]
+        info = {"beta_distance": best, "nearest_other_person_distance": rivals[0] if rivals else None,
+                "candidates": len(candidates)}
+        if best > IDENTITY_MAX_BETA_DISTANCE:
+            return None, {**info, "reason": "no_candidate_close_enough"}
+        if rivals and rivals[0] - best < IDENTITY_MIN_MARGIN:
+            return None, {**info, "reason": "ambiguous_candidates"}
+        return person, info
 
 
 def opencv_to_animcv(points: np.ndarray) -> np.ndarray:

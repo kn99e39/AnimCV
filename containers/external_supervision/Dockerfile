@@ -6,14 +6,16 @@
 #     converted, sha256-verified) -- the same detector family that produced the
 #     3DPW-shipped poses2D used by the FrameBank benchmark observation;
 #   - smplx for deriving BEDLAM camera-space joints from the dataset's SMPL-X
-#     labels (model files are mounted from the host, never baked in).
+#     labels (model files are mounted from the host, never baked in);
+#   - pandas/matplotlib/tqdm, imported by the unchanged official BEDLAM
+#     processing module used for the validation-scene labels.
 # Not part of production FramePose.
 FROM animcv-qwen3vl:cu124
 
 RUN apt-get update && apt-get install -y --no-install-recommends git curl \
     && rm -rf /var/lib/apt/lists/*
 
-RUN /opt/vlm/bin/pip install scipy==1.13.1 smplx==0.1.28 \
+RUN /opt/vlm/bin/pip install scipy==1.13.1 smplx==0.1.28 pandas==2.2.3 matplotlib==3.9.2 tqdm==4.67.1 \
     && /opt/vlm/bin/pip freeze > /opt/vlm/freeze_external.txt
 
 ARG OPENPOSE_COMMIT=5ee71dc10020403dc3def2bb68f9b77c40337ae2

@@ -6,7 +6,8 @@ import pytest
 
 from framepose.bedlam_supervision import (
     CANONICAL_SMPLX, COCO_LIMB_TO_SMPLX, SCENES_VALIDATION, SMPL_TO_CANONICAL, ExternalBank, ExternalSample, ImageRef,
-    associate, canonical_target, is_closeup, opencv_to_animcv, project, scene_of, select_rows,
+    PersonIndex, associate, canonical_target, is_closeup, is_validation_subject, opencv_to_animcv, project, scene_of,
+    select_rows, select_rows_by_person, subject_key,
 )
 from framepose.openpose_coco18 import COCO18, to_canonical_input
 from pose.pose_lifter import H36M_NAMES
@@ -165,7 +166,7 @@ def test_contracts_are_enforced_in_scripts():
     assert "import extract_qwen3vl_visual_features as w68" in extractor and "w68.main()" in extractor
     run = (ROOT / "scripts/run_external_visual_supervision_transfer.py").read_text()
     for check in ("Qwen cache identity mismatch", "does not share the Worklog 68 representation contract",
-                  "Worklog 69 head identity mismatch", "external TRAIN/validation overlap",
+                  "Worklog 69 head identity mismatch", "external TRAIN/validation overlap (sequence, image or subject)",
                   "E0 does not reproduce Worklog 69 C1", "E1 optimization budget / graph differs from E0",
                   "from run_visual_supervision_diversity import CONFIG, train", "rows_heldout.json",
                   "S0_FRAME_UNIFORM"):
@@ -181,3 +182,38 @@ def test_adapter_reads_no_target_in_selection():
     src = (ROOT / "src/framepose/bedlam_supervision.py").read_text()
     sel = src[src.index("def select_rows"):src.index("def opencv_to_animcv")]
     assert not re.search(r"pose_cam|trans_cam|gtkps|target|joints", sel.split('"""', 2)[2])
+
+
+def test_subject_split_is_deterministic_and_groups_renderpeople_scans():
+    assert subject_key("rp_antonia_posed_003") == subject_key("rp_antonia_posed_006") == "rp_antonia"
+    assert subject_key("male_40_us_0306") == "male_40_us_0306"
+    assert is_validation_subject("rp_antonia_posed_003") == is_validation_subject("rp_antonia_posed_006")
+    people = [f"female_25_us_{i:04d}" for i in range(400)]
+    share = np.mean([is_validation_subject(p) for p in people])
+    assert 0.1 < share < 0.3  # ~1/5 by construction
+
+
+def test_select_rows_by_person_keeps_only_requested_people():
+    names, persons = [], []
+    for s in range(3):
+        for person in ("a", "b"):
+            for f in range(0, 40, 5):
+                names.append(f"seq_{s:06d}/seq_{s:06d}_{f:04d}.png")
+                persons.append(person)
+    rows = select_rows_by_person(np.array(names), np.array(persons), lambda p: p == "b")
+    assert len(rows) == 3 * 3 and all(persons[r] == "b" for r in rows)
+
+
+def test_person_index_recovers_person_from_betas(tmp_path):
+    rng = np.random.default_rng(4)
+    table = {}
+    for person in ("rp_aaron_posed_002", "male_30_us_1377"):
+        for motion in ("0001", "0002"):
+            d = tmp_path / person / motion
+            d.mkdir(parents=True)
+            b = rng.normal(size=11)
+            np.savez(d / "motion_seq.npz", betas=b)
+            table[(person, motion)] = b
+    index = PersonIndex(tmp_path)
+    assert index.lookup(table[("male_30_us_1377", "0002")].astype(np.float32)) == "male_30_us_1377"
+    assert index.lookup(table[("rp_aaron_posed_002", "0001")] + 1e-3) is None

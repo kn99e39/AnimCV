@@ -114,8 +114,10 @@ def main():
         raise SystemExit("external split labels wrong")
     overlap = {s.sequence_id for s in ext_tr.samples} & {s.sequence_id for s in ext_va.samples}
     if overlap or ({s.image_reference.relative_path for s in ext_tr.samples}
-                   & {s.image_reference.relative_path for s in ext_va.samples}):
-        raise SystemExit("external TRAIN/validation overlap")
+                   & {s.image_reference.relative_path for s in ext_va.samples}) \
+            or ({s.detail.get("subject") for s in ext_tr.samples} & {s.detail.get("subject") for s in ext_va.samples}) \
+            or any(s.detail.get("subject") is None for s in ext_tr.samples + ext_va.samples):
+        raise SystemExit("external TRAIN/validation overlap (sequence, image or subject)")
 
     # --- one stacked array space: [3DPW | external TRAIN | external validation] ---
     n3, ntr = len(bank), len(ext_tr)

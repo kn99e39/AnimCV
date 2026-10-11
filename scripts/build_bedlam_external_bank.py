@@ -26,7 +26,8 @@ import numpy as np
 
 from framepose.bedlam_supervision import (
     ASSOCIATION, ROWS_PER_SEQUENCE, SCENES_VALIDATION, SMPLX_MODEL, ExternalBank, ExternalSample, ImageRef, associate,
-    camera_joints, canonical_target, is_closeup, project, scene_of, select_rows,
+    camera_joints, canonical_target, is_closeup, is_validation_subject, project, scene_of, select_rows,
+    select_rows_by_person, subject_key,
 )
 from framepose.openpose_coco18 import OpenPoseCOCO18, to_canonical_input
 
@@ -102,35 +103,61 @@ def process_scene(label_path, args, model, detector, device, image_dir):
     scene = scene_of(label_path)
     tag = label_path.stem
     z = np.load(label_path)
-    rows = select_rows(z["imgname"])
+    if args.split == "validation":
+        # Official validation scenes, validation subjects only (labels carry the official ``sub`` person id).
+        rows = select_rows_by_person(z["imgname"], z["sub"], is_validation_subject)
+    else:
+        rows = select_rows(z["imgname"])
     joints = camera_joints(model, z["pose_cam"][rows], z["shape"][rows], z["trans_cam"][rows], z["cam_ext"][rows], device)
     reproj = np.linalg.norm(project(joints, z["cam_int"][rows]) - z["gtkps"][rows][:, :22, :2], axis=2)
     if float(reproj.max()) > MAX_REPROJECTION_PX:
         raise SystemExit(f"{scene}: SMPL-X reprojection error {reproj.max():.3f}px exceeds {MAX_REPROJECTION_PX}")
-    wanted = {f"{tag}/png/{z['imgname'][r]}": [] for r in rows}
+    wanted = {f"png/{z['imgname'][r]}": [] for r in rows}
     for k, r in enumerate(rows):
-        wanted[f"{tag}/png/{z['imgname'][r]}"].append(k)
-    tar_path = next(p for p in (args.tars / f"{tag}.tar", *args.tars.glob(f"{scene}_*.tar")) if p.exists())
+        wanted[f"png/{z['imgname'][r]}"].append(k)
+    # 6fps training tars: one "<tag>.tar"; validation scenes: the five official 30fps PNG parts.
+    parts = [args.tars / f"{tag}.tar"] if (args.tars / f"{tag}.tar").exists() else \
+        sorted(args.tars.glob(f"{scene}_png.*.tar")) or sorted(args.tars.glob(f"{scene}_*.tar"))
+    if not parts:
+        raise SystemExit(f"{scene}: no image tar")
     people_by_member, member_sha, sizes = {}, {}, {}
-    with tarfile.open(tar_path, "r|") as tf:
-        for member in tf:
-            if member.name not in wanted:
-                continue
-            data = tf.extractfile(member).read()
-            img = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
-            if is_closeup(scene):
-                img = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
-            rel = f"{scene}/{member.name.split('/png/', 1)[1]}"
-            dest = image_dir / rel
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            ok, enc = cv2.imencode(".png", img)
-            dest.write_bytes(enc.tobytes())
-            people_by_member[member.name] = (rel, detector(img))
-            member_sha[member.name] = hashlib.sha256(data).hexdigest()
-            sizes[member.name] = (img.shape[1], img.shape[0])
+    for tar_path in parts:
+        if len(people_by_member) == len(wanted):
+            break
+        with tarfile.open(tar_path, "r|") as tf:
+            for member in tf:
+                top, _, key = member.name.partition("/")
+                if top not in (tag, scene) or key not in wanted or key in people_by_member:
+                    continue
+                process_member(tf, member, key, scene, image_dir, detector, people_by_member, member_sha, sizes)
+                if len(people_by_member) == len(wanted):
+                    break
     missing = [m for m in wanted if m not in people_by_member]
     if missing:
-        raise SystemExit(f"{scene}: {len(missing)} selected images missing from {tar_path.name}")
+        raise SystemExit(f"{scene}: {len(missing)} selected images missing from {[p.name for p in parts]}")
+    return finish_scene(label_path, args, z, rows, joints, reproj, wanted, people_by_member, member_sha, sizes, parts,
+                        samples, arrays, drops, started)
+
+
+def process_member(tf, member, key, scene, image_dir, detector, people_by_member, member_sha, sizes):
+    """Decode one selected image (closeup scenes rotated 90 degrees clockwise), store it, run the detector."""
+    data = tf.extractfile(member).read()
+    img = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
+    if is_closeup(scene):
+        img = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
+    rel = f"{scene}/{member.name.split('/png/', 1)[1]}"
+    dest = image_dir / rel
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    ok, enc = cv2.imencode(".png", img)
+    dest.write_bytes(enc.tobytes())
+    people_by_member[key] = (rel, detector(img))
+    member_sha[key] = hashlib.sha256(data).hexdigest()
+    sizes[key] = (img.shape[1], img.shape[0])
+
+
+def finish_scene(label_path, args, z, rows, joints, reproj, wanted, people_by_member, member_sha, sizes, parts,
+                 samples, arrays, drops, started):
+    scene = scene_of(label_path)
     kept = Counter()
     for member, ks in wanted.items():
         rel, people = people_by_member[member]
@@ -156,7 +183,9 @@ def process_scene(label_path, args, model, detector, device, image_dir):
                 frame_index=frame, split=args.split, image_size=size, image_reference=ImageRef("bedlam_frames", rel),
                 detail={"label_file": label_path.name, "label_row": r, "closeup_rotated_cw": is_closeup(scene),
                         "tar_member_sha256": member_sha[member], "association": info,
-                        "people_detected": len(people)}))
+                        "people_detected": len(people),
+                        **({"person": str(z["sub"][r]), "subject": subject_key(str(z["sub"][r]))}
+                           if args.split == "validation" else {})}))
             arrays["input_2d"].append(inp)
             arrays["input_valid"].append(inp[:, 2] > 0)
             arrays["target_3d"].append(target)
@@ -165,7 +194,7 @@ def process_scene(label_path, args, model, detector, device, image_dir):
     report = {"label_rows": int(len(z["imgname"])), "selected_rows": int(len(rows)),
               "kept_rows": int(sum(kept.values())), "sequences": int(len(set(n.split('/')[0] for n in z["imgname"]))),
               "max_reprojection_px": float(reproj.max()), "closeup_rotated_cw": is_closeup(scene),
-              "tar": tar_path.name, "label_sha256": hashlib.sha256(label_path.read_bytes()).hexdigest()}
+              "tar": [p.name for p in parts], "label_sha256": hashlib.sha256(label_path.read_bytes()).hexdigest()}
     print(json.dumps({"scene": scene, **{k: v for k, v in report.items() if k != "label_sha256"},
                       "seconds": round(time.time() - started)}), flush=True)
     return samples, dict(arrays), report, drops

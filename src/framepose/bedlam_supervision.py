@@ -18,6 +18,16 @@ Source contract (verified, see docs/73):
     view; the image is rotated 90 degrees clockwise before any use (official
     BEDLAM note: "you must rotate the image itself").
 
+Split contract: the official BEDLAM scene split (four validation scenes) does
+NOT separate people -- every body appears in both -- so it is intersected with
+a deterministic subject split fixed before training: subject key = RenderPeople
+person name (``rp_<name>``, all its scans) or the synthetic body id; a subject
+is a validation subject iff sha256(key) mod 5 == 0.  External TRAIN keeps only
+non-validation subjects from training scenes; external validation keeps only
+validation subjects from validation scenes.  Person identity comes from the
+label's ``sub`` field when present, otherwise from the label's SMPL-X betas,
+which are unique per (person, motion) file of the official motion release.
+
 Observation contract: GT never enters the model input.  The 2D input is the
 re-run OpenPose COCO-18 detector (``openpose_coco18``) converted with the
 exact 3DPW rules.  GT 2D is used only to decide WHICH detected person is the
@@ -54,6 +64,8 @@ CANONICAL_SMPLX = np.array([SMPL_TO_CANONICAL[n] for n in H36M_NAMES])
 COCO_LIMB_TO_SMPLX = {2: 17, 3: 19, 4: 21, 5: 16, 6: 18, 7: 20, 8: 2, 9: 5, 10: 8, 11: 1, 12: 4, 13: 7}
 ASSOCIATION = {"min_correct_limb_joints": 6, "tolerance_of_gt_limb_box_diagonal": 0.1}
 ROWS_PER_SEQUENCE = 3
+VALIDATION_SUBJECT_MODULUS = 5
+BETA_MATCH_TOLERANCE = 1e-4
 
 
 def scene_of(label_path: str | Path) -> str:
@@ -83,6 +95,50 @@ def select_rows(imgnames: np.ndarray, per_sequence: int = ROWS_PER_SEQUENCE) -> 
         k = min(per_sequence, len(rows))
         picked.extend(rows[np.unique(np.round(np.linspace(0, len(rows) - 1, k)).astype(int))].tolist())
     return np.array(sorted(picked), dtype=np.int64)
+
+
+def select_rows_by_person(imgnames: np.ndarray, persons: np.ndarray, keep, per_person: int = ROWS_PER_SEQUENCE) -> np.ndarray:
+    """``per_person`` evenly spaced rows of every (sequence, person) whose person passes ``keep``."""
+    imgnames, persons = np.asarray(imgnames), np.asarray(persons)
+    seq = np.array([n.split("/")[0] for n in imgnames])
+    picked = []
+    for s_, person in sorted(set(zip(seq.tolist(), persons.tolist()))):
+        if not keep(person):
+            continue
+        rows = np.nonzero((seq == s_) & (persons == person))[0]
+        rows = rows[np.lexsort((rows, imgnames[rows]))]
+        k = min(per_person, len(rows))
+        picked.extend(rows[np.unique(np.round(np.linspace(0, len(rows) - 1, k)).astype(int))].tolist())
+    return np.array(sorted(picked), dtype=np.int64)
+
+
+def subject_key(person: str) -> str:
+    """RenderPeople scans of one person share a subject; synthetic bodies are their own subject."""
+    import re
+
+    m = re.match(r"(rp_[a-z]+)_posed_\d+$", person)
+    return m.group(1) if m else person
+
+
+def is_validation_subject(person: str) -> bool:
+    key = subject_key(person)
+    return int(hashlib.sha256(key.encode()).hexdigest(), 16) % VALIDATION_SUBJECT_MODULUS == 0
+
+
+class PersonIndex:
+    """SMPL-X betas -> BEDLAM person, from the official neutral motion release (one betas vector per motion file)."""
+
+    def __init__(self, motion_dir: str | Path):
+        files = sorted(Path(motion_dir).glob("*/*/motion_seq.npz"))
+        if not files:
+            raise SystemExit(f"no motion files under {motion_dir}")
+        self.persons = np.array([f.parent.parent.name for f in files])
+        self.betas = np.stack([np.load(f)["betas"].astype(np.float64) for f in files])
+
+    def lookup(self, shape: np.ndarray) -> str | None:
+        d = np.abs(self.betas - np.asarray(shape, np.float64)[None]).max(axis=1)
+        i = int(np.argmin(d))
+        return str(self.persons[i]) if d[i] < BETA_MATCH_TOLERANCE else None
 
 
 def opencv_to_animcv(points: np.ndarray) -> np.ndarray:

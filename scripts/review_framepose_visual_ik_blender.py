@@ -2,8 +2,8 @@
 """EVALUATION ONLY (Worklog 74): Blender review of the visual-direction IK handoff cases.
 
 Run under Blender with a case JSON from ``scripts/export_framepose_visual_ik_cases.py``.
-Each case is an isolated pose: the Worklog 60 object rotation and FK pose
-bones place the gray body; the left-arm candidates are drawn as explicit
+Each case is an isolated pose: the Worklog 60 object rotation places the gray
+rest-pose body (its exported FK locals cover only the hidden left-arm bones); the left-arm candidates are drawn as explicit
 proxies from heading-relative armature-space points mapped through the posed
 ``armature.matrix_world``: blue = P0 (historical H0 IK), orange = P1 (E0
 visual direction), magenta = P2 (E1 visual direction), green = GT reference
@@ -53,7 +53,7 @@ def _caption_lines(label, case, view):
         f"W74 visual chain direction -> W61 IK | {label} | {view} view",
         f"{case['sequence_id']}  frame #{case['frame_index']}",
         "blue = P0 H0 IK   orange = P1 E0 visual dir   magenta = P2 E1 visual dir   green = GT (oracle IK)",
-        "yellow wire = E_GT (W62 GT-anchored target)   gray = body (W60 FK)   reach + bend side = H0 for P0-P2",
+        "yellow wire = E_GT (W62 GT-anchored target)   gray = rest pose under W60 object rotation   reach + side = H0",
         (f"wrist error vs E_GT (cm): P0 {n['P0']['solved_endpoint_error']:.2f}   P1 {n['P1']['solved_endpoint_error']:.2f}"
          f"   P2 {n['P2']['solved_endpoint_error']:.2f}   (P3 perfect-depth {n['P3']['solved_endpoint_error']:.2f})"),
         (f"chain direction error (deg): P0 {n['P0']['direction_error_degrees']:.1f}   P1 {n['P1']['direction_error_degrees']:.1f}"

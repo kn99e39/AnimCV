@@ -131,7 +131,9 @@ def test_scoring_against_the_worklog62_target_and_oracle_elbow():
     w62 = attribute_frame(h0, gt, target, rest).to_dict()
     assert list(e_gt) == pytest.approx(w62["e_gt"])
     p0 = solve_with_direction("p0", h0, h0.direction, target, rest)
-    assert score(p0, gt, e_gt, oracle_mid, gt_side)["solved_endpoint_error"] == pytest.approx(w62["ik_h0_endpoint_error"])
+    scored = score(p0, gt, e_gt, oracle_mid, gt_side)
+    assert scored["solved_endpoint_error"] == pytest.approx(w62["ik_h0_endpoint_error"])
+    assert scored["elbow_error"] == pytest.approx(w62["ik_h0_elbow_error"])  # same Worklog 62 oracle elbow
     ref = solve_with_direction("ref", h0, gt.direction, target, rest)
     assert math.dist(ref.solved_endpoint, e_gt) == pytest.approx(w62["gt_direction_h0_reach_endpoint_error"])
     # GT direction with GT reach would be exact; with H0 reach the residual is |reach error| * (L1 + L2).

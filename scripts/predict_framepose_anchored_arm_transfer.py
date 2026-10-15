@@ -4,8 +4,12 @@
 Order (each check stops the run):
   1. checkpoint / stored-prediction / Qwen-cache identities (hashes pinned below);
   2. historical reproduction gate: every frozen model is re-run on its ORIGINAL 3DPW FrameBank inputs
-     (all 21,817 rows) and must reproduce the stored Worklog 80 / Worklog 82 outputs; the stored corrected
-     arms must satisfy the connected-arm contract;
+     (all 21,817 rows) and must reproduce the stored outputs: J0/J1 against Worklog 80; the recomputed J0
+     raw output against the Worklog 82 stored anchor raw output; R0/R1, fed the Worklog 82 stored anchor
+     (their exact historical input), against Worklog 82.  The end-to-end path (fresh anchor -> R) is also
+     reported: Worklog 82 computed its anchor in a differently batched forward pass (2.98e-8 from Worklog 80),
+     and unit-normalising small raw vectors amplifies that round-off, so it is reported, not gated.  The
+     stored corrected arms must satisfy the connected-arm contract;
   3. only then: the same frozen models on the Worklog 83 3DHP external bank (detector 2D, detector crop,
      Worklog 68 Qwen readout).  No weight is trained, re-selected or adapted; eval mode throughout.
 Writes ``predictions_3dhp.npz``, ``predictions_3dpw_reproduced.npz`` and ``prediction_report.json``.
@@ -71,15 +75,19 @@ def _load(builder, path, channels, device):
     return model
 
 
-def run_all(models, readouts, geometry, device):
-    """Frozen inference from runtime inputs only: J raw outputs, the J0 anchor and R corrections."""
+def run_all(models, readouts, geometry, device, anchor_raw=None):
+    """Frozen inference from runtime inputs only: J raw outputs, the J0 anchor and R corrections.
+
+    ``anchor_raw`` replaces the fresh J0 output as the R input (historical reproduction only).
+    """
     out, n = {}, len(geometry)
     pos = np.arange(n)
     for cand in J:
         raw = predict_joint(models[cand], candidate_visual(readouts, cand), geometry, pos, device)
         elbow, wrist, rho = decode_numpy(raw)
         out.update({f"{cand}_raw": raw, f"{cand}_elbow": elbow, f"{cand}_wrist": wrist, f"{cand}_rho": rho})
-    u0, v0, rho0 = anchor_from_raw(out["J0_GEOMETRY_ONLY_raw"])
+    out["anchor_raw"] = out["J0_GEOMETRY_ONLY_raw"] if anchor_raw is None else np.asarray(anchor_raw, np.float64)
+    u0, v0, rho0 = anchor_from_raw(out["anchor_raw"])
     anchor = anchor_features(u0, v0, rho0)
     out.update({"anchor_u": u0, "anchor_v": v0, "anchor_rho": rho0,
                 "anchor_elbow": anchor[:, 7:10].astype(np.float64), "anchor_wrist": anchor[:, 10:13].astype(np.float64)})
@@ -134,17 +142,21 @@ def main():
     digests_before = {c: _state_digest(m) for c, m in models.items()}
 
     # --- 2. historical reproduction gate ---
-    rep = run_all(models, r3, g3, device)
     w80, w82 = np.load(paths["w80_predictions_3dpw.npz"]), np.load(paths["w82_predictions_3dpw.npz"])
-    checks = {}
+    rep = run_all(models, r3, g3, device)
+    hist = run_all(models, r3, g3, device, anchor_raw=w82["anchor_raw"])
+    checks, end_to_end = {}, {}
     for c in J:
         for k in ("raw", "elbow", "wrist", "rho"):
             checks[f"{c}_{k}_vs_w80"] = float(np.abs(rep[f"{c}_{k}"] - w80[f"{c}_{k}"]).max())
+    checks["J0_raw_vs_w82_anchor_raw"] = float(np.abs(rep["J0_GEOMETRY_ONLY_raw"] - w82["anchor_raw"]).max())
     for k in ("u", "v", "rho", "elbow", "wrist"):
-        checks[f"anchor_{k}_vs_w82"] = float(np.abs(rep[f"anchor_{k}"] - w82[f"anchor_{k}"]).max())
+        checks[f"anchor_{k}_from_w82_anchor_raw_vs_w82"] = float(np.abs(hist[f"anchor_{k}"] - w82[f"anchor_{k}"]).max())
+        end_to_end[f"anchor_{k}_fresh_vs_w82"] = float(np.abs(rep[f"anchor_{k}"] - w82[f"anchor_{k}"]).max())
     for c in R:
         for k in ("correction", "elbow", "wrist", "rho", "u", "v"):
-            checks[f"{c}_{k}_vs_w82"] = float(np.abs(rep[f"{c}_{k}"] - w82[f"{c}_{k}"]).max())
+            checks[f"{c}_{k}_vs_w82"] = float(np.abs(hist[f"{c}_{k}"] - w82[f"{c}_{k}"]).max())
+            end_to_end[f"{c}_{k}_fresh_anchor_vs_w82"] = float(np.abs(rep[f"{c}_{k}"] - w82[f"{c}_{k}"]).max())
     e_t, w_t, ok_t = normalized_arm_targets(bank.arrays["target_3d"], bank.arrays["target_valid"])
     checks["targets_vs_w82"] = float(max(np.abs(e_t - w82["target_elbow"]).max(), np.abs(w_t - w82["target_wrist"]).max()))
     targets_mask_equal = bool((ok_t == w82["target_valid"]).all())
@@ -153,6 +165,7 @@ def main():
     historical_connected = connected({f"{c}_{k}": v for c, d in stored.items() for k, v in d.items()}, (*J, *R))
     worst = max(checks.values())
     gate = {"max_abs_differences": checks, "tolerance": REPRODUCTION_TOLERANCE, "worst": worst,
+            "end_to_end_fresh_anchor_reported_not_gated": end_to_end,
             "targets_mask_equal": targets_mask_equal, "stored_connected_arm": historical_connected,
             "passed": worst <= REPRODUCTION_TOLERANCE and targets_mask_equal
             and all(v["length_sum_error"] <= CONNECTED_TOLERANCE and v["reach_over_one"] <= CONNECTED_TOLERANCE and v["finite"]

@@ -2,9 +2,16 @@
 """DIAGNOSTIC (Worklog 83): MPI-INF-3DHP official test set -> Worklog 73 ExternalBank (detector input, GT target).
 
 Feasibility checks first (each STOPs the build):
-  * annotation <-> image identity: image ``img_{k+1:06d}.jpg`` exists for every annotation row and has the
-    calibrated image size; on fixed probe rows (every 25th valid row) the re-run detector's mean agreement
-    with ``annot2`` must be best at image offset 0 among offsets -10..+10;
+  * annotation <-> image identity: the nominal mapping is row k -> ``img_{k+1:06d}.jpg``.  A constant
+    per-sequence image offset is estimated from the re-run detector's agreement with ``annot2`` (identity
+    evidence only, no candidate model involved) on probe rows (every 10th valid row), offsets -10..+10:
+    the nominal offset 0 is kept unless the mean agreement there is > 5% worse than the curve minimum, in
+    which case the argmin is used; the first- and second-half argmins must lie within +-1 frame of the
+    chosen offset, and the agreement 3 frames away on both sides must be >= 25% worse (identity resolved to
+    +-1 frame); otherwise STOP.  (Worklog 83 first assumed offset 0; TS3 contradicted it, then the 50 fps
+    TS5 curve was flat over +-1 frame, so the gate was amended twice -- both before any candidate prediction.)
+    Every used image has the calibrated size; valid rows whose offset image does not exist are dropped and
+    counted;
   * camera convention: ``annot3`` (camera mm, OpenCV axes, +y down) is a pinhole camera-frame representation
     of ``annot2``: a per-sequence least-squares pinhole fit must leave <= 2 px median residual with focal
     lengths within 1% and principal point within 10 px of the official calibration (TS2's annotation uses
@@ -24,6 +31,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import time
 from collections import Counter
 from pathlib import Path
@@ -44,8 +52,11 @@ IMAGE_SIZE = {"TS1": (2048, 2048), "TS2": (2048, 2048), "TS3": (2048, 2048), "TS
 MAX_PINHOLE_RESIDUAL_MEDIAN_PX = 2.0
 MAX_FOCAL_RELATIVE = 0.01
 MAX_PRINCIPAL_PX = 10.0
-PROBE_EVERY = 25          # every 25th valid row is an identity probe
-PROBE_OFFSETS = (-10, -5, -2, -1, 0, 1, 2, 5, 10)
+PROBE_EVERY = 10          # every 10th valid row is an identity probe
+PROBE_OFFSETS = (-10, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 10)
+MAX_MISSING_IMAGE_SHARE = 0.01
+NOMINAL_TOLERANCE = 1.05
+RISE_AT_3 = 1.25
 LIMB_COCO = (2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13)
 COCO_TO_TEST17 = {2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 7, 8: 8, 9: 9, 10: 10, 11: 11, 12: 12, 13: 13}
 
@@ -70,6 +81,38 @@ def _agreement(people, annot2_17, size):
     return best
 
 
+def estimate_offset(detector, image_dir, annot2, annot3, rows, size, cal, n_images):
+    """Constant image offset from detector-vs-GT-2D agreement (identity evidence only)."""
+    probes = []
+    for k in rows[::PROBE_EVERY]:
+        k = int(k)
+        agree, people0 = {}, None
+        for o in PROBE_OFFSETS:
+            path = image_dir / image_name(k + o)
+            if 0 <= k + o < n_images and path.exists():
+                people = detector(_read(path)[0])
+                agree[o] = _agreement(people, annot2[k], size)
+                if o == 0:
+                    people0 = people
+        distorted = None
+        if np.any(cal["dist"]) and people0 is not None:
+            distorted = _agreement(people0, project_opencv(annot3[k], cal["K"], cal["dist"]), size)
+        probes.append({"row": k, "agreement_by_offset": agree, "agreement_distorted_projection": distorted})
+
+    def curve(part):
+        return {o: float(np.mean(v)) for o in PROBE_OFFSETS
+                if (v := [p["agreement_by_offset"][o] for p in part if p["agreement_by_offset"].get(o) is not None])}
+    half = len(probes) // 2
+    curves = {"all": curve(probes), "first_half": curve(probes[:half]), "second_half": curve(probes[half:])}
+    best = {k: min(c, key=c.get) for k, c in curves.items()}
+    c = curves["all"]
+    o = 0 if c.get(0, math.inf) <= NOMINAL_TOLERANCE * c[best["all"]] else best["all"]
+    ok = (abs(best["first_half"] - o) <= 1 and abs(best["second_half"] - o) <= 1
+          and all((o + d) in c and c[o + d] >= RISE_AT_3 * c[o] for d in (-3, 3)))
+    printable = {k: {str(kk): vv for kk, vv in v.items()} for k, v in curves.items()}
+    return (o if ok else None), probes, printable
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, required=True, help="extracted mpi_inf_3dhp_test_set directory")
@@ -90,10 +133,7 @@ def main():
             valid = np.array(f["valid_frame"]).reshape(-1)
         n, size = len(annot2), IMAGE_SIZE[seq]
         image_dir = args.root / seq / "imageSequence"
-        missing = [k for k in range(n) if not (image_dir / image_name(k)).exists()]
-        if missing:
-            raise SystemExit(f"STOP: {seq}: {len(missing)} annotation rows without an image (first {missing[0]})")
-        extra = len(list(image_dir.glob("img_*.jpg"))) - n
+        n_images = len(list(image_dir.glob("img_*.jpg")))
         cal = parse_calibration((args.root / "test_util/camera_calibration" / CALIBRATION[seq]).read_text(), size)
         rows = select_frames(valid)
         reproj = np.linalg.norm(project_opencv(annot3[rows], cal["K"], np.zeros(5)) - annot2[rows], axis=2)
@@ -104,23 +144,22 @@ def main():
                 or abs(fit["fx"] / k_off[0, 0] - 1) > MAX_FOCAL_RELATIVE or abs(fit["fy"] / k_off[1, 1] - 1) > MAX_FOCAL_RELATIVE
                 or abs(fit["cx"] - k_off[0, 2]) > MAX_PRINCIPAL_PX or abs(fit["cy"] - k_off[1, 2]) > MAX_PRINCIPAL_PX):
             raise SystemExit(f"STOP: {seq}: annotation does not reproject as a pinhole camera frame: {fit}")
-        kept, lr, probes = Counter(), [], []
-        for i, k in enumerate(rows):
+        offset, probes, curves = estimate_offset(detector, image_dir, annot2, annot3, rows, size, cal, n_images)
+        if offset is None:
+            raise SystemExit(f"STOP: {seq}: RGB/annotation identity is not one constant offset: {curves}")
+        present = np.array([(image_dir / image_name(int(k) + offset)).exists() for k in rows])
+        if (~present).mean() > MAX_MISSING_IMAGE_SHARE:
+            raise SystemExit(f"STOP: {seq}: {int((~present).sum())} valid rows have no image at offset {offset}")
+        drops[f"{seq}:no_image_at_offset"] += int((~present).sum())
+        rows = rows[present]
+        kept, lr = Counter(), []
+        for k in rows:
             k = int(k)
-            rel = f"{seq}/imageSequence/{image_name(k)}"
+            rel = f"{seq}/imageSequence/{image_name(k + offset)}"
             img, sha = _read(args.root / rel)
             if (img.shape[1], img.shape[0]) != size:
                 raise SystemExit(f"STOP: image size {img.shape[1::-1]} != calibrated {size} for {rel}")
             people = detector(img)
-            if i % PROBE_EVERY == 0:
-                agree = {}
-                for o in PROBE_OFFSETS:
-                    if 0 <= k + o < n:
-                        other = people if o == 0 else detector(_read(image_dir / image_name(k + o))[0])
-                        agree[o] = _agreement(other, annot2[k], size)
-                distorted = project_opencv(annot3[k], cal["K"], cal["dist"]) if np.any(cal["dist"]) else None
-                probes.append({"row": k, "agreement_by_offset": agree,
-                               "agreement_distorted_projection": _agreement(people, distorted, size) if distorted is not None else None})
             idx, info = associate(people, association_uv(annot2[k]), size)
             if idx is None:
                 drops[f"{seq}:association:{info['reason']}"] += 1
@@ -143,11 +182,9 @@ def main():
             arrays["target_3d"].append(target)
             arrays["target_valid"].append(target_valid)
             kept[seq] += 1
-        best = Counter(min((o for o, v in p["agreement_by_offset"].items() if v is not None),
-                           key=lambda o: p["agreement_by_offset"][o], default=None) for p in probes)
-        curve = {o: float(np.mean([p["agreement_by_offset"][o] for p in probes
-                                   if p["agreement_by_offset"].get(o) is not None])) for o in PROBE_OFFSETS}
-        report[seq] = {"annotation_rows": n, "extra_trailing_images": extra, "valid_frames": int(len(rows)),
+        report[seq] = {"annotation_rows": n, "images": n_images, "image_offset": offset,
+                       "image_mapping": f"row k -> img_(k+1{offset:+d})", "valid_frames": int(valid.astype(bool).sum()),
+                       "valid_rows_with_image": int(len(rows)),
                        "kept_rows": kept[seq], "reprojection_px": {"median": float(np.median(reproj)),
                                                                    "p95": float(np.percentile(reproj, 95)), "max": float(reproj.max())},
                        "pinhole_fit": fit, "official_intrinsics": {"fx": float(k_off[0, 0]), "fy": float(k_off[1, 1]),
@@ -155,14 +192,14 @@ def main():
                        "reprojection_with_listed_distortion_px": {"median": float(np.median(reproj_distorted)),
                                                                   "p95": float(np.percentile(reproj_distorted, 95))},
                        "lens_distortion_listed": cal["dist"].tolist(),
-                       "identity_probe_best_offset": {str(k): v for k, v in best.items()},
-                       "identity_mean_agreement_by_offset": {str(k): v for k, v in curve.items()},
+                       "identity_mean_agreement_by_offset": curves,
+                       "distorted_projection_agreement_mean": (float(np.mean([p["agreement_distorted_projection"] for p in probes
+                                                                             if p["agreement_distorted_projection"] is not None]))
+                                                               if np.any(cal["dist"]) else None),
                        "identity_probes": probes, "left_wrist_nearer_gt_left": [int(sum(lr)), len(lr)],
                        "mat_sha256": hashlib.sha256(mat.read_bytes()).hexdigest()}
         print(json.dumps({"sequence": seq, **{k: v for k, v in report[seq].items() if k != "identity_probes"},
                           "seconds": round(time.time() - started)}), flush=True)
-        if min(curve, key=curve.get) != 0:
-            raise SystemExit(f"STOP: {seq}: RGB/annotation identity not at offset 0: {curve}")
         if lr and sum(lr) / len(lr) < 0.9:
             raise SystemExit(f"STOP: {seq}: left/right convention does not match the detector: {sum(lr)}/{len(lr)}")
 

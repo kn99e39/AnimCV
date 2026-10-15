@@ -153,7 +153,7 @@ def test_runtime_inputs_are_detector_owned_and_static_contracts():
         if "arrays[" in line or "to_canonical_input" in line or "inp" in line.split("=")[0]:
             assert "annot2" not in line and "annot3" not in line, line
     assert "association_uv(annot2[k])" in body
-    assert "annotation does not reproject" in build and "STOP: image size" in build and "identity not at offset 0" in build
+    assert "annotation does not reproject" in build and "STOP: image size" in build and "identity is not one constant offset" in build and "first_half" in build
     pred = (ROOT / "scripts/predict_framepose_anchored_arm_transfer.py").read_text()
     for check in ("STOP: frozen artifact identity mismatch", "STOP: historical reproduction failed", "STOP: a frozen model changed",
                   "REPRODUCTION_TOLERANCE = 1e-6", "requires_grad_(False)"):

@@ -119,7 +119,7 @@ def collect(samples, positions, pred, stride_of):
                  "position": a["position"], "next_position": b["position"],
                  "f_regime": a["f_regime"], "bend_regime": a["bend_regime"], "candidates": {}}
             ga, gb = a["geometry"]["gt"], b["geometry"]["gt"]
-            gt = motion_metrics(ga["elbow"], ga["wrist"], ga["elbow"], ga["wrist"], gb["elbow"], gb["wrist"], gb["elbow"], gb["wrist"])
+            gt = motion_metrics(ga["elbow"], ga["wrist"], gb["elbow"], gb["wrist"], ga["elbow"], ga["wrist"], gb["elbow"], gb["wrist"])
             x["gt"] = {k: gt[k] for k in AMPLITUDE}
             for g in NAMES:
                 pa, pb = a["geometry"][g], b["geometry"][g]

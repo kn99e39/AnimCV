@@ -78,6 +78,13 @@ def test_pairs_never_cross_a_missing_partner():
     got = sorted((x["sequence_id"], x["frame_index"], x["next_frame_index"]) for x in pairs)
     assert got == [("3dhp:TS1", 0, 10), ("3dhp:TS1", 10, 20)] + [("3dhp:TS5", k, k + 20) for k in range(5)]
     assert len(rows) == n - 1 and all(x["candidates"]["r1"]["upper_direction_residual_degrees"] == 0 for x in pairs)
+    # GT amplitude is the GT change over the pair; a frozen candidate's residual equals it.
+    e2, w2 = _arm(45, 80, -0.2)
+    pred["target_elbow"][1], pred["target_wrist"][1] = e2, w2
+    _, pairs, _ = collect(samples, range(n), pred, lambda sid: stride_for(sid.split(":")[1]))
+    x = next(p for p in pairs if p["sequence_id"] == "3dhp:TS1" and p["frame_index"] == 0)
+    assert x["gt"]["wrist_displacement"] == pytest.approx(100 * np.linalg.norm(w2 - w)) and x["gt"]["wrist_displacement"] > 0
+    assert x["candidates"]["j0"]["wrist_motion_residual"] == pytest.approx(x["gt"]["wrist_displacement"])
 
 
 def _arm(theta, bend, fwd):

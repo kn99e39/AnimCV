@@ -334,7 +334,9 @@ def main():
         raise SystemExit("STOP: external bank identity mismatch")
     px = dict(np.load(args.predictions_dir / "predictions_3dhp.npz"))
     validity_detail = prep["external_connected_arm"]
-    validity = all(v["finite"] and v["length_sum_error"] <= 1e-9 and v["reach_over_one"] <= 1e-9 for v in validity_detail.values())
+    # Candidates only: the internal float32 anchor (Worklog 82 input contract) is not a candidate output.
+    validity = all(validity_detail[c]["finite"] and validity_detail[c]["length_sum_error"] <= 1e-9
+                   and validity_detail[c]["reach_over_one"] <= 1e-9 for c in NAMES.values())
     stride = {s.sequence_id: stride_for(s.sequence_id.split(":")[1]) for s in ext.samples}
     rows_x, pairs_x, gaps_x = collect(ext.samples, range(len(ext)), px, stride.__getitem__)
     ev_x = evaluate(rows_x, pairs_x)

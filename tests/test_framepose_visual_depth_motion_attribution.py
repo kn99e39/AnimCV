@@ -71,3 +71,9 @@ def test_runner_contracts():
     for path in sorted((ROOT / "src").rglob("*.py")):
         if path.name != "visual_depth_motion_attribution.py":
             assert "visual_depth_motion_attribution" not in path.read_text(), path
+
+
+def test_validation_cadence_is_declared_and_uses_available_pairs():
+    run = (ROOT / "scripts/run_visual_depth_motion_attribution.py").read_text()
+    assert '"validation_cadence"' in run and 'Population("3dpw_validation", fb, fb.indices("validation"), g3, b3, r3, limb["3dpw"], disc["3dpw_gt2d_px"], lambda s: 6' in run
+    assert "3dpw_validation_0.1s" in run

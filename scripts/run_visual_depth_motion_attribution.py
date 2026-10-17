@@ -68,7 +68,12 @@ DIAGNOSIS = {
                 "3DPW VALIDATION for those chains (sub-owner reported: content / position / global)",
     "B_model_sensitivity": "otherwise, share_visual < 0.5 AND g1_geometry_path_excess >= 0.5 for >= 2 chains on 3DPW TEST and VALIDATION",
     "D_mixed": "otherwise (interacting, population-dependent or non-identifiable)",
-    "significance": "sequence-cluster bootstrap 95% interval of the per-pair quantity excludes 0 (Worklog 75/76 bootstrap)"}
+    "significance": "sequence-cluster bootstrap 95% interval of the per-pair quantity excludes 0 (Worklog 75/76 bootstrap)",
+    "validation_cadence": "the 3DPW FrameBank samples TEST every 5 frames but VALIDATION every 3 frames (TRAIN every 2), so 5-frame "
+                          "validation pairs barely exist (5-7 per chain).  Corroboration therefore uses 3DPW VALIDATION pairs 6 frames "
+                          "(0.2 s, two validation steps) apart -- the available cadence closest to 1/6 s; 3-frame (0.1 s) validation "
+                          "pairs are reported as cadence sensitivity.  Declared after the first run exposed the sampling, before any "
+                          "valid validation result existed"}
 
 
 def _sha(p: Path) -> str:
@@ -331,7 +336,8 @@ def main():
     bx = np.load(args.w83_dir / "qwen" / "readout.npz")["crop_box_xy_side"]
     p87 = {k: dict(np.load(args.w87_dir / "predictions" / f"predictions_{k}.npz")) for k in ("3dpw", "3dhp")}
     pops = {"3dpw_test": Population("3dpw_test", fb, fb.indices("test"), g3, b3, r3, limb["3dpw"], disc["3dpw_gt2d_px"], lambda s: 5, p87["3dpw"]),
-            "3dpw_validation": Population("3dpw_validation", fb, fb.indices("validation"), g3, b3, r3, limb["3dpw"], disc["3dpw_gt2d_px"], lambda s: 5, p87["3dpw"]),
+            "3dpw_validation": Population("3dpw_validation", fb, fb.indices("validation"), g3, b3, r3, limb["3dpw"], disc["3dpw_gt2d_px"], lambda s: 6, p87["3dpw"]),
+            "3dpw_validation_0.1s": Population("3dpw_validation_0.1s", fb, fb.indices("validation"), g3, b3, r3, limb["3dpw"], disc["3dpw_gt2d_px"], lambda s: 3, p87["3dpw"]),
             "3dhp_0.4s": Population("3dhp_0.4s", mx, np.arange(len(mx)), gx, bx, rx, limb["mpi3dhp_test"], disc["mpi3dhp_test_gt2d_px"],
                                     lambda s: stride_for(s.split(":")[1]), p87["3dhp"]),
             "3dhp_0.16s_outdoor": Population("3dhp_0.16s_outdoor", mx, np.arange(len(mx)), gx, bx, rx, limb["mpi3dhp_test"], disc["mpi3dhp_test_gt2d_px"],
@@ -347,7 +353,7 @@ def main():
             dumps[f"{chain}_{name}"] = rows
             print(json.dumps({"chain": chain, "pop": name, "pairs": rep["pairs"], "R0": rep.get("R0"), "R1": rep.get("R1"),
                               "share_visual": rep.get("removal_share", {}).get("visual")}), flush=True)
-        for name in ("3dpw_test", "3dpw_validation"):
+        for name in ("3dpw_test",):  # Worklog 87 reported TEST only; its 5-frame VALIDATION entries had 5-7 pairs
             for g, k in (("g0", "R0"), ("g1", "R1")):
                 parity[f"{chain}:{name}:{g}"] = abs(res[chain][name][k] - w87[chain][name]["temporal"][g]["depth_motion_residual"])
     passed = max(parity.values()) <= 1e-9

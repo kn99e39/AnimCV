@@ -77,3 +77,59 @@ def test_validation_cadence_is_declared_and_uses_available_pairs():
     run = (ROOT / "scripts/run_visual_depth_motion_attribution.py").read_text()
     assert '"validation_cadence"' in run and 'Population("3dpw_validation", fb, fb.indices("validation"), g3, b3, r3, limb["3dpw"], disc["3dpw_gt2d_px"], lambda s: 6' in run
     assert "3dpw_validation_0.1s" in run
+
+
+def _script(name):
+    import importlib.util
+    import sys
+
+    sys.path.insert(0, str(ROOT / "scripts"))
+    spec = importlib.util.spec_from_file_location(name, ROOT / "scripts" / f"{name}.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _pair(seq, frame, **kw):
+    row = {"sequence_id": seq, "frame": frame, "a": 0, "b": 1, "dG": 0.0, "dP0": 0.0, "dP1": 0.0, "res0": 1.0, "res1": 1.0,
+           "phi": {"geometry": 0.0, "content": 0.0, "position": 0.0, "global": 0.0, "visual": 0.0}, "jitter": 0.01,
+           "det_disp_px": 5.0, "dconf": 0.0, "crop_scale": 0.0, "crop_shift": 0.0, "feat_joints": 0.5, "feat_global": 0.1,
+           "stratum": "low"}
+    row.update(kw)
+    return row
+
+
+def test_review_selection_rules_are_fixed_and_find_the_declared_oscillation():
+    pytest.importorskip("cv2")
+    pytest.importorskip("matplotlib")
+    review = _script("review_visual_depth_motion_attribution")
+    L = [_pair("s", 5 * i, res1=float(i), feat_joints=0.1 * i) for i in range(20)]
+    # frames 50, 55, 60: low GT motion, |dP1| >= 5 with alternating sign
+    for f, dp in ((50, 6.0), (55, -7.0), (60, 8.0)):
+        L[f // 5].update(dG=1.0, dP1=dp)
+    R = [dict(r) for r in L]
+    Lg = [dict(r, res1=0.5) for r in L]
+    cases = review.select({"left_arm_3dpw_test": L, "right_arm_3dpw_test": R, "right_leg_3dpw_test": Lg})
+    assert set(cases) == {"large_error_low_gt_motion", "large_legitimate_gt_motion", "correct_g1_depth_tracking",
+                          "g1_false_depth_oscillation", "detector_instability", "crop_readout_change",
+                          "high_feature_small_output", "small_feature_large_output", "similar_error_both_arms",
+                          "right_leg_contrast", "contradicts_visual_hypothesis"}
+    assert cases["g1_false_depth_oscillation"][1]["frame"] == 50
+    assert cases["large_error_low_gt_motion"][1]["frame"] == 90  # 95th percentile of res1 over 20 rows -> index 18
+    assert cases["right_leg_contrast"][0] == "right_leg"
+    assert "torch" not in (ROOT / "scripts/review_visual_depth_motion_attribution.py").read_text()
+
+
+def test_posthoc_chain_kinematics_are_consistent_and_flag_bend_side_flips():
+    text = (ROOT / "scripts/summarize_visual_depth_motion_strata.py").read_text()
+    assert "does not enter the CASE classification" in text and "torch" not in text
+    ns = {}
+    src = text.split("def kinematics", 1)[1].split("\ndef chain_kinematics", 1)[0]
+    exec("import numpy as np\ndef kinematics" + src, ns)
+    ea, wa = _chain(200)
+    k = ns["kinematics"](ea, wa)
+    assert np.allclose(k["distal_y"], k["middle_y"] + (1 - k["rho"]) * k["v_y"])
+    u, v = np.array([[0.0, 0, -1]]), np.array([[1.0, 0, 0]])
+    na = ns["kinematics"](0.5 * u, 0.5 * u + 0.5 * v)["_n"]
+    nb = ns["kinematics"](0.5 * u, 0.5 * u - 0.5 * v)["_n"]
+    assert (na * nb).sum() < 0

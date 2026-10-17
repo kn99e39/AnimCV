@@ -102,8 +102,8 @@ def regime_block(d, mask):
         e, w = d[f"{g}_e"][mask] * SCALE, d[f"{g}_w"][mask] * SCALE
         ax_d, ax_m = axis_squared_errors(w, gw), axis_squared_errors(e, ge)
         dec = distal_decomposition(e, w, ge, gw)
-        u, v, rho = factors(e, w)
-        gu, gv, grho = factors(ge, gw)
+        u, v, rho = factors(e / SCALE, w / SCALE)
+        gu, gv, grho = factors(ge / SCALE, gw / SCALE)
         per[g] = {"d_total": ax_d["total"], "d_depth": ax_d["depth"], "d_plane": ax_d["x"] + ax_d["z"], "d_signed_depth": ax_d["signed_depth"],
                   "m_total": ax_m["total"], "m_depth": ax_m["depth"], "m_plane": ax_m["x"] + ax_m["z"],
                   "overdepth": np.abs(w[:, 1]) - np.abs(gw[:, 1]), "abs_depth_pred": np.abs(w[:, 1]),
@@ -126,8 +126,9 @@ def regime_block(d, mask):
     nd = np.abs(fc) >= STABLE
     if nd.any():
         out["wrong_sign_rate"] = {g: float(np.mean(np.sign(d[f"{g}_w"][mask][nd, 1]) != np.sign(d["gw"][mask][nd, 1]))) for g in ("g0", "g1")}
-    fac = factorial_distal_errors(d["g0_e"][mask] * SCALE, d["g0_w"][mask] * SCALE, d["g1_e"][mask] * SCALE, d["g1_w"][mask] * SCALE, ge, gw)
-    out["factorial"] = factorial_effects(fac)
+    # Hybrids are built from the unit chains (factors() needs |M| + |D - M| = 1), then expressed in (%L)^2.
+    fac = factorial_distal_errors(d["g0_e"][mask], d["g0_w"][mask], d["g1_e"][mask], d["g1_w"][mask], d["ge"][mask], d["gw"][mask])
+    out["factorial"] = factorial_effects({k: v * SCALE ** 2 for k, v in fac.items()})
     out["signed_depth_bias"] = {g: float(np.mean(per[g]["d_signed_depth"] * np.sign(gw[:, 1] + 1e-12))) for g in per}
     return out
 

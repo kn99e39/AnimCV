@@ -82,3 +82,9 @@ def test_runner_contracts_and_no_runtime_gt():
     for path in sorted((ROOT / "src").rglob("*.py")):
         if path.name != "near_plane_attribution.py":
             assert "near_plane_attribution" not in path.read_text(), path
+
+
+def test_runner_builds_factor_hybrids_from_unit_chains():
+    run = (ROOT / "scripts/run_near_plane_attribution.py").read_text()
+    line = next(l for l in run.splitlines() if "fac = factorial_distal_errors(" in l)
+    assert "SCALE" not in line and "* SCALE ** 2" in run

@@ -64,7 +64,7 @@ def main():
             part = pickle.loads(cache.read_bytes())
         else:
             label_path = args.labels / f"{tag}.npz"
-            z = np.load(label_path)
+            z = dict(np.load(label_path))  # materialized once: NpzFile re-reads a whole array on every key access
             rows = np.array(sorted(by_scene[scene]), dtype=np.int64)
             for r in rows:
                 person, ident, val = person_of[(scene, int(r))]

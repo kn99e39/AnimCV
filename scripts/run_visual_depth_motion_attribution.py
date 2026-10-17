@@ -172,7 +172,9 @@ def analyse(pop, chain, models, device):
     # identity: all-a / all-b coalitions equal the G1 outputs on the true inputs
     full = coal.index(frozenset(PLAYERS))
     ident = float(max(np.abs(yw[:, 0] - 100 * preds["g1"][1][:, 1]).max(), np.abs(yw[:, full] - 100 * preds["g1"][3][:, 1]).max()))
-    if ident > 1e-4:
+    # float32 GPU outputs depend on batch composition (~1e-6 normalized after unit normalization, cf. Worklog 83);
+    # 1e-3 %L = 1e-5 normalized separates that round-off from a wrong input construction.
+    if ident > 1e-3:
         raise SystemExit(f"STOP: {pop.name}/{chain}: coalition identity broken ({ident})")
     phi = [shapley({S: yw[i, j] for j, S in enumerate(coal)}, PLAYERS) for i in range(n)]
     phi_m = [shapley({S: ye[i, j] for j, S in enumerate(coal)}, PLAYERS) for i in range(n)]

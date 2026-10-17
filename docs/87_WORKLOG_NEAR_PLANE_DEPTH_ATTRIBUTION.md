@@ -268,7 +268,7 @@ Results:
 | artifact | sha256 |
 |---|---|
 | `predictions/prediction_report.json` | `c1eb2332…` |
-| `predictions/predictions_{3dpw,3dhp,bedlam_validation}.npz` | `356f8cee…` / `cb9dc51e…` / `1b4d1e6a…` |
+| `predictions/predictions_{3dpw,3dhp,bedlam_validation}.npz` | `cb9dc51e…` / `356f8cee…` / `1b4d1e6a…` (label order corrected in Worklog 88) |
 | `discrepancy/discrepancy.npz` / report | `62229379…` / `f01eb00a…` |
 | `attribution_v2/report.json` / `rows.json` | `29598129…` / `58c9ced4…` |
 | `attribution/report.json` (superseded: factor-scaling bug) | `1e0969b0…` |

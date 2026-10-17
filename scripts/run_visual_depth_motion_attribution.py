@@ -51,8 +51,8 @@ CHAINS = ("left_arm", "right_arm", "right_leg")
 CKPT = {"left_arm": {"g0": "w86:left_arm_g0.pt", "g1": "w85:J1_BEDLAM_EXPANDED.pt"},
         "right_arm": {"g0": "w86:right_arm_g0.pt", "g1": "w86:right_arm_g1.pt"},
         "right_leg": {"g0": "w86:right_leg_g0.pt", "g1": "w86:right_leg_g1.pt"}}
-W87_PREDICTIONS = {"3dpw": "356f8ceee545f7ca0a20510afa00efccd48782de5e6e11b78ccce2990a4fcbe1",
-                   "3dhp": "cb9dc51e3f84ddc9b45c5ada5e941ceaaad5ee73440a6e387ee0c3f2b689c46f"}
+W87_PREDICTIONS = {"3dpw": "cb9dc51e3f84ddc9b45c5ada5e941ceaaad5ee73440a6e387ee0c3f2b689c46f",
+                   "3dhp": "356f8ceee545f7ca0a20510afa00efccd48782de5e6e11b78ccce2990a4fcbe1"}
 W87_ATTRIBUTION_V2 = "295981b4fa03a3f9d101caabdd8f5587249a858f17a05b671e7f878310c0e316"
 DIAGNOSIS = {
     "excess": "E = R1 - R0, R = mean |dP - dG| of the distal-joint depth (%L per pair), G1 vs G0 on the same pairs",

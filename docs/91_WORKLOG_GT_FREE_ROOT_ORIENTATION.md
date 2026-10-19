@@ -394,6 +394,8 @@ unchanged production-adjacent suites `test_animation_semantics_v2.py`, `test_fra
 `test_root_orientation_diagnostic.py` and `test_root_orientation_hold_attribution.py`. No shared production contract
 changed.
 
+**Part 3, LabServer63, after sync to `90694fb`:** the same suites with the two new tests, **62 passed**.
+
 ## 8. CASE
 
 **CASE B — conditionally usable, opt-in experimental runtime provider.** Against the acceptance criteria:

@@ -70,7 +70,7 @@ metrics; GT for evaluation only. The B and C rows reproduce Worklog 91 exactly.
 | **TS2** | **0.767** | 0.798 | **0.957** |
 
 - **In the TS2 failure, the 2D image evidence itself points the wrong way.**
-  - Of the 31 TS2 rows that are more than 135° wrong, the check saw 22 with the nose cue *agreeing* with S0's mirrored
+  - Of the 30 TS2 rows that are more than 135° wrong, the check saw 22 with the nose cue *agreeing* with S0's mirrored
     profile and contradicting GT.
   - Of the rest, 4 have no valid nose and 4 fall just under the confidence or offset gate. Even those rows have a cue
     that contradicts GT.

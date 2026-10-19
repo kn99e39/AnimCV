@@ -1,5 +1,19 @@
 # Working on this repo
 
+## Product north star — mandatory for all agents
+
+Read [PRODUCT_VISION.md](PRODUCT_VISION.md) **before** proposing architecture changes or the next Worklog batch.
+
+**AnimCV is an animation creation framework, not a pose-estimation research project.** Video motion reconstruction is an input capability; the enduring product goal includes **reconstructing expressive animation style, transferring/changing style, and directly authoring editable rig animation from user intent**. Do not let a reconstruction-only research loop displace those goals.
+
+In planning and reviewing:
+- Evaluate practical **rig animation quality, editability, user control, and end-to-end usability**, not just MPJPE or isolated pose/temporal metrics.
+- Clearly distinguish **implemented capability**, **experimental integration**, and **future product goal**; never claim style authoring is already implemented.
+- **Heuristics are permitted** when a bounded A/B shows real benefit and acceptable trade-offs; they are not prohibited by research-purity principles.
+- Preserve historical checkpoints/Worklogs and GT-free runtime contracts; compare real rig outputs when animation quality is at issue.
+- When a narrow technical diagnostic stops informing useful product progress, reconsider priority rather than endlessly patching the same mechanism.
+- Do not automatically initiate a large generative/style subsystem: each step still needs explicit scope, control and acceptance.
+
 ## Multiple machines, same branch
 
 This project is actively worked on from more than one machine (at least

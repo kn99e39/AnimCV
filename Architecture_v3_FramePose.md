@@ -2,6 +2,8 @@
 
 ## Status and precedence
 
+**Product-level precedence:** [PRODUCT_VISION.md](PRODUCT_VISION.md) defines AnimCV's enduring product purpose: **reconstruct, edit, restyle and author usable rig animation**. This document remains normative for perception/FramePose only. Improvements in single-frame 3D pose are important but do **not** by themselves satisfy the long-term animation-authoring and style-control goals. The additional authoring/style layers in PRODUCT_VISION are future directions, **not currently implemented capabilities or permission for automatic scope expansion**.
+
 This document is **normative** for AnimCV's perception stage. Where it and
 `Architecture_v2.md` disagree, **this document wins**, and `Architecture_v2.md`
 is to be read as historical for those subjects.

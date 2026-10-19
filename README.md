@@ -1,5 +1,7 @@
 # AnimCV
 
+> **Product north star:** AnimCV is an **animation creation framework**, not only a video-to-pose or motion-capture tool. Its long-term goal includes **editable rig animation, reference-style reconstruction and transfer, and user-directed animation authoring**. Motion reconstruction is a means to that end. See [PRODUCT_VISION.md](PRODUCT_VISION.md) for the normative product direction and maturity distinctions.
+
 Assisted video-to-armature motion capture and retargeting tool. See
 [Architecture_v2.md](Architecture_v2.md) for the full design.
 

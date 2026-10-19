@@ -4,17 +4,28 @@ Branch: `arch/single_frame_first`
 Starting HEAD: `4392499`. Local was fast-forwarded from `44f586d` to include the upstream PRODUCT_VISION commit; the
 worktree was clean and LabServer63 was at the same commit.
 
-**Execution.** LabServer63 was occupied by another project for the whole session (one GPU process, 20–100% use; idle
-monitor log kept). As the owner allowed, the batch ran without the server:
-- frozen artifacts were copied once (bandwidth-limited);
-- the heading evaluation, IK replay and Blender ran locally at low priority (`nice`).
+**Execution, in two parts:**
+- **Part 1 (2026-10-19, server occupied).** LabServer63 was busy with another project (one GPU process, 20–100% use;
+  idle monitor log kept). As the owner allowed, everything that did not need the server ran locally at low priority
+  (`nice`) on frozen artifacts copied once with limited bandwidth: the 3DPW heading evaluation, IK replay and Blender.
+  Commit `b586a30`.
+- **Part 2 (2026-10-19, later the same day, server idle, folded into this worklog at the owner's request).** On LabServer63:
+  - the cross-population MPI-INF-3DHP check, which needs frozen-model GPU inference (§4.1);
+  - the server test suite;
+  - an independent docker re-run of the 3DPW evaluation;
+  - archiving of all artifacts.
+  Part 2 changed the CASE (§0, §8).
 
 **Unchanged:** no model was trained; no checkpoint, H0, J1X, W89 stabilizer, FK/IK solver, BaseRig or production
 default was touched.
 
 ## 0. Answer
 
-**Engineering CASE A — GT-free heading usable (opt-in, experimental), with a weak reliability component.**
+**Engineering CASE B — GT-free heading conditionally usable (opt-in, experimental).**
+
+Part 1 (3DPW only) supported CASE A. The Part 2 cross-population check on MPI-INF-3DHP, which is out of domain for S0,
+exposed a failure regime that 3DPW did not show: **side-on views in an unseen domain can pick the wrong profile
+direction for long runs**. In 3DHP TS2, a ~23 s run is 180° wrong. CASE A is therefore not claimed.
 
 **The fix is a re-sourcing, not a new estimator.** The existing AnimationSemantics v2 heading
 (`current_root_orientation`, the docs/57 valid-only bilateral fusion) becomes GT-free once it is fed by the already
@@ -38,8 +49,10 @@ existing **S0 neutral-sign FramePose** model instead of the oracle-conditioned H
   15.1° on TEST. The heading's own share falls from 24.5° to 4.6°.
 
 **Weaknesses:**
-- **Reliability.** The added UNRELIABLE flag separates errors only modestly.
+- **Reliability.** The added UNRELIABLE flag separates errors only modestly on 3DPW. Out of domain it matters more: on
+  3DHP it caps the longest wrong-heading run at 4.0 s instead of 18.8 s.
 - **Failure regimes:**
+  - **side-on views out of domain**, where the front/back half-plane is chosen wrongly (3DHP);
   - occluded or seated torsos with low detector confidence;
   - some oblique views with a sustained ~50° bias.
 
@@ -198,6 +211,56 @@ On VALIDATION, B has 2 flips, tracks 96.3% of turns and has no incorrect run ≥
 | downtown_cafe_00 a1 | 15.2° | 2.2% > 90°: the seated, occluded torso |
 | downtown_walking_00 a1 | 15.1° | |
 
+### 4.1 Cross-population check: MPI-INF-3DHP TEST (Part 2, LabServer63)
+
+**Method.** `scripts/run_runtime_heading_3dhp.py`, frozen-model inference only, on the W83 external bank: 2,728 rows,
+6 sequences.
+- **Input.** `input_2d` is the re-run OpenPose COCO-18 detector. GT 2D only associates the subject and never enters the
+  input.
+- **S0** (checkpoint `6c12fea9…`) ran with neutral signs.
+- **The A reference** ran the O_BILATERAL checkpoint (`f5b1804e…`) with 3DHP-GT-derived torso signs, evaluation only.
+- **GT heading** = `observe_yaw` of the 3DHP GT joints.
+- **Domain.** Both models were trained on 3DPW only, so 3DHP is **out of domain**:
+  - studio TS1–TS4: rows 0.4 s apart;
+  - outdoor TS5–TS6: about 50 fps.
+
+| 3DHP | coverage | mean (sequence-cluster CI) | p95 | >45° | >90° | front/back >135° | flips | turns tracked | incorrect runs ≥1 s (longest) |
+|---|---|---|---|---|---|---|---|---|---|
+| A H0 oracle (reference) | 100% | 12.6 (10.8–14.4) | 32.7 | 1.1% | 0.04% | 0.04% | 2 | 89% | 1 (3.2 s) |
+| **B S0 runtime** | 100% | **17.2 (13.9–22.4)** | 42.5 | 4.3% | **1.6%** | **1.1%** | 9 | 85% | **7 (18.8 s)** |
+| C S0 + reliability | 95.1% | 15.9 (13.3–19.4) | 38.8 | 3.2% | 1.0% | 0.7% | 4 | 86% | 6 (4.0 s) |
+| F fixed 180° | 100% | 61.2 | 157.0 | 55% | 26% | 10% | 0 | 0% | 81 (34.4 s) |
+
+**Where the failures are**
+
+- **B by view:**
+
+  | view | mean | p95 | >90° |
+  |---|---|---|---|
+  | front | 14.7 | 36.1 | 0 |
+  | oblique | 16.7 | 44.5 | 0.5% |
+  | **side** | **20.6** | **67.4** | **4.6%** |
+  | back | 16.2 | 43.7 | 0 |
+
+- **Studio vs outdoor.** Studio side views reach >90° on 5.8% of rows (p95 100°). Outdoor TS5–TS6 have no front/back
+  error but a mean of 16.5°. C covers only 85.7% of outdoor rows, because the detector torso confidence is low there.
+- **The 18.8 s run.** It is in **TS2**, t ≈ 16–39 s:
+  - the subject stands side-on (GT ≈ −95°) while S0's lifted shoulder/hip depth picks the opposite profile (≈ +90°),
+    a 170–180° error;
+  - the torso confidence is 0.23–0.42, around the C threshold, so C flags only part of the run (rows ≥ 0.3 stay KNOWN);
+  - B's TS2 mean is 28.1°; C brings it to 22.8°.
+- **The oracle reference has none of this** (side-view mean 14.2°, no front/back run). The weakness is the GT-free
+  depth half-plane in side-on views, not the heading code.
+
+**What the check establishes.**
+- B and C remain far better than a fixed heading.
+- They track turns (85%) and are front/back-correct for front, oblique and back views.
+- They are **not reliable for side-on views outside the training domain**. There the reliability flag is necessary but
+  catches only part of the failure.
+
+**Reproducibility.** The 3DPW evaluation re-run in docker on LabServer63 matches the local Part 1 report to 2.9e-11
+(float round-off).
+
 ## 5. Rig-level real-scene validation
 
 **Method.** `scripts/run_runtime_heading_rig_replay.py`:
@@ -274,21 +337,35 @@ The worst-runtime case was selected by rule, not to flatter the result.
 IK parity and deterministic replay rely on the unchanged W90 functions and were re-checked by the replay's own
 residuals.
 
-The server suite was not run because LabServer63 stayed occupied. No shared production contract changed.
+**Part 2, LabServer63** (`animcv-external:cu124`): **60 passed**. The run covered the W89–W91 focused tests plus the
+unchanged production-adjacent suites `test_animation_semantics_v2.py`, `test_framepose_bridge.py`,
+`test_root_orientation_diagnostic.py` and `test_root_orientation_hold_attribution.py`. No shared production contract
+changed.
 
 ## 8. CASE
 
-**CASE A, opt-in experimental runtime provider.** Against the acceptance criteria:
+**CASE B — conditionally usable, opt-in experimental runtime provider.** Against the acceptance criteria:
 
 | criterion | status |
 |---|---|
 | no privileged input | met |
-| usable heading for all four view strata (mean 7.6–11.8°) | met |
-| real turns handled (94%, no lag, no hold) | met |
-| large flips rare (0.13% of pairs; 0.07% front/back) | met |
+| usable heading for supported views | 3DPW: all four strata (mean 7.6–11.8°). 3DHP: front, oblique and back views (14.7–16.7°, no front/back error); **side-on views out of domain fail** (>90° on 4.6%, one 18.8 s run) |
+| real turns handled | met (94% on 3DPW, 85% on 3DHP; no lag, no hold) |
+| large flips avoided | 3DPW 0.07% front/back; **3DHP 1.1%**, concentrated in TS2 side-on |
 | works through the existing rig conventions | met |
-| large practical benefit over fixed heading (67.5° → 10.0°; local arm rotation 28° → 15°) | met |
-| meaningful reliability behaviour | **only weakly met** |
+| large practical benefit over fixed heading | met (3DPW 67.5° → 10.0°; local arm rotation 28° → 15°; 3DHP 61.2° → 17.2°) |
+| meaningful reliability behaviour | partly: needed out of domain, but it catches only part of the side-on failure |
+
+**Supported use:**
+- front, oblique and back views;
+- side views in 3DPW-like footage;
+- C's UNRELIABLE flags carried through to export.
+
+**Unsupported without further evidence:**
+- sustained side-on shots in unfamiliar domains;
+- heavily occluded torsos.
+
+There, the heading must be treated as possibly mirrored (front/back), even when it is flagged KNOWN.
 
 **About the reliability criterion:**
 - The C flag improves the tails a little.
@@ -296,7 +373,7 @@ The server suite was not run because LabServer63 stayed occupied. No shared prod
 - B emits UNKNOWN only when no valid pair exists, which never happened on 3DPW.
 
 **Accounting for the "new candidate":** the main delivered value is that the existing GT-free S0 plus the existing
-heading code already satisfy the contract. C adds only the reliability annotation.
+heading code satisfy the GT-free contract with useful accuracy. C adds only the reliability annotation.
 
 **No production default changed.**
 
@@ -311,6 +388,12 @@ heading code already satisfy the contract. C adds only the reliability annotatio
 4. **Partial body.** Root translation and ground contact remain UNAVAILABLE. Only the left arm (J1X) is wired to IK; the
    torso articulation beyond the object rotation stays at rest in these replays.
 5. **Cadence.** Bank cadence is 6–10 Hz; native-cadence behaviour is untested (also W90 blocker 5).
+6. **Side-on heading ambiguity out of domain** (§4.1). S0's GT-free depth half-plane can mirror a side-on subject for
+   tens of seconds (3DHP TS2), and the reliability flag catches only part of it.
+   - **Candidate evidence for a separate, bounded task (not attempted here):** a runtime side-view facing cue from 2D
+     face keypoints. The bank's `head` joint is the OpenPose nose, and in a side view its offset from the shoulder
+     midpoint gives the profile direction.
+   - **Why it was not stacked here:** the direction forbids stacking an unvalidated second heuristic.
 
 ## 10. Recommended next milestone
 
@@ -321,16 +404,28 @@ heading code already satisfy the contract. C adds only the reliability annotatio
 - through the existing FK/IK into BaseRig;
 - on 1–2 ordinary (non-benchmark) user videos with the production detector.
 
-It should report which body parts are reconstructed, held or UNAVAILABLE. This is not started automatically.
+It should report which body parts are reconstructed, held or UNAVAILABLE.
+- Its heading must carry the C reliability flags.
+- Its review must include at least one sustained side-on shot, because §4.1 shows this is the regime most likely to
+  fail.
+
+This is not started automatically.
 
 ## Artifacts and files
 
-**Local archive** (`~/animcv-local-data/w91/archive/`; the server was occupied):
+**LabServer63 `~/animcv-output/framepose_runtime_heading_archive/`** (Part 1 local outputs, copied in Part 2):
 - `heading_eval_report.json` (SHA-256 `6362c2a9…`)
 - `rig_replay_report.json` (`72c1c3ef…`)
 - `rig_replay_cases.json`
 - `blender_report.json`
 - 11 `.blend` files
+- the review videos
+
+**LabServer63 `~/animcv-output/framepose_runtime_heading/`** (Part 2):
+- `3dhp/report.json`
+- `3dhp/prediction_S0.npy` (`a78adeb0…`)
+- `3dhp/prediction_H0.npy` (`f24aea24…`, oracle reference)
+- `3dpw/heading_eval_report.json` (the docker re-run)
 
 **New files:**
 
@@ -341,6 +436,7 @@ It should report which body parts are reconstructed, held or UNAVAILABLE. This i
 | `scripts/run_runtime_heading_rig_replay.py` | rig-level replay |
 | `scripts/render_runtime_heading_rig_blender.py` | Blender render |
 | `scripts/compose_runtime_heading_rig_video.py` | review clip composition |
+| `scripts/run_runtime_heading_3dhp.py` | Part 2: 3DHP cross-population check (frozen inference) |
 | `tests/test_framepose_runtime_heading.py` | the 8 focused tests |
 
 No existing file was modified.

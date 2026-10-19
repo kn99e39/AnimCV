@@ -126,7 +126,7 @@ def test_rig_replay_heading_contract():
     text = (ROOT / "scripts/run_runtime_heading_rig_replay.py").read_text()
     assert '"RUNTIME": h.yaw_radians' in text and "EVALUATION-ONLY" in text
     for path in sorted((ROOT / "src").rglob("*.py")):
-        if path.name != "runtime_heading.py":
+        if not path.name.startswith("runtime_heading"):  # the experimental runtime_heading* modules themselves
             assert "runtime_heading" not in path.read_text(), path
 
 

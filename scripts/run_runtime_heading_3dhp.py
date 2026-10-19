@@ -89,13 +89,20 @@ def main():
         lifted_s0 = build_h0_lifted_sequence(runtime_view, preds["S0"], sid)
         b = current_root_orientation(lifted_s0)
         c = runtime_heading(lifted_s0)
+        frames = [runtime_view.samples[q].frame_index for q in pos]
+        step = min((b - a for a, b in zip(frames[:-1], frames[1:])), default=1)
         for i, p in enumerate(pos):
             g = gt[i].yaw_radians
             if g is None:
                 continue
             s = runtime_view.samples[p]
             conf = float(min(mx.arrays["input_2d"][p][j, 2] for j in (1, 4, 11, 14)))
-            base = {"sequence_id": sid, "frame": s.frame_index, "t": s.timestamp, "gt": g, "conf": conf}
+            ij, iv = mx.arrays["input_2d"][p], mx.arrays["input_valid"][p]
+            size = np.asarray(mx.samples[p].image_size, float)
+            scale = float(np.linalg.norm(((ij[11, :2] + ij[14, :2]) - (ij[1, :2] + ij[4, :2])) / 2 * size))
+            base = {"sequence_id": sid, "frame": s.frame_index, "t": s.timestamp, "gt": g, "conf": conf, "scale_px": scale,
+                    "partial": not bool(iv[1] and iv[4] and iv[11] and iv[14]),
+                    "after_gap": bool(i > 0 and frames[i] - frames[i - 1] > step)}
             rows["A_h0_oracle"].append({**base, "known": a[i].known, "yaw": a[i].yaw_radians, "reliability": None})
             rows["B_s0_runtime"].append({**base, "known": b[i].known, "yaw": b[i].yaw_radians, "reliability": None})
             rows["C_s0_reliable"].append({**base, "known": c[i].status == "KNOWN", "yaw": c[i].yaw_radians if c[i].status == "KNOWN" else None,

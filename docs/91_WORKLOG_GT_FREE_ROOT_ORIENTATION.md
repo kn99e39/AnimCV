@@ -15,6 +15,12 @@ worktree was clean and LabServer63 was at the same commit.
   - an independent docker re-run of the 3DPW evaluation;
   - archiving of all artifacts.
   Part 2 changed the CASE (§0, §8).
+- **Part 3 (same day, folded in).** Closes gaps found when this worklog was checked against the direction:
+  - observation-quality and temporary-observation-loss analysis (§4.2);
+  - toward-camera and observation-loss review cases (§6);
+  - W91 Blender replay determinism;
+  - an IK-parity test and a front/back-ambiguity test (§7).
+  The CASE is unchanged.
 
 **Unchanged:** no model was trained; no checkpoint, H0, J1X, W89 stabilizer, FK/IK solver, BaseRig or production
 default was touched.
@@ -261,6 +267,40 @@ On VALIDATION, B has 2 flips, tracks 96.3% of turns and has no incorrect run ≥
 **Reproducibility.** The 3DPW evaluation re-run in docker on LabServer63 matches the local Part 1 report to 2.9e-11
 (float round-off).
 
+### 4.2 Observation quality and temporary observation loss (Part 3)
+
+**Method.** The evaluations add three runtime-observable groupings (evaluation only; no runtime branch):
+- the detector 2D torso length in pixels (subject scale);
+- **partial bilateral evidence** (a shoulder or hip invalid, so one pair is missing);
+- **the first row after an observation gap** (a bank frame gap larger than the population's row step, i.e. detections
+  missing before re-acquisition).
+
+The headline metrics of §4 and §4.1 are reproduced exactly; 3DHP predictions are byte-identical (`a78adeb0…`).
+
+| B S0 runtime | 3DPW TEST mean / >90° | 3DHP mean / >90° |
+|---|---|---|
+| full bilateral evidence | 9.7° / 0.1% (6,905 rows) | — |
+| **partial bilateral evidence** | **20.1° / 1.2%** (171 rows) | **47.9° / 19%** (26 rows) |
+| rows not after a gap | 9.7° / 0.1% | 16.3° / 1.3% |
+| **first row after an observation gap** | **15.0° / 1.2%** (342 rows) | **39.7° / 10%** (100 rows) |
+| torso-scale quartiles | 9.7–10.3° (no trend; edges 178/267/360 px) | 14.3–21.9°, worst in the largest quartile |
+
+The C UNRELIABLE flag lowers these but does not remove them:
+- 3DHP rows after a gap: 32.5° / 4.9%;
+- 3DHP partial-evidence rows: 31.5° / 13%;
+- 3DPW partial-evidence rows: 20.3° / 1.3%.
+
+The A oracle reference also degrades on partial and after-gap rows: 3DPW 12.9° / 10.5°; 3DHP 23.2° / 19.0°.
+
+**What this shows**
+- **Re-acquisition is weak; history is not the cause.** The heading is stateless, so a gap never leaves a stale heading.
+  The first frame after one shows the subject immediately (clip `test_observation_loss`: a 150° → −160° turn across a
+  ~1.5 s detection gap is followed at once).
+- **Out of domain the problem is large.** The frames around observation loss are themselves poorly observed: on 3DHP,
+  one in ten first rows after a gap is more than 90° wrong.
+- **No dedicated UNKNOWN.** The provider emits UNKNOWN only when no valid pair exists, which never happened. There is no
+  explicit "re-acquisition" state, a remaining gap in the reliability semantics (§9 blocker 2).
+
 ## 5. Rig-level real-scene validation
 
 **Method.** `scripts/run_runtime_heading_rig_replay.py`:
@@ -293,8 +333,8 @@ On VALIDATION, B has 2 flips, tracks 96.3% of turns and has no incorrect run ≥
 
 ## 6. Blender review package
 
-`scripts/render_runtime_heading_rig_blender.py` and `scripts/compose_runtime_heading_rig_video.py` produce 11 MP4 clips
-plus a mid-clip PNG each at `~/animcv-output/91_framepose_runtime_heading/`.
+`scripts/render_runtime_heading_rig_blender.py` and `scripts/compose_runtime_heading_rig_video.py` produce MP4 clips
+plus a mid-clip PNG each at `~/animcv-output/91_framepose_runtime_heading/`: 11 in Part 1 and 4 more in Part 3.
 
 **What the renders are**
 - Actual BaseRig Actions: the Armature Object rotation and two arm bones keyed at the exact sampled frames, with CONSTANT
@@ -321,10 +361,18 @@ The worst-runtime case was selected by rule, not to flatter the result.
 | test_walking_away (walkBridge_01) | FIXED renders a front-facing torso for a subject walking away, which puts the arm on the wrong side of the torso. Runtime is within a few degrees of GT |
 | test_worst_runtime (office_phoneCall_00 a1) | A sustained ~50° runtime bias while the subject holds a phone, flagged KNOWN. Still far better than FIXED (140°) |
 | test_two_actors, side_on, stationary_facing; VAL cases | Runtime ≈ GT. No coordinate-frame inconsistency, IK failure or actor contamination visible |
+| test_observation_loss (office_phoneCall_00 a0; Part 3 rule: most rows with a frame gap, partial torso evidence or an unavailable arm) | A 9 s window with detection gaps. Runtime follows a 150° → −160° turn across a ~1.5 s gap without lag. Low-confidence rows are flagged UNRELIABLE |
+| validation_observation_loss (outdoors_parcours_01 949) | Same pattern on VALIDATION. Runtime tracks GT between gaps |
+| test_toward_camera (downtown_crossStreets_00 a1; Part 3 rule: most torso-size growth among front-facing windows) | Subject walks toward the camera. Runtime within about 10–15° of GT. **FIXED 180° is equally right here**: a front view is exactly where a fixed heading works, so runtime brings no advantage |
+| validation_toward_camera (outdoors_crosscountry_00 366) | Same: runtime ≈ GT ≈ near-front |
+
+**Determinism (Part 3).** Re-rendering `test_turning` reproduced all 216 frames pixel-identically (max difference 0).
+The four Part 3 clips are in the same folder (15 clips in total).
 
 ## 7. Tests
 
-`tests/test_framepose_runtime_heading.py`, 8 tests, all passing locally. They cover:
+`tests/test_framepose_runtime_heading.py`, 10 tests (8 in Part 1, 2 added in Part 3), all passing locally and on
+LabServer63. They cover:
 - circular wraparound
 - the facing convention and view strata
 - UNKNOWN never scored as correct
@@ -333,9 +381,13 @@ The worst-runtime case was selected by rule, not to flatter the result.
 - KNOWN / UNRELIABLE / UNKNOWN states with unchanged yaw
 - statelessness and immediate turns (no false hold)
 - root-rotation / limb-transform consistency and no production imports
+- **Part 3:** IK parity. `solve()` equals the unchanged W76 `measure_chain` + `full_arm` at several ψ, the endpoint and
+  IK→FK residuals are ≈ 0, and the world arm direction is ψ-invariant.
+- **Part 3:** front/back ambiguity. With identical 2D evidence, mirroring only the lifted depth mirrors a side-on heading
+  (+90° ↔ −90°) while the state stays KNOWN. This encodes the §4.1 limitation. Facing vs away is fixed by the shoulder
+  image order.
 
-IK parity and deterministic replay rely on the unchanged W90 functions and were re-checked by the replay's own
-residuals.
+Deterministic Blender replay was checked by re-rendering (§6).
 
 **Part 2, LabServer63** (`animcv-external:cu124`): **60 passed**. The run covered the W89–W91 focused tests plus the
 unchanged production-adjacent suites `test_animation_semantics_v2.py`, `test_framepose_bridge.py`,
@@ -394,6 +446,9 @@ heading code satisfy the GT-free contract with useful accuracy. C adds only the 
      face keypoints. The bank's `head` joint is the OpenPose nose, and in a side view its offset from the shoulder
      midpoint gives the profile direction.
    - **Why it was not stacked here:** the direction forbids stacking an unvalidated second heuristic.
+7. **Weak re-acquisition after observation gaps** (§4.2). The first frame after missing detections, and frames with
+   partial torso evidence, are much less accurate out of domain (3DHP: 39.7° / 10% > 90°). The provider has no explicit
+   re-acquisition or partial-evidence state.
 
 ## 10. Recommended next milestone
 
@@ -419,13 +474,16 @@ This is not started automatically.
 - `rig_replay_cases.json`
 - `blender_report.json`
 - 11 `.blend` files
-- the review videos
+- the review videos (Part 1, plus the Part 3 clips under `videos_part3/`)
 
 **LabServer63 `~/animcv-output/framepose_runtime_heading/`** (Part 2):
 - `3dhp/report.json`
 - `3dhp/prediction_S0.npy` (`a78adeb0…`)
 - `3dhp/prediction_H0.npy` (`f24aea24…`, oracle reference)
 - `3dpw/heading_eval_report.json` (the docker re-run)
+- `3dhp_v3/report.json` (Part 3: the same 3DHP run plus observation-quality groupings; predictions byte-identical)
+- `3dhp_v2/` is an aborted Part 3 attempt that used the stale server copy of the evaluator. Its report lacks the new
+  groupings; the directory is kept.
 
 **New files:**
 

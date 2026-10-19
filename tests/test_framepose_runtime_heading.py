@@ -128,3 +128,58 @@ def test_rig_replay_heading_contract():
     for path in sorted((ROOT / "src").rglob("*.py")):
         if path.name != "runtime_heading.py":
             assert "runtime_heading" not in path.read_text(), path
+
+
+def test_front_back_and_profile_are_carried_only_by_the_lifted_depth_sign():
+    """Same 2D evidence, mirrored lifted depth: the heading mirrors and the reliability state cannot tell (3DHP TS2)."""
+    from motion.runtime_heading import runtime_heading
+
+    # side-on subject: right-minus-left axis along +depth (yaw +90) vs the same image with mirrored depth (yaw -90)
+    side = _lifted([_torso(math.radians(90), math.radians(90)), _torso(math.radians(-90), math.radians(-90))])
+    a, b = runtime_heading(side)
+    assert abs(math.degrees(a.yaw_radians) - 90) < 1e-9 and abs(math.degrees(b.yaw_radians) + 90) < 1e-9
+    assert a.status == b.status == "KNOWN"  # a mirrored profile is not flagged: documented limitation
+    # facing the camera vs facing away differ by the image-x order of the shoulders, which 2D does observe
+    front_back = _lifted([_torso(math.pi, math.pi), _torso(0.0, 0.0)])
+    f, k = runtime_heading(front_back)
+    assert abs(abs(math.degrees(f.yaw_radians)) - 180) < 1e-9 and abs(math.degrees(k.yaw_radians)) < 1e-9
+
+
+@pytest.fixture(scope="module")
+def rig_assets():
+    from retarget.framepose_fk import derive_rig_alignment, load_rig_fk_calibration
+    from retarget.framepose_target_rest import load_target_rest_pose
+    from retarget.framepose_two_bone_ik import load_ik_chain_set, target_chain_geometry
+
+    rest = load_target_rest_pose(ROOT / "examples/e2e_demo/baserig_blender_rest.json")
+    alignment = derive_rig_alignment(rest, load_rig_fk_calibration(ROOT / "examples/e2e_demo/framepose_fk_calibration.json"))
+    target = target_chain_geometry(rest, load_ik_chain_set(ROOT / "examples/e2e_demo/framepose_ik_chains.json").chains[0])
+    return rest, alignment, target
+
+
+def test_ik_parity_with_the_unchanged_w76_path_and_world_invariance(rig_assets):
+    import numpy as np
+    from retarget.axis_utils import rotate_vector_by_quaternion
+    from retarget.framepose_ik_gt_attribution import measure_chain
+    from retarget.framepose_visual_full_arm_ik import full_arm
+
+    rest, alignment, target = rig_assets
+    rig = _script("run_runtime_heading_rig_replay")
+    rng = np.random.default_rng(91)
+    for _ in range(25):
+        u, v = rng.normal(size=3), rng.normal(size=3)
+        u, v = u / np.linalg.norm(u), v / np.linalg.norm(v)
+        rho = rng.uniform(0.35, 0.65)
+        e, w = rho * u, rho * u + (1 - rho) * v
+        worlds = []
+        for yaw in (0.0, math.pi, rng.uniform(-math.pi, math.pi)):
+            pose = rig.solve(e, w, yaw, alignment, target, rest)
+            m = measure_chain((0.0, 0.0, 0.0), tuple(e), tuple(w), yaw, alignment)
+            ref = full_arm("arm", m, m.direction, target, rest)
+            # identical code path; python-float vs numpy-float inputs differ only at ULP level
+            assert np.allclose(pose.proximal_local, ref.proximal_local, atol=1e-12) and np.allclose(pose.distal_local, ref.distal_local, atol=1e-12)
+            assert pose.integrity["endpoint_reconstruction_residual"] < 1e-9 and pose.integrity["ik_to_fk_residual"] < 1e-6
+            q = rig.object_rotation(alignment, yaw)
+            worlds.append(np.asarray(rotate_vector_by_quaternion(tuple(pose.upper), q)))
+        # the root rotation and the heading-relative arm cancel in the world frame (Worklog 90/91)
+        assert np.allclose(worlds[0], worlds[1], atol=1e-9) and np.allclose(worlds[0], worlds[2], atol=1e-9)

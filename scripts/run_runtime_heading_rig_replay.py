@@ -55,6 +55,10 @@ CASE_RULES = {
     "worst_runtime": "max mean RUNTIME heading error",
     "two_actors": "TEST only: the window of downtown_arguing_00 actor1 with max GT heading range (a second actor in the same "
                   "video as actor0; heading is stateless per track)",
+    "observation_loss": "max count of rows with an observation problem: bank frame gap before the row (missing detections), "
+                        "partial bilateral torso evidence, or an unavailable detector arm",
+    "toward_camera": "among windows with >= 60% GT front-view rows, max growth of the detector 2D torso length (mean of the last "
+                     "quarter over the first quarter; the subject approaches the camera)",
 }
 
 
@@ -110,7 +114,11 @@ def main():
                 g = gt[i].yaw_radians
                 h = heads[i]
                 yaws = {"FIXED": math.pi, "RUNTIME": h.yaw_radians, "GT": g}
+                ij, iv = bank.arrays["input_2d"][p], bank.arrays["input_valid"][p]
+                size = np.asarray(bank.samples[p].image_size, float)
+                torso_px = float(np.linalg.norm(((ij[11, :2] + ij[14, :2]) - (ij[1, :2] + ij[4, :2])) / 2 * size))
                 rec = {"sid": sid, "p": int(p), "frame": int(bank.samples[p].frame_index), "t": bank.samples[p].frame_index / 30.0,
+                       "partial_torso": not bool(iv[1] and iv[4] and iv[11] and iv[14]), "torso_px": torso_px,
                        "available": avail, "gt_ok": bool(gt_ok[p]) and g is not None, "status": h.status, "reasons": list(h.reasons),
                        "yaw": {k: v for k, v in yaws.items()}, "pose": {}}
                 if avail:
@@ -189,16 +197,22 @@ def select_cases(split, seq_rows, alignment, rest, target):
             signed = sum(circ(b, a) for a, b in zip(g[:-1], g[1:]))
             view = lambda y: abs(circ(y, math.pi))  # noqa: E731
             err = [abs(circ(r["yaw"]["RUNTIME"], r["yaw"]["GT"])) for r in w if r["yaw"]["RUNTIME"] is not None and r["yaw"]["GT"] is not None]
+            stride = min((b["frame"] - a["frame"] for a, b in zip(rows[:-1], rows[1:])), default=1)
+            loss = sum(1 for k, r in enumerate(w) if (k and r["frame"] - w[k - 1]["frame"] > stride) or r["partial_torso"] or not r["available"])
+            q = max(1, size // 4)
+            growth = float(np.mean([r["torso_px"] for r in w[-q:]]) / max(np.mean([r["torso_px"] for r in w[:q]]), 1e-6))
             wins.append({"sid": sid, "start": w[0]["frame"], "rows": w, "turn": abs(signed), "back": np.mean([view(y) >= 150 for y in g]),
                          "side": np.mean([abs(view(y) - 90) <= 30 for y in g]), "front": np.mean([view(y) <= 30 for y in g]),
                          "steps": sum(steps), "err": float(np.mean(err)) if err else 0.0,
-                         "range": float(max(g) - min(g)) if g else 0.0})
+                         "range": float(max(g) - min(g)) if g else 0.0, "loss": loss, "growth": growth})
     key = lambda w: (w["sid"], w["start"])  # noqa: E731
     pick = {"turning": max(wins, key=lambda w: (w["turn"], key(w))),
             "walking_away": max(wins, key=lambda w: (w["back"], key(w))),
             "side_on": max(wins, key=lambda w: (w["side"], key(w))),
             "stationary_facing": min([w for w in wins if w["front"] >= 0.8] or wins, key=lambda w: (w["steps"], key(w))),
-            "worst_runtime": max(wins, key=lambda w: (w["err"], key(w)))}
+            "worst_runtime": max(wins, key=lambda w: (w["err"], key(w))),
+            "observation_loss": max(wins, key=lambda w: (w["loss"], key(w))),
+            "toward_camera": max([w for w in wins if w["front"] >= 0.6] or wins, key=lambda w: (w["growth"], key(w)))}
     if split == "test":
         cand = [w for w in wins if w["sid"] == "3dpw:downtown_arguing_00:actor1"]
         if cand:

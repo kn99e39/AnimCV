@@ -186,6 +186,20 @@ def evaluate(rows):
     bins = np.digitize(conf, q)
     out["error_by_torso_confidence_quartile"] = [{"quartile": int(b + 1), "mean": float(err[bins == b].mean()),
                                                   "gt90": float((err[bins == b] > 90).mean())} for b in range(4) if (bins == b).any()]
+    # observation quality (runtime-observable): torso pixel scale, partial bilateral evidence, rows right after a gap
+    if all(r.get("scale_px") is not None for r in known):
+        sc = np.array([r["scale_px"] for r in known])
+        qs = np.quantile(sc, [0.25, 0.5, 0.75])
+        bs = np.digitize(sc, qs)
+        partial = np.array([r["partial"] for r in known])
+        after_gap = np.array([r["after_gap"] for r in known])
+        grp = lambda m: {"rows": int(m.sum()), "mean": float(err[m].mean()) if m.any() else None,  # noqa: E731
+                         "gt90": float((err[m] > 90).mean()) if m.any() else None}
+        out["observation_quality"] = {
+            "torso_scale_px_quartile_edges": [float(x) for x in qs],
+            "by_torso_scale_quartile": [{"quartile": int(b + 1), **grp(bs == b)} for b in range(4)],
+            "partial_bilateral_evidence": grp(partial), "full_bilateral_evidence": grp(~partial),
+            "first_row_after_observation_gap": grp(after_gap), "other_rows": grp(~after_gap)}
     if all(r.get("reliability") is not None for r in known):
         rel = np.array([r["reliability"] for r in known])
         qr = np.quantile(rel, [0.25, 0.5, 0.75])
@@ -203,6 +217,7 @@ def collect(bank, split, providers, raw_3dpw):
         frames = [bank.samples[p].frame_index for p in positions]
         oracle = _matched_oracle_sequence(sid, raw_3dpw, frames)
         gt = observe_yaw(oracle)
+        step = min((b - a for a, b in zip(frames[:-1], frames[1:])), default=1)
         for i, p in enumerate(positions):
             g = gt[i]
             if g.yaw_radians is None:
@@ -210,11 +225,18 @@ def collect(bank, split, providers, raw_3dpw):
             ij = bank.arrays["input_2d"][p]
             conf = float(min(ij[j, 2] for j in (1, 4, 11, 14)))
             t = bank.samples[p].frame_index / 30.0
+            size = bank.samples[p].image_size
+            valid = bank.arrays["input_valid"][p]
+            mid = lambda a, b: (ij[a, :2] + ij[b, :2]) / 2 * np.asarray(size, float)  # noqa: E731
+            scale = float(np.linalg.norm(mid(11, 14) - mid(1, 4)))
+            partial = not (valid[11] and valid[14] and valid[1] and valid[4])
+            after_gap = i > 0 and frames[i] - frames[i - 1] > step
             for name in providers:
                 o = outputs[name][0][i]
                 rows[name].append({"sequence_id": sid, "frame": frames[i], "t": t, "gt": g.yaw_radians,
                                    "known": bool(o[0]), "yaw": o[1], "conf": conf,
-                                   "reliability": o[2] if len(o) > 2 else None})
+                                   "reliability": o[2] if len(o) > 2 else None, "scale_px": scale,
+                                   "partial": bool(partial), "after_gap": bool(after_gap)})
     return rows
 
 

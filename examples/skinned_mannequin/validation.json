@@ -1,0 +1,44 @@
+{
+  "scope": "asset_authoring_validation; no perception evaluation regime or model quality gate measured",
+  "source_sha256": "71b33779793912c1f8a3b4a88aadc7ab369dbe226eaaeab5d5b92aa589c18eea",
+  "fbx_sha256": "c2947ba7f0d088aa47dbf0e04729a991699f24c649acce252b7b902740bb61d7",
+  "blender_version": "5.1.2",
+  "bones": 51,
+  "vertices": 698,
+  "polygons": 842,
+  "bone_names_and_parents_preserved": true,
+  "max_world_rest_matrix_absolute_error": 4.76837158203125e-07,
+  "all_vertices_normalized_1_to_4_weights": true,
+  "deformation_checks": {
+    "lowerarm_l": {
+      "rotation_local_x_degrees": 45,
+      "max_vertex_displacement_m": 0.35564996382689956,
+      "vertices_moved_over_1mm": 113
+    },
+    "calf_r": {
+      "rotation_local_x_degrees": 45,
+      "max_vertex_displacement_m": 0.3843312425633905,
+      "vertices_moved_over_1mm": 112
+    },
+    "spine_03": {
+      "rotation_local_x_degrees": 45,
+      "max_vertex_displacement_m": 0.5106242679936336,
+      "vertices_moved_over_1mm": 422
+    },
+    "neck_02": {
+      "rotation_local_x_degrees": 45,
+      "max_vertex_displacement_m": 0.16706473673568498,
+      "vertices_moved_over_1mm": 69
+    },
+    "index_01_l": {
+      "rotation_local_x_degrees": 45,
+      "max_vertex_displacement_m": 0.034911522623821876,
+      "vertices_moved_over_1mm": 16
+    }
+  },
+  "limitations": [
+    "Low-poly overlapping body sections; not a welded production character surface.",
+    "No separate head or pelvis bones in source; existing hierarchy preserved.",
+    "Pose checks verify finite movement, not collision-free deformation for all motions."
+  ]
+}

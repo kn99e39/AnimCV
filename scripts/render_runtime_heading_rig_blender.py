@@ -7,7 +7,8 @@
 For every case and mode one Action keys the Armature Object rotation (W60 object ownership: rest * A Rz(psi) A^-1)
 and the ``upperarm_l`` / ``lowerarm_l`` local quaternions at the exact sampled frame indices (scene 30 fps, CONSTANT
 interpolation; rows without an available arm keep the previous arm key).  Bone proxies only (BaseRig has no skinned
-mesh).  A colored arrow from the pelvis (spine_01 head) shows the mode's body-forward direction; a thin green arrow and arm show the
+mesh).  Worklog 94: optional per-frame ``reference_legs_cam`` (GT hip->knee and knee->ankle directions, canonical camera axes)
+is drawn in thin green from the rendered thighs, EVALUATION ONLY.  A colored arrow from the pelvis (spine_01 head) shows the mode's body-forward direction; a thin green arrow and arm show the
 GT heading and GT-reference arm (EVALUATION ONLY).  Identical cameras (video-camera view and side view), lighting and
 settings for all modes; a ``.blend`` with the three Actions is saved per case.
 """
@@ -133,6 +134,8 @@ def render(o) -> int:
     gt_fwd = _segment(bpy, "GT forward", (0, 0, 0), (0, 0, 1), GT_COLOR, 0.006)
     gt_up = _segment(bpy, "GT upper", (0, 0, 0), (0, 0, 1), GT_COLOR, 0.006)
     gt_lo = _segment(bpy, "GT lower", (0, 0, 0), (0, 0, 1), GT_COLOR, 0.006)
+    # Worklog 94: optional evaluation-only GT leg directions drawn from the rendered thigh heads (rig segment lengths)
+    gt_legs = {(side, i): _segment(bpy, f"GT leg {side}{i}", (0, 0, 0), (0, 0, 1), GT_COLOR, 0.008) for side in ("l", "r") for i in (0, 1)}
     report = {"schema": "worklog91_blender_heading_replay", "blender_version": bpy.app.version_string, "interpolation": "CONSTANT",
               "scene_fps": 30, "cases": {}, "equivalent_rig_max_rest_difference": equivalence, "show_mesh": bool(o.show_mesh)}
     only = set(o.only.split(",")) if o.only else None
@@ -203,7 +206,7 @@ def render(o) -> int:
                     fdir = (rest_q @ (aq @ Vector(fcam if fcam is not None else (-math.sin(psi), math.cos(psi), 0.0)))).normalized()
                     _place(fwd_seg, pel, pel + fdir * 0.5)
                     fwd_tip.location = pel + fdir * 0.5
-                g = fr["modes"].get("GT_REF")
+                g = fr["modes"].get(f"GT_REF_{mode}", fr["modes"].get("GT_REF"))  # Worklog 94: optional per-slot GT reference
                 gy = fr["yaw_deg"].get("GT")
                 for obj in (gt_fwd, gt_up, gt_lo):
                     obj.hide_render = gy is None
@@ -219,6 +222,20 @@ def render(o) -> int:
                     _place(gt_lo, m_w, e_w)
                 else:
                     gt_up.hide_render = gt_lo.hide_render = True
+                legs = fr.get("reference_legs_cam")
+                if legs is not None and mode in legs:  # Worklog 94: optional per-slot (e.g. gravity-levelled) GT legs
+                    legs = legs[mode]
+                for (side, i_seg), seg in gt_legs.items():
+                    seg.hide_render = legs is None
+                if legs is not None:
+                    for side, name in (("l", "left"), ("r", "right")):
+                        start = armature.matrix_world @ armature.pose.bones[f"thigh_{side}"].head
+                        for i_seg, bone in enumerate((f"thigh_{side}", f"calf_{side}")):
+                            pb = armature.pose.bones[bone]
+                            length = (armature.matrix_world @ pb.tail - armature.matrix_world @ pb.head).length
+                            end = start + (rest_q @ (aq @ Vector(legs[name][i_seg]))).normalized() * length
+                            _place(gt_legs[(side, i_seg)], start, end)
+                            start = end
                 for view, cam in cams.items():
                     scene.camera = cam
                     scene.render.filepath = str(out / f"{mode}_{view}_{i:03d}.png")

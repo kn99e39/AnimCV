@@ -56,7 +56,33 @@ def fit(img):
     return out
 
 
+def plot_series(case, i):
+    """Worklog 94: per-case plot series supplied by the export ({"panels": [{"ylabel", "series": {name: [v]}, "colors"}]})."""
+    fr = case["frames"]
+    t = np.array([f["time_s"] - fr[0]["time_s"] for f in fr])
+    panels = case["plot_series"]["panels"]
+    fig, axes = plt.subplots(len(panels), 1, figsize=(4.8, 4.8), dpi=100, sharex=True)
+    for a, panel in zip(np.atleast_1d(axes), panels):
+        for name, values in panel["series"].items():
+            y = np.array([v if v is not None else np.nan for v in values], float)
+            a.plot(t, y, color=panel.get("colors", {}).get(name, MPL.get(name, "#444444")), lw=2.4 if name.startswith("GT") else 1.5,
+                   label=name)
+        a.axvline(t[i], color="k", lw=0.8)
+        a.tick_params(labelsize=7)
+        a.set_ylabel(panel["ylabel"], fontsize=8)
+        a.legend(fontsize=6, loc="best")
+    np.atleast_1d(axes)[0].set_title(f"{case['case']} ({case['sequence_id'].split(':', 1)[1]})", fontsize=8)
+    np.atleast_1d(axes)[-1].set_xlabel("time (s)", fontsize=8)
+    fig.tight_layout()
+    fig.canvas.draw()
+    img = cv2.cvtColor(np.asarray(fig.canvas.buffer_rgba())[:, :, :3], cv2.COLOR_RGB2BGR)
+    plt.close(fig)
+    return cv2.resize(img, (T, T))
+
+
 def plot(case, i):
+    if "plot_series" in case:
+        return plot_series(case, i)
     fr = case["frames"]
     labels = case.get("short_labels", {k: k for k in MODES})
     t = np.array([f["time_s"] - fr[0]["time_s"] for f in fr])
@@ -119,8 +145,8 @@ def compose(key, case, renders, images, image_root, out_dir):
                 row.append(r)
         frame = np.vstack([np.hstack(top), np.hstack(bottom)])
         band = np.full((34, frame.shape[1], 3), 20, np.uint8)
-        cv2.putText(band, f"{case.get('title', 'W91 root-heading rig replay')} | {key} | sampled {fps:g} Hz, real time | {rig_note(renders)} | "
-                          "J1X left arm via W61/W76 IK | thin green = GT heading / GT-reference arm (evaluation only)",
+        note = case.get("header_note", "J1X left arm via W61/W76 IK | thin green = GT heading / GT-reference arm (evaluation only)")
+        cv2.putText(band, f"{case.get('title', 'W91 root-heading rig replay')} | {key} | sampled {fps:g} Hz, real time | {rig_note(renders)} | {note}",
                     (8, 23), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (235, 235, 235), 1, cv2.LINE_AA)
         frame = np.vstack([band, frame])
         if writer is None:

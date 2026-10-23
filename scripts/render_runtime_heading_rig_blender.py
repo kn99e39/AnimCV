@@ -38,7 +38,35 @@ def _args():
         parser.add_argument("--" + name.replace("_", "-"), type=Path, required=True)
     parser.add_argument("--size", type=int, default=480)
     parser.add_argument("--only", default=None)
+    parser.add_argument("--equivalent-rig-tolerance", type=float, default=None,
+                        help="Worklog 93: bind a re-exported equivalent rig (e.g. the 90A skinned mannequin) when every bone's "
+                             "parent, rest matrix and head/tail match the rest snapshot within this tolerance (armature units)")
+    parser.add_argument("--show-mesh", action="store_true", help="Worklog 93: render the skinned mesh instead of bone proxies")
+    parser.add_argument("--camera-centre-height", type=float, default=None,
+                        help="Worklog 93: fixed camera centre at this height (world units) above the armature origin, for lying bodies")
+    parser.add_argument("--ortho-scale", type=float, default=2.2)
     return parser.parse_args(argv)
+
+
+def _bind_equivalent(armature, rest, tolerance, source_path):
+    """Numeric rest-pose equivalence check (the snapshot digest also hashes the source FBX bytes)."""
+    from blender.framepose_object_owner_adapter import ImportedArmatureBinding
+    from blender.framepose_rest_adapter import extract_target_rest_pose
+
+    actual = extract_target_rest_pose(armature, rig_id=rest.rig_id, source_path=source_path)
+    if set(actual.bones) != set(rest.bones) or any(actual.bones[n].parent != rest.bones[n].parent for n in rest.bones):
+        raise ValueError("equivalent rig: bone set or hierarchy differs")
+    worst = 0.0
+    for n, b in rest.bones.items():
+        a = actual.bones[n]
+        worst = max(worst, max(abs(x - y) for ra, rb in zip(a.matrix_local, b.matrix_local) for x, y in zip(ra, rb)),
+                    max(abs(x - y) for x, y in zip(a.head, b.head)), max(abs(x - y) for x, y in zip(a.tail, b.tail)))
+    if worst > tolerance:
+        raise ValueError(f"equivalent rig: max rest difference {worst} > {tolerance}")
+    _, object_q, world_scale = armature.matrix_world.decompose()
+    return ImportedArmatureBinding(rest.digest(), tuple(float(v) for v in armature.location), tuple(float(v) for v in armature.scale),
+                                   (float(object_q.w), float(object_q.x), float(object_q.y), float(object_q.z)),
+                                   tuple(sorted(n for n, b in rest.bones.items() if b.parent is None))), worst
 
 
 def _place(segment, start, end):
@@ -64,7 +92,11 @@ def render(o) -> int:
     rest = load_target_rest_pose(o.rest)
     if rest.digest() != data["rest_snapshot_digest"]:
         raise ValueError("case export was built against another rest snapshot")
-    binding = bind_imported_armature(armature, rest, source_path=str(o.rig))
+    equivalence = None
+    if o.equivalent_rig_tolerance is not None:
+        binding, equivalence = _bind_equivalent(armature, rest, o.equivalent_rig_tolerance, str(o.rig))
+    else:
+        binding = bind_imported_armature(armature, rest, source_path=str(o.rig))
     _render_setup(bpy, armature)
     scene = bpy.context.scene
     scene.render.resolution_x = scene.render.resolution_y = o.size
@@ -72,6 +104,11 @@ def render(o) -> int:
     proxies = _make_bone_proxies(bpy, armature)
     for seg in proxies.values():
         seg.color = BODY_COLOR
+        if o.show_mesh:
+            seg.hide_render = True
+    for obj in bpy.data.objects:
+        if obj.type == "MESH" and obj.parent == armature:
+            obj.hide_render = not o.show_mesh
     rest_q = Quaternion(binding.rest_rotation_wxyz)
     loc = Vector(binding.location)
     scale = binding.scale[0]
@@ -90,14 +127,14 @@ def render(o) -> int:
     pelvis_rest_local = armature.pose.bones["spine_01"].head.copy()
     cams = {"video": _camera(bpy, "W91 video"), "side": _camera(bpy, "W91 side")}
     for c in cams.values():
-        c.data.ortho_scale = 2.2
+        c.data.ortho_scale = o.ortho_scale
     fwd_seg = _segment(bpy, "mode forward", (0, 0, 0), (0, 0, 1), ARM["RUNTIME"], 0.012)
     fwd_tip = _sphere(bpy, "mode forward tip", (0, 0, 0), ARM["RUNTIME"], 0.03)
     gt_fwd = _segment(bpy, "GT forward", (0, 0, 0), (0, 0, 1), GT_COLOR, 0.006)
     gt_up = _segment(bpy, "GT upper", (0, 0, 0), (0, 0, 1), GT_COLOR, 0.006)
     gt_lo = _segment(bpy, "GT lower", (0, 0, 0), (0, 0, 1), GT_COLOR, 0.006)
     report = {"schema": "worklog91_blender_heading_replay", "blender_version": bpy.app.version_string, "interpolation": "CONSTANT",
-              "scene_fps": 30, "cases": {}}
+              "scene_fps": 30, "cases": {}, "equivalent_rig_max_rest_difference": equivalence, "show_mesh": bool(o.show_mesh)}
     only = set(o.only.split(",")) if o.only else None
     root_head = data["target_chain"].get("root_head")
     for key, case in data["cases"].items():
@@ -110,7 +147,7 @@ def render(o) -> int:
         bf = [fr["frame_index"] - f0 + 1 for fr in frames]
         scene.frame_start, scene.frame_end = bf[0], bf[-1]
         pelvis_w = loc + rest_q @ (pelvis_rest_local * scale)
-        centre = pelvis_w + up * 0.1
+        centre = pelvis_w + up * 0.1 if o.camera_centre_height is None else loc + up * o.camera_centre_height
         _aim(cams["video"], centre - forward_cam * 4.0, centre, up)
         _aim(cams["side"], centre - right * 4.0, centre, up)
         actions, fk = {}, {}
@@ -122,14 +159,22 @@ def render(o) -> int:
             for fr, f in zip(frames, bf):
                 m = fr["modes"].get(mode)
                 yaw = fr["yaw_deg"].get(mode)
-                if yaw is not None:
-                    objq = to_q(fr["modes"][mode]["object_rotation_armature_xyzw"]) if m is not None else \
-                        aq @ Quaternion((0, 0, 1), math.radians(yaw)) @ aq.inverted()
+                frame_root = fr.get("object_rotation_xyzw", {}).get(mode)  # Worklog 93: root rotation independent of the arm
+                if frame_root is not None or yaw is not None:
+                    objq = to_q(frame_root) if frame_root is not None else (
+                        to_q(fr["modes"][mode]["object_rotation_armature_xyzw"]) if m is not None else
+                        aq @ Quaternion((0, 0, 1), math.radians(yaw)) @ aq.inverted())
                     armature.rotation_quaternion = rest_q @ objq
                     armature.keyframe_insert("rotation_quaternion", frame=f)
+                for bone, (x, y, z, w) in fr.get("extra_bone_locals_xyzw", {}).get(mode, {}).items():
+                    armature.pose.bones[bone].rotation_quaternion = (w, x, y, z)
+                    armature.pose.bones[bone].keyframe_insert("rotation_quaternion", frame=f)
                 if m is not None:
                     for bone, field in zip(BONES, ("proximal_local_xyzw", "distal_local_xyzw")):
                         x, y, z, w = m[field]
+                        armature.pose.bones[bone].rotation_quaternion = (w, x, y, z)
+                        armature.pose.bones[bone].keyframe_insert("rotation_quaternion", frame=f)
+                    for bone, (x, y, z, w) in m.get("extra_bone_locals_xyzw", {}).items():  # Worklog 93: trunk twist on spine_01
                         armature.pose.bones[bone].rotation_quaternion = (w, x, y, z)
                         armature.pose.bones[bone].keyframe_insert("rotation_quaternion", frame=f)
             for fc in _fcurves(act):
@@ -154,7 +199,8 @@ def render(o) -> int:
                     obj.hide_render = yaw is None
                 if yaw is not None:
                     psi = math.radians(yaw)
-                    fdir = (rest_q @ (aq @ Vector((-math.sin(psi), math.cos(psi), 0.0)))).normalized()
+                    fcam = fr.get("forward_cam", {}).get(mode)  # Worklog 93: full-frame body forward when provided
+                    fdir = (rest_q @ (aq @ Vector(fcam if fcam is not None else (-math.sin(psi), math.cos(psi), 0.0)))).normalized()
                     _place(fwd_seg, pel, pel + fdir * 0.5)
                     fwd_tip.location = pel + fdir * 0.5
                 g = fr["modes"].get("GT_REF")
@@ -163,11 +209,12 @@ def render(o) -> int:
                     obj.hide_render = gy is None
                 if gy is not None:
                     psi = math.radians(gy)
-                    gdir = (rest_q @ (aq @ Vector((-math.sin(psi), math.cos(psi), 0.0)))).normalized()
+                    gcam = fr.get("forward_cam", {}).get("GT")
+                    gdir = (rest_q @ (aq @ Vector(gcam if gcam is not None else (-math.sin(psi), math.cos(psi), 0.0)))).normalized()
                     _place(gt_fwd, pel, pel + gdir * 0.6)
                 if g is not None and root_head is not None:
                     gq = to_q(g["object_rotation_armature_xyzw"])
-                    r_w, m_w, e_w = world_of(root_head, gq), world_of(g["mid"], gq), world_of(g["end"], gq)
+                    r_w, m_w, e_w = world_of(g.get("root", root_head), gq), world_of(g["mid"], gq), world_of(g["end"], gq)
                     _place(gt_up, r_w, m_w)
                     _place(gt_lo, m_w, e_w)
                 else:

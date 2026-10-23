@@ -106,9 +106,11 @@ def compose(key, case, renders, images, image_root, out_dir):
         for k in MODES:
             y = f["yaw_deg"][k]
             lines = [(label[k], BGR[k])]
-            if y is not None and g is not None and k != "GT":
+            if f.get("mode_lines", {}).get(k):  # Worklog 93: full-frame numbers supplied by the export
+                lines += [(t, None) for t in f["mode_lines"][k]]
+            elif y is not None and g is not None and k != "GT":
                 lines.append((f"heading err {abs(circ(y, g)):5.1f} deg", None))
-            if k in f["modes"] and "GT_REF" in f["modes"]:
+            if not f.get("mode_lines", {}).get(k) and k in f["modes"] and "GT_REF" in f["modes"]:
                 lines.append((f"upper-arm local err {qangle(f['modes'][k]['proximal_local_xyzw'], f['modes']['GT_REF']['proximal_local_xyzw']):5.1f} deg", None))
             for view, row in (("video", top), ("side", bottom)):
                 r = cv2.imread(str(renders / key / f"{k}_{view}_{i:03d}.png"))
@@ -117,7 +119,7 @@ def compose(key, case, renders, images, image_root, out_dir):
                 row.append(r)
         frame = np.vstack([np.hstack(top), np.hstack(bottom)])
         band = np.full((34, frame.shape[1], 3), 20, np.uint8)
-        cv2.putText(band, f"{case.get('title', 'W91 root-heading rig replay')} | {key} | sampled {fps:g} Hz, real time | BaseRig bone proxies (no skinned mesh) | "
+        cv2.putText(band, f"{case.get('title', 'W91 root-heading rig replay')} | {key} | sampled {fps:g} Hz, real time | {rig_note(renders)} | "
                           "J1X left arm via W61/W76 IK | thin green = GT heading / GT-reference arm (evaluation only)",
                     (8, 23), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (235, 235, 235), 1, cv2.LINE_AA)
         frame = np.vstack([band, frame])
@@ -130,6 +132,14 @@ def compose(key, case, renders, images, image_root, out_dir):
         if i == len(fr) // 2:
             cv2.imwrite(str(out_dir / f"{key}.png"), frame)
     writer.release()
+
+
+def rig_note(renders):
+    """Worklog 93: renders made with ``--show-mesh`` show the verified skinned mannequin, not bone proxies."""
+    report = renders / "blender_report.json"
+    if report.exists() and json.loads(report.read_text()).get("show_mesh"):
+        return "BaseRig skinned mannequin (BaseRig_Skinned.fbx)"
+    return "BaseRig bone proxies (no skinned mesh)"
 
 
 def main():

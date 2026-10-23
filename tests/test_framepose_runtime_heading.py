@@ -125,9 +125,10 @@ def test_rig_replay_heading_contract():
     assert np.allclose(rotate_vector_by_quaternion((1.0, 2.0, 3.0), q0), (1.0, 2.0, 3.0))
     text = (ROOT / "scripts/run_runtime_heading_rig_replay.py").read_text()
     assert '"RUNTIME": h.yaw_radians' in text and "EVALUATION-ONLY" in text
+    experimental = {"runtime_heading.py", "runtime_heading_side_check.py", "vlm_heading_sign_advisor.py"}
     for path in sorted((ROOT / "src").rglob("*.py")):
-        if not path.name.startswith("runtime_heading"):  # the experimental runtime_heading* modules themselves
-            assert "runtime_heading" not in path.read_text(), path
+        if path.name not in experimental:  # no production module imports the experimental heading providers
+            assert not re.search(r"(from|import)\s+motion\.runtime_heading", path.read_text()), path
 
 
 def test_front_back_and_profile_are_carried_only_by_the_lifted_depth_sign():

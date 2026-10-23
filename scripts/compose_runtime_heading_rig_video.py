@@ -58,6 +58,7 @@ def fit(img):
 
 def plot(case, i):
     fr = case["frames"]
+    labels = case.get("short_labels", {k: k for k in MODES})
     t = np.array([f["time_s"] - fr[0]["time_s"] for f in fr])
     gt = np.array([f["yaw_deg"]["GT"] if f["yaw_deg"]["GT"] is not None else np.nan for f in fr])
     fig, (a1, a2) = plt.subplots(2, 1, figsize=(4.8, 4.8), dpi=100, sharex=True)
@@ -65,7 +66,7 @@ def plot(case, i):
     for k in ("GT", "FIXED", "RUNTIME"):
         y = np.array([f["yaw_deg"][k] if f["yaw_deg"][k] is not None else np.nan for f in fr])
         y = ref + np.array([circ(a, b) if np.isfinite(a) else np.nan for a, b in zip(y, ref)])  # unwrap around GT
-        a1.plot(t, y, color=MPL[k], lw=2.6 if k == "GT" else 1.5, label=k)
+        a1.plot(t, y, color=MPL[k], lw=2.6 if k == "GT" else 1.5, label=labels.get(k, k))
         if k != "GT":
             err = [qangle(f["modes"][k]["proximal_local_xyzw"], f["modes"]["GT_REF"]["proximal_local_xyzw"])
                    if k in f["modes"] and "GT_REF" in f["modes"] else np.nan for f in fr]
@@ -90,10 +91,11 @@ def plot(case, i):
 
 def compose(key, case, renders, images, image_root, out_dir):
     fr = case["frames"]
+    label = case.get("labels", LABEL)  # optional per-case mode labels (Worklog 92); defaults unchanged
     fps = case["fps_sampled"]
     writer = None
     for i, f in enumerate(fr):
-        img = cv2.imread(str(image_root / images[f["bank_position"]]))
+        img = cv2.imread(str(image_root / f.get("image", images.get(f["bank_position"], ""))))
         rgb = fit(img) if img is not None else np.zeros((T, T, 3), np.uint8)
         status = f["runtime_status"] + (f" ({', '.join(f['runtime_reasons'])})" if f["runtime_reasons"] else "")
         text(rgb, [(f"input RGB  frame {f['frame_index']}  t={f['time_s'] - fr[0]['time_s']:.2f}s", None),
@@ -103,7 +105,7 @@ def compose(key, case, renders, images, image_root, out_dir):
         g = f["yaw_deg"]["GT"]
         for k in MODES:
             y = f["yaw_deg"][k]
-            lines = [(LABEL[k], BGR[k])]
+            lines = [(label[k], BGR[k])]
             if y is not None and g is not None and k != "GT":
                 lines.append((f"heading err {abs(circ(y, g)):5.1f} deg", None))
             if k in f["modes"] and "GT_REF" in f["modes"]:
@@ -115,7 +117,7 @@ def compose(key, case, renders, images, image_root, out_dir):
                 row.append(r)
         frame = np.vstack([np.hstack(top), np.hstack(bottom)])
         band = np.full((34, frame.shape[1], 3), 20, np.uint8)
-        cv2.putText(band, f"W91 root-heading rig replay | {key} | sampled {fps:g} Hz, real time | BaseRig bone proxies (no skinned mesh) | "
+        cv2.putText(band, f"{case.get('title', 'W91 root-heading rig replay')} | {key} | sampled {fps:g} Hz, real time | BaseRig bone proxies (no skinned mesh) | "
                           "J1X left arm via W61/W76 IK | thin green = GT heading / GT-reference arm (evaluation only)",
                     (8, 23), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (235, 235, 235), 1, cv2.LINE_AA)
         frame = np.vstack([band, frame])
@@ -139,11 +141,13 @@ def main():
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
     from framepose.bank import load_bank
 
-    bank = load_bank(args.bank)
     args.out_dir.mkdir(parents=True, exist_ok=True)
     data = json.loads(args.cases.read_text())
-    images = {f["bank_position"]: bank.samples[f["bank_position"]].image_reference.relative_path
-              for c in data["cases"].values() for f in c["frames"]}
+    images = {}
+    if any("image" not in f for c in data["cases"].values() for f in c["frames"]):
+        bank = load_bank(args.bank)
+        images = {f["bank_position"]: bank.samples[f["bank_position"]].image_reference.relative_path
+                  for c in data["cases"].values() for f in c["frames"]}
     for key, case in data["cases"].items():
         compose(key, case, args.renders, images, args.image_root, args.out_dir)
         print(key, flush=True)

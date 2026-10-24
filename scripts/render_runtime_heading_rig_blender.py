@@ -153,7 +153,7 @@ def render(o) -> int:
         centre = pelvis_w + up * 0.1 if o.camera_centre_height is None else loc + up * o.camera_centre_height
         _aim(cams["video"], centre - forward_cam * 4.0, centre, up)
         _aim(cams["side"], centre - right * 4.0, centre, up)
-        actions, fk = {}, {}
+        actions, fk, fk_extra = {}, {}, {}
         for mode in MODES:
             act = bpy.data.actions.new(f"W91 {key} {mode}")
             act.use_fake_user = True
@@ -187,11 +187,17 @@ def render(o) -> int:
             for bone in BONES:
                 proxies[bone].color = ARM[mode]
             fwd_seg.color = fwd_tip.color = ARM[mode]
-            err = 0.0
+            err = extra = 0.0
             for i, (fr, f) in enumerate(zip(frames, bf)):
                 scene.frame_set(f)
                 bpy.context.view_layer.update()
                 _update_bone_proxies(bpy, armature, proxies)
+                # Worklog 95: optional FK check of extra keyed chains (bone tail vs exported Object-local point)
+                pts = fr.get("fk_points_armature", {}).get(mode)
+                if pts and fr.get("object_rotation_xyzw", {}).get(mode) is not None:
+                    oq = to_q(fr["object_rotation_xyzw"][mode])
+                    for bone, pt in pts.items():
+                        extra = max(extra, (armature.matrix_world @ armature.pose.bones[bone].tail - world_of(pt, oq)).length / scale)
                 pel = armature.matrix_world @ armature.pose.bones["spine_01"].head
                 m = fr["modes"].get(mode)
                 if m is not None:
@@ -241,11 +247,14 @@ def render(o) -> int:
                     scene.render.filepath = str(out / f"{mode}_{view}_{i:03d}.png")
                     bpy.ops.render.render(write_still=True)
             fk[mode] = err
+            fk_extra[mode] = extra
         for bone in BONES:
             proxies[bone].color = BODY_COLOR
         armature.animation_data.action = actions["RUNTIME"]
         bpy.ops.wm.save_as_mainfile(filepath=str(out / f"{key}.blend"), copy=True)
         report["cases"][key] = {"frames": len(frames), "fk_end_vs_export_max": fk, "actions": {m: a.name for m, a in actions.items()}}
+        if any(fk_extra.values()):
+            report["cases"][key]["fk_points_vs_export_max"] = fk_extra
         print(key, fk, flush=True)
     (o.out_dir / "blender_report.json").write_text(json.dumps(report, indent=1))
     return 0

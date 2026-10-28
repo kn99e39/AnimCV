@@ -15,6 +15,7 @@ not per sample.
 
 from __future__ import annotations
 
+import bisect
 from typing import Iterator
 
 from retarget.solver import AnimationClip
@@ -68,24 +69,28 @@ def _world_rotation_to_pose_local(pose_bone, rotation):
     )
 
 
-def _rotation_at_frame(track, frame_index):
+def _track_index(track):
+    """(sorted frame indices, samples in that order) for bisect lookups."""
+    samples = sorted(track.samples, key=lambda sample: sample.frame_index)
+    return [sample.frame_index for sample in samples], samples
+
+
+def _rotation_at_frame(track, frame_index, index=None):
     """Return a track's world-space rotation at ``frame_index``.
 
     Optimisation leaves different key times on parent and child tracks, so a
     child key cannot assume its parent has a sample at the same frame.
     """
-    exact = next((sample for sample in track.samples if sample.frame_index == frame_index), None)
-    if exact is not None:
-        return exact.rotation
+    frames, samples = index if index is not None else _track_index(track)
+    i = bisect.bisect_left(frames, frame_index)
+    if i < len(frames) and frames[i] == frame_index:
+        return samples[i].rotation
+    if i == 0:
+        return samples[0].rotation
+    if i == len(frames):
+        return samples[-1].rotation
 
-    before = [sample for sample in track.samples if sample.frame_index < frame_index]
-    after = [sample for sample in track.samples if sample.frame_index > frame_index]
-    if not before:
-        return after[0].rotation
-    if not after:
-        return before[-1].rotation
-
-    left, right = before[-1], after[0]
+    left, right = samples[i - 1], samples[i]
     factor = (frame_index - left.frame_index) / (right.frame_index - left.frame_index)
     from mathutils import Quaternion
 
@@ -95,7 +100,7 @@ def _rotation_at_frame(track, frame_index):
     return (interpolated.x, interpolated.y, interpolated.z, interpolated.w)
 
 
-def _parent_relative_rotation(pose_bone, tracks, sample):
+def _parent_relative_rotation(pose_bone, tracks, sample, indices=None):
     """Turn a desired world delta into the delta relative to its parent.
 
     Applying both a parent's and a child's world-space rotation directly to
@@ -109,7 +114,13 @@ def _parent_relative_rotation(pose_bone, tracks, sample):
 
     from mathutils import Quaternion
 
-    px, py, pz, pw = _rotation_at_frame(parent_track, sample.frame_index)
+    index = None
+    if indices is not None:
+        key = getattr(parent, "name", "")
+        if key not in indices:
+            indices[key] = _track_index(parent_track)
+        index = indices[key]
+    px, py, pz, pw = _rotation_at_frame(parent_track, sample.frame_index, index)
     cx, cy, cz, cw = sample.rotation
     relative = Quaternion((pw, px, py, pz)).inverted() @ Quaternion((cw, cx, cy, cz))
     return (relative.x, relative.y, relative.z, relative.w)
@@ -133,6 +144,7 @@ def write_keyframes(
 
     pose_bones = armature_object.pose.bones
     inserted = 0
+    indices = {}  # parent track lookups, built once per bone instead of a scan per sample
 
     for bone_name, track in animation_clip.tracks.items():
         pose_bone = pose_bones.get(bone_name)
@@ -143,8 +155,9 @@ def write_keyframes(
         if not use_location:
             pose_bone.rotation_mode = "QUATERNION"
 
+        # keyframe_insert takes the frame explicitly and the rest matrices are frame-independent,
+        # so no per-sample frame_set (a full depsgraph evaluation) is needed.
         for sample in track.samples:
-            bpy.context.scene.frame_set(sample.frame_index)
             if use_location:
                 pose_bone.location = sample.location
                 pose_bone.keyframe_insert(data_path="location", frame=sample.frame_index)
@@ -154,7 +167,7 @@ def write_keyframes(
                 # (w, x, y, z).  Assigning the former directly turns an
                 # identity quaternion into a 180-degree Z rotation.
                 relative_rotation = _parent_relative_rotation(
-                    pose_bone, animation_clip.tracks, sample
+                    pose_bone, animation_clip.tracks, sample, indices
                 )
                 x, y, z, w = _world_rotation_to_pose_local(pose_bone, relative_rotation)
                 pose_bone.rotation_quaternion = (w, x, y, z)

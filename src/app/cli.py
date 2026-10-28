@@ -401,6 +401,7 @@ def build_parser() -> argparse.ArgumentParser:
 def _extract_frames(args: argparse.Namespace) -> None:
     import cv2
 
+    from common.parallel import thread_map
     from mediaio.video_loader import VideoLoader
 
     sequence = VideoLoader().load_video(
@@ -409,8 +410,8 @@ def _extract_frames(args: argparse.Namespace) -> None:
 
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
-    for frame in sequence.frames:
-        cv2.imwrite(str(out_dir / f"{frame.index:05d}.png"), frame.image)
+    # PNG encoding releases the GIL: write frames on a thread pool
+    thread_map(lambda frame: cv2.imwrite(str(out_dir / f"{frame.index:05d}.png"), frame.image), sequence.frames)
 
     from common.serialization import write_json
     from mediaio.frame_sequence import FrameSequenceMetadata
@@ -480,10 +481,9 @@ def _estimate_pose(args: argparse.Namespace) -> None:
                 device=args.depth_device,
             )
         )
-        depth_sampled_frames = []
-        for frame, pose_frame in zip(sequence.frames, poses.frames):
-            depth_map = depth_estimator.infer_frame(frame.image)
-            depth_sampled_frames.append(sample_depth_at_landmarks(pose_frame, depth_map))
+        depth_maps = depth_estimator.infer_frames([frame.image for frame in sequence.frames])
+        depth_sampled_frames = [sample_depth_at_landmarks(pose_frame, depth_map)
+                                for pose_frame, depth_map in zip(poses.frames, depth_maps)]
         poses = PoseSequence(
             frames=depth_sampled_frames,
             source_fps=poses.source_fps,

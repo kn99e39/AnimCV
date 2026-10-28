@@ -11,6 +11,7 @@ import hashlib
 import json
 import math
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -134,13 +135,23 @@ def _depth(rest: TargetRigRestPose, name: str) -> int:
     return depth
 
 
-def _rest_direction(rest: TargetRigRestPose, name: str) -> Vec3:
-    bone = rest.bones[name]
+@lru_cache(maxsize=4096)
+def _bone_rest_direction(bone) -> Vec3:
     return _unit(_subtract(bone.tail, bone.head))
 
 
+@lru_cache(maxsize=4096)
+def _bone_rest_rotation(bone) -> Quaternion:
+    return _q_unit(quaternion_from_matrix(bone.matrix_local))
+
+
+def _rest_direction(rest: TargetRigRestPose, name: str) -> Vec3:
+    # RestBone is a frozen, hashable value object, so the cache key is the bone's own rest data
+    return _bone_rest_direction(rest.bones[name])
+
+
 def _rest_rotation(rest: TargetRigRestPose, name: str) -> Quaternion:
-    return _q_unit(quaternion_from_matrix(rest.bones[name].matrix_local))
+    return _bone_rest_rotation(rest.bones[name])
 
 
 @dataclass(frozen=True)
@@ -254,6 +265,15 @@ def solve_framepose_fk(
 
     samples = []
     owner_rest_rotation = _rest_rotation(rest, owner) if root_orientation_owner == "bone" else None
+    # per-bone rest quantities and mapped parents are frame-invariant: compute once, not per frame
+    rest_directions = {e.target_bone: _rest_direction(rest, e.target_bone) for e in entries}
+    rest_rotations = {e.target_bone: _rest_rotation(rest, e.target_bone) for e in entries}
+    mapped_parents = {}
+    for e in entries:
+        parent = rest.bones[e.target_bone].parent
+        while parent is not None and parent not in names:
+            parent = rest.bones[parent].parent
+        mapped_parents[e.target_bone] = parent
     for frame in semantics.frames:
         yaw = frame.root_orientation.yaw_radians
         if root_orientation_owner == "bone":
@@ -275,7 +295,7 @@ def solve_framepose_fk(
             target = entry.target_bone
             pair = tuple(entry.source_names)
             raw = source_direction(semantics, frame, *pair)
-            rest_direction = _rest_direction(rest, target)
+            rest_direction = rest_directions[target]
             body_direction = None
             local = None
             reason = None
@@ -288,15 +308,13 @@ def solve_framepose_fk(
                     raw, quaternion_from_axis_angle((0, 0, 1), -yaw)))
                 target_direction = _unit(rotate_vector_by_quaternion(body_direction, alignment))
                 delta_world = _q_unit(quaternion_from_vectors(rest_direction, target_direction))
-                parent = rest.bones[target].parent
-                while parent is not None and parent not in names:
-                    parent = rest.bones[parent].parent
+                parent = mapped_parents[target]
                 parent_delta = world_deltas.get(parent, _IDENTITY) if parent else _IDENTITY
                 if parent_delta is None:
                     reason = "mapped_ancestor_rotation_unavailable"
                 else:
                     relative = quaternion_multiply(quaternion_conjugate(parent_delta), delta_world)
-                    rest_rotation = _rest_rotation(rest, target)
+                    rest_rotation = rest_rotations[target]
                     local = _q_unit(quaternion_multiply(quaternion_multiply(
                         quaternion_conjugate(rest_rotation), relative), rest_rotation))
                     world_deltas[target] = delta_world

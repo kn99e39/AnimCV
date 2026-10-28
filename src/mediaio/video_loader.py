@@ -10,6 +10,7 @@ from pathlib import Path
 
 import cv2
 
+from common.parallel import thread_map
 from common.serialization import read_json
 from mediaio.frame_sequence import Frame, FrameSequence, FrameSequenceMetadata
 
@@ -101,8 +102,9 @@ class VideoLoader:
         fps, timestamps = self._image_sequence_timing(directory_path, len(image_paths))
         frames: list[Frame] = []
         width = height = 0
-        for index, image_path in enumerate(image_paths):
-            image = cv2.imread(str(image_path))
+        # cv2 decoding releases the GIL, so a thread pool reads frames in parallel; order is preserved by map().
+        images = thread_map(lambda p: cv2.imread(str(p)), image_paths)
+        for index, (image_path, image) in enumerate(zip(image_paths, images)):
             if image is None:
                 raise ValueError(f"Failed to read image: {image_path}")
             height, width = image.shape[:2]

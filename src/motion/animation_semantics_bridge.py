@@ -34,7 +34,7 @@ from pose.framepose_bridge import (
     H0Identity, build_h0_lifted_sequence, sequence_frame_positions, sequence_ids_in_split,
 )
 from pose.pose_lifter import LiftedPoseSequence
-from pose.root_motion import estimate_root_motion
+from pose.root_motion import _fused_yaw_observation, estimate_root_motion
 
 HISTORICAL_SMOOTHING_WINDOW = 5
 HISTORICAL_MAX_YAW_STEP_DEGREES = 20.0
@@ -212,9 +212,10 @@ def _root_orientation(lifted: LiftedPoseSequence) -> list[RootOrientation]:
 
 
 def _yaw_computable(lifted: LiftedPoseSequence, row: int) -> bool:
-    single = LiftedPoseSequence(frames=[lifted.frames[row]], source_fps=lifted.source_fps)
+    # estimate_root_motion raises for a frame exactly when its fused yaw observation raises (missing or ambiguous
+    # bilateral torso pair); test that observation directly instead of running the whole estimator per frame.
     try:
-        estimate_root_motion(single, smoothing_window=1, max_yaw_step_degrees=HISTORICAL_MAX_YAW_STEP_DEGREES)
+        _fused_yaw_observation(lifted.frames[row])
     except ValueError:
         return False
     return True

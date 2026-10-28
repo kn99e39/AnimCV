@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-import statistics
+import numpy as np
+from numpy.lib.stride_tricks import sliding_window_view
 
 from motion.motion_graph import MotionFrame, MotionGraph, MotionPoint
 
@@ -22,20 +23,12 @@ def median_filter_motion_graph(motion_graph: MotionGraph, window_size: int = 3) 
 
     radius = window_size // 2
     frames = motion_graph.frames
+    filtered = _filtered_positions(frames, window_size, radius)
     filtered_frames: list[MotionFrame] = []
     for index, frame in enumerate(frames):
         points: dict[str, MotionPoint] = {}
         for name, point in frame.points.items():
-            neighbors = _visible_neighbors(frames, index, name, radius)
-            if len(neighbors) == window_size:
-                position_2d = (
-                    statistics.median(item.position_2d[0] for item in neighbors),
-                    statistics.median(item.position_2d[1] for item in neighbors),
-                )
-                position_3d = _median_3d(neighbors)
-            else:
-                position_2d = point.position_2d
-                position_3d = point.position_3d
+            position_2d, position_3d = filtered.get((index, name), (point.position_2d, point.position_3d))
             points[name] = MotionPoint(
                 semantic_name=point.semantic_name,
                 frame_index=point.frame_index,
@@ -61,19 +54,31 @@ def median_filter_motion_graph(motion_graph: MotionGraph, window_size: int = 3) 
     )
 
 
-def _visible_neighbors(
-    frames: list[MotionFrame], index: int, name: str, radius: int
-) -> list[MotionPoint]:
-    start, end = index - radius, index + radius + 1
-    if start < 0 or end > len(frames):
-        return []
-    points = [frame.points.get(name) for frame in frames[start:end]]
-    if any(point is None or not point.visible for point in points):
-        return []
-    return [point for point in points if point is not None]
+def _filtered_positions(frames: list[MotionFrame], window_size: int, radius: int) -> dict:
+    """Vectorised per-landmark window medians: {(frame index, name): (position_2d, position_3d)} for filtered points.
 
-
-def _median_3d(points: list[MotionPoint]):
-    if any(point.position_3d is None for point in points):
-        return points[len(points) // 2].position_3d
-    return tuple(statistics.median(point.position_3d[i] for point in points) for i in range(3))
+    A point is filtered only when its whole window is present and visible (endpoints and occlusion-adjacent frames are never filtered);
+    the 3D median additionally needs 3D on every neighbour, otherwise the point keeps its own 3D position.
+    """
+    n = len(frames)
+    if n < window_size:
+        return {}
+    names = list(dict.fromkeys(name for frame in frames for name in frame.points))
+    out = {}
+    for name in names:
+        pts = [frame.points.get(name) for frame in frames]
+        ok = np.array([p is not None and p.visible for p in pts])
+        has3 = np.array([p is not None and p.position_3d is not None for p in pts])
+        p2 = np.array([p.position_2d if p is not None else (np.nan, np.nan) for p in pts], float)
+        p3 = np.array([p.position_3d if (p is not None and p.position_3d is not None) else (np.nan,) * 3 for p in pts], float)
+        win_ok = sliding_window_view(ok, window_size).all(axis=1)
+        idx = np.flatnonzero(win_ok) + radius
+        if idx.size == 0:
+            continue
+        med2 = np.median(sliding_window_view(p2, window_size, axis=0)[win_ok], axis=-1)
+        win3 = sliding_window_view(has3, window_size).all(axis=1)[win_ok]
+        med3 = np.median(sliding_window_view(p3, window_size, axis=0)[win_ok], axis=-1)
+        for k, i in enumerate(idx.tolist()):
+            position_3d = tuple(med3[k].tolist()) if win3[k] else pts[i].position_3d
+            out[(i, name)] = (tuple(med2[k].tolist()), position_3d)
+    return out

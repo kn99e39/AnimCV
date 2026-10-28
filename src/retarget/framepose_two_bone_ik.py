@@ -17,6 +17,7 @@ import hashlib
 import json
 import math
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -433,10 +434,15 @@ def _unavailable(frame, chain, source_status, yaw_status, reason, geometry=None,
         requested, None, None, None, None, None, "unavailable", None, "unavailable", None, reason)
 
 
+@lru_cache(maxsize=64)
+def _joint_lookup(joint_names: tuple) -> dict:
+    return {name: index for index, name in enumerate(joint_names)}
+
+
 def heading_relative_chain(semantics: AnimationSemanticsV2, frame, chain: TwoBoneIkChain,
                            alignment: Quaternion) -> tuple[str, Vec3 | None, Vec3 | None, str | None]:
     """(source_status, upper, lower, reason) with yaw removed exactly as FK does."""
-    lookup = {name: index for index, name in enumerate(semantics.joint_names)}
+    lookup = _joint_lookup(tuple(semantics.joint_names))
     indices = [lookup[name] for name in (chain.source_root, chain.source_mid, chain.source_end)]
     valid = frame.reliability.joint_observation_valid
     for role, index in zip(("root", "mid", "end"), indices):

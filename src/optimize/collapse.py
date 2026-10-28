@@ -23,6 +23,8 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
+import numpy as np
+
 from common.types import Quaternion, Vec3
 from optimize.importance import MIN_IMPORTANCE_TO_KEEP, score_track_importance
 from optimize.report import KeyframeOptimizationReport
@@ -89,6 +91,40 @@ def _lerp_location(a: Vec3, b: Vec3, t: float) -> Vec3:
     return tuple(x + t * (y - x) for x, y in zip(a, b))
 
 
+def _segment_errors(values: np.ndarray, start: int, end: int, use_location: bool) -> np.ndarray:
+    """Interpolation error of every sample strictly between two anchors, vectorised.
+
+    Same maths as ``_interpolation_error`` (linear position error, or shortest-path slerp angle with the 0.9995
+    near-identity lerp branch) evaluated for all in-between samples at once.
+    """
+    a, b = values[start], values[end]
+    t = (np.arange(start + 1, end) - start) / (end - start)
+    actual = values[start + 1:end]
+    if use_location:
+        return np.linalg.norm(a + t[:, None] * (b - a) - actual, axis=1)
+    dot = float(np.dot(a, b))
+    if dot < 0.0:
+        b, dot = -b, -dot
+    dot = min(1.0, dot)
+    if dot > 0.9995:
+        pred = a + t[:, None] * (b - a)
+        n = np.linalg.norm(pred, axis=1)
+        pred = pred / np.where(n == 0.0, 1.0, n)[:, None]
+    else:
+        theta_0 = math.acos(dot)
+        theta = theta_0 * t
+        sin_theta_0 = math.sin(theta_0)
+        s0 = np.cos(theta) - dot * np.sin(theta) / sin_theta_0
+        s1 = np.sin(theta) / sin_theta_0
+        pred = s0[:, None] * a + s1[:, None] * b
+    d = np.clip(np.abs(np.sum(pred * actual, axis=1)), -1.0, 1.0)
+    return np.degrees(2.0 * np.arccos(d))
+
+
+def _track_values(samples: list[BoneTransformSample], use_location: bool) -> np.ndarray:
+    return np.array([s.location if use_location else s.rotation for s in samples], float)
+
+
 def _track_uses_location(samples: list[BoneTransformSample]) -> bool:
     return samples[0].location is not None
 
@@ -108,32 +144,26 @@ def _interpolation_error(
 
 
 def _rdp(
-    samples: list[BoneTransformSample],
+    values: np.ndarray,
     start: int,
     end: int,
     use_location: bool,
     threshold: float,
     keep: set[int],
 ) -> None:
-    if end - start <= 1:
-        return
-
-    anchor_a, anchor_b = samples[start], samples[end]
-    span = end - start
-
-    max_error = -1.0
-    max_error_index = -1
-    for i in range(start + 1, end):
-        t = (i - start) / span
-        error = _interpolation_error(anchor_a, anchor_b, samples[i], t, use_location)
-        if error > max_error:
-            max_error = error
-            max_error_index = i
-
-    if max_error > threshold:
-        keep.add(max_error_index)
-        _rdp(samples, start, max_error_index, use_location, threshold, keep)
-        _rdp(samples, max_error_index, end, use_location, threshold, keep)
+    # iterative (explicit stack) so long tracks cannot hit the recursion limit; same split order as the recursion
+    stack = [(start, end)]
+    while stack:
+        a, b = stack.pop()
+        if b - a <= 1:
+            continue
+        errors = _segment_errors(values, a, b, use_location)
+        k = int(np.argmax(errors))
+        if errors[k] > threshold:
+            i = a + 1 + k
+            keep.add(i)
+            stack.append((i, b))
+            stack.append((a, i))
 
 
 def collapse_track(
@@ -170,20 +200,16 @@ def collapse_track(
         if score >= MIN_IMPORTANCE_TO_KEEP:
             keep.add(i)
 
+    values = _track_values(samples, use_location)
     kept_sorted = sorted(keep)
     for a, b in zip(kept_sorted, kept_sorted[1:]):
-        _rdp(samples, a, b, use_location, threshold, keep)
+        _rdp(values, a, b, use_location, threshold, keep)
 
     kept_indices = sorted(keep)
     max_observed_error = 0.0
     for a, b in zip(kept_indices, kept_indices[1:]):
-        span = b - a
-        if span <= 1:
-            continue
-        for i in range(a + 1, b):
-            t = (i - a) / span
-            error = _interpolation_error(samples[a], samples[b], samples[i], t, use_location)
-            max_observed_error = max(max_observed_error, error)
+        if b - a > 1:
+            max_observed_error = max(max_observed_error, float(_segment_errors(values, a, b, use_location).max()))
 
     optimized_samples = [samples[i] for i in kept_indices]
     report = KeyframeOptimizationReport(

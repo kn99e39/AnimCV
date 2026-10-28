@@ -604,10 +604,18 @@ class MotionToolApp:
             # Cap UI updates to ~100 over the whole run so a long
             # extraction doesn't flood the queue with per-frame updates.
             step = max(1, total // 100)
-            for done, frame in enumerate(sequence.frames, start=1):
-                cv2.imwrite(str(out_dir / f"{frame.index:05d}.png"), frame.image)
-                if done % step == 0 or done == total:
-                    report_progress(done, total)
+            # PNG encoding releases the GIL: write on a thread pool, report progress as writes finish
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+
+            from common.parallel import worker_count
+
+            with ThreadPoolExecutor(max_workers=worker_count("io")) as pool:
+                futures = [pool.submit(cv2.imwrite, str(out_dir / f"{frame.index:05d}.png"), frame.image)
+                           for frame in sequence.frames]
+                for done, future in enumerate(as_completed(futures), start=1):
+                    future.result()
+                    if done % step == 0 or done == total:
+                        report_progress(done, total)
             write_json(
                 out_dir / "metadata.json", FrameSequenceMetadata.from_sequence(sequence).to_dict()
             )
@@ -817,10 +825,9 @@ class MotionToolApp:
                         checkpoint_path=depth_checkpoint, encoder=depth_encoder, device=depth_device
                     )
                 )
-                depth_frames = []
-                for frame, pose_frame in zip(sequence.frames, poses.frames):
-                    depth_map = depth_estimator.infer_frame(frame.image)
-                    depth_frames.append(sample_depth_at_landmarks(pose_frame, depth_map))
+                depth_maps = depth_estimator.infer_frames([frame.image for frame in sequence.frames])
+                depth_frames = [sample_depth_at_landmarks(pose_frame, depth_map)
+                                for pose_frame, depth_map in zip(poses.frames, depth_maps)]
                 poses = PoseSequence(
                     frames=depth_frames, source_fps=poses.source_fps, landmark_schema=poses.landmark_schema
                 )

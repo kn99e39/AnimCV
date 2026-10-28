@@ -44,6 +44,7 @@ class DepthEstimatorConfig:
     # an explicit device if you know it matches that.
     device: str = "auto"
     input_size: int = 518
+    batch_size: int = 4  # frames per forward pass in infer_frames (1 = the per-frame infer_image path)
 
 
 class DepthEstimator:
@@ -108,3 +109,34 @@ class DepthEstimator:
         doc's section 13.2: depth is a hint, not ground truth)."""
         model = self._load_model()
         return model.infer_image(image, self._config.input_size)
+
+    def infer_frames(self, images: list[np.ndarray]) -> list[np.ndarray]:
+        """``infer_frame`` for many frames, ``batch_size`` same-sized frames per forward pass.
+
+        Uses upstream's own preprocessing (``image2tensor``) and the same bilinear resize back to each frame's size as
+        ``infer_image``; falls back to the per-frame path when batching is off or the model has no ``image2tensor``.
+        """
+        bs = max(1, int(self._config.batch_size))
+        if bs == 1 or len(images) <= 1:
+            return [self.infer_frame(image) for image in images]
+        model = self._load_model()
+        if not hasattr(model, "image2tensor"):
+            return [self.infer_frame(image) for image in images]
+        import torch
+        import torch.nn.functional as F
+
+        out: list[np.ndarray | None] = [None] * len(images)
+        groups: dict[tuple, list[int]] = {}
+        for i, image in enumerate(images):
+            groups.setdefault(tuple(image.shape), []).append(i)
+        with torch.no_grad():
+            for idx in groups.values():
+                for k in range(0, len(idx), bs):
+                    chunk = idx[k:k + bs]
+                    tensors, sizes = zip(*(model.image2tensor(images[i], self._config.input_size) for i in chunk))
+                    depth = model(torch.cat(tensors, dim=0))
+                    h, w = sizes[0]
+                    depth = F.interpolate(depth[:, None], (h, w), mode="bilinear", align_corners=True)[:, 0]
+                    for i, d in zip(chunk, depth.cpu().numpy()):
+                        out[i] = d
+        return out

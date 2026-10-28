@@ -91,6 +91,7 @@ class MMPoseConfig:
     subject_box: tuple[float, float, float, float] | None = None
     detector_config_path: str | None = None
     detector_checkpoint_path: str | None = None
+    batch_size: int = 8  # frames per detector / pose-model forward pass
 
 
 class PoseEstimator:
@@ -186,36 +187,38 @@ class PoseEstimator:
         )
 
     def _process_tracked_sequence(self, frames: FrameSequence) -> PoseSequence:
-        from mmdet.apis import inference_detector
-        from mmpose.apis import inference_topdown
-        from mmengine.registry import init_default_scope
+        """Detector-first tracking in three phases.
 
+        1. person detection for all frames, ``batch_size`` frames per forward pass;
+        2. subject selection in frame order (the tracker uses the previous box, so this cheap step stays serial);
+        3. top-down pose on the selected boxes, ``batch_size`` crops per forward pass.
+        """
         detector = self._load_detector()
         model = self._load_model()
         tracker = SubjectTracker(self._config.subject_box)
-        pose_frames = []
-        detector_candidates = 0
-        selected_frames = 0
-        for frame in frames.frames:
-            # inference_topdown switches the global default scope to mmpose;
-            # switch it back before constructing MMDetection's pipeline.
-            init_default_scope("mmdet")
-            result = inference_detector(detector, frame.image)
-            instances = result.pred_instances
-            detections = [
-                Detection(tuple(float(value) for value in bbox), float(score))
-                for bbox, score, label in zip(instances.bboxes.cpu().numpy(), instances.scores.cpu().numpy(), instances.labels.cpu().numpy())
-                if int(label) == 0 and float(score) >= 0.3
-            ]
-            detector_candidates += len(detections)
-            selected = tracker.select(detections)
-            if selected is None:
-                landmarks = {}
-            else:
-                selected_frames += 1
-                results = inference_topdown(model, frame.image, [selected.bbox])
-                landmarks = _extract_canonical_landmarks(results, self._config.visibility_threshold)
-            pose_frames.append(PoseFrame(frame_index=frame.index, timestamp=frame.timestamp, landmarks=landmarks))
+        images = [frame.image for frame in frames.frames]
+        bs = max(1, int(self._config.batch_size))
+        detections_per_frame = []
+        for k in range(0, len(images), bs):
+            for result in _detect_batch(detector, images[k:k + bs]):
+                instances = result.pred_instances
+                detections_per_frame.append([
+                    Detection(tuple(float(value) for value in bbox), float(score))
+                    for bbox, score, label in zip(instances.bboxes.cpu().numpy(), instances.scores.cpu().numpy(), instances.labels.cpu().numpy())
+                    if int(label) == 0 and float(score) >= 0.3
+                ])
+        detector_candidates = sum(len(d) for d in detections_per_frame)
+        selected = [tracker.select(d) for d in detections_per_frame]
+        jobs = [(i, s.bbox) for i, s in enumerate(selected) if s is not None]
+        landmarks_by_frame: dict[int, dict] = {}
+        for k in range(0, len(jobs), bs):
+            chunk = jobs[k:k + bs]
+            results = _pose_batch(model, [(images[i], bbox) for i, bbox in chunk])
+            for (i, _), result in zip(chunk, results):
+                landmarks_by_frame[i] = _extract_canonical_landmarks([result], self._config.visibility_threshold)
+        pose_frames = [PoseFrame(frame_index=frame.index, timestamp=frame.timestamp, landmarks=landmarks_by_frame.get(i, {}))
+                       for i, frame in enumerate(frames.frames)]
+        selected_frames = len(jobs)
         total = len(frames.frames)
         self.last_tracking_report = {
             "frame_count": total,
@@ -228,6 +231,49 @@ class PoseEstimator:
             frames=pose_frames, source_fps=frames.fps, landmark_schema="canonical_v1",
             observation_confidence_threshold=self._config.visibility_threshold,
         )
+
+
+def _detect_batch(detector, images: list) -> list:
+    """MMDetection inference for several frames in one forward pass (mmdet.apis.inference_detector runs one image per
+    pass; this builds the same test pipeline and collates the frames into one batch)."""
+    import torch
+    from mmcv.transforms import Compose
+    from mmdet.utils import get_test_pipeline_cfg
+    from mmengine.registry import init_default_scope
+
+    # inference_topdown switches the global default scope to mmpose; switch back before building MMDetection's pipeline.
+    init_default_scope("mmdet")
+    pipeline_cfg = get_test_pipeline_cfg(detector.cfg.copy())
+    pipeline_cfg[0].type = "mmdet.LoadImageFromNDArray"
+    pipeline = Compose(pipeline_cfg)
+    data = [pipeline(dict(img=image, img_id=0)) for image in images]
+    batch = {"inputs": [d["inputs"] for d in data], "data_samples": [d["data_samples"] for d in data]}
+    with torch.no_grad():
+        return detector.test_step(batch)
+
+
+def _pose_batch(model, items: list) -> list:
+    """MMPose top-down inference for several (image, xyxy box) pairs in one forward pass (same pipeline and collation as
+    mmpose.apis.inference_topdown, which batches only the boxes of a single image)."""
+    import torch
+    from mmengine.dataset import Compose, pseudo_collate
+    from mmengine.registry import init_default_scope
+
+    scope = model.cfg.get("default_scope", "mmpose")
+    if scope is not None:
+        init_default_scope(scope)
+    pipeline = Compose(model.cfg.test_dataloader.dataset.pipeline)
+    data_list = []
+    for image, bbox in items:
+        data_info = dict(img=image)
+        data_info["bbox"] = np.array([bbox])[0][None]  # shape (1, 4), as inference_topdown builds it from a box list
+        data_info["bbox_score"] = np.ones(1, dtype=np.float32)
+        data_info.update(model.dataset_meta)
+        data_list.append(pipeline(data_info))
+    if not data_list:
+        return []
+    with torch.no_grad():
+        return model.test_step(pseudo_collate(data_list))
 
 
 def _extract_canonical_landmarks(

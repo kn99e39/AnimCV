@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import math
 
+import numpy as np
+
 from common.types import Quaternion
 from retarget.solver import AnimationTrack
 
@@ -42,38 +44,27 @@ def score_track_importance(
     if n == 0:
         return []
 
-    velocities = [0.0] * n
-    for i in range(1, n):
-        velocities[i] = quaternion_angle(samples[i - 1].rotation, samples[i].rotation)
+    # vectorised over samples (same formula as the per-sample definition)
+    q = np.array([sample.rotation for sample in samples], float)
+    c = np.array([sample.confidence for sample in samples], float)
+    velocities = np.zeros(n)
+    if n > 1:
+        velocities[1:] = 2.0 * np.arccos(np.clip(np.abs(np.sum(q[1:] * q[:-1], axis=1)), -1.0, 1.0))
+    accelerations = np.zeros(n)
+    accelerations[1:] = np.abs(np.diff(velocities))
+    confidence_deltas = np.zeros(n)
+    confidence_deltas[1:] = np.abs(np.diff(c))
 
-    accelerations = [0.0] * n
-    for i in range(1, n):
-        accelerations[i] = abs(velocities[i] - velocities[i - 1])
+    max_velocity = float(velocities.max()) or 1.0
+    max_acceleration = float(accelerations.max()) or 1.0
 
-    confidence_deltas = [0.0] * n
-    for i in range(1, n):
-        confidence_deltas[i] = abs(samples[i].confidence - samples[i - 1].confidence)
-
-    max_velocity = max(velocities) or 1.0
-    max_acceleration = max(accelerations) or 1.0
-
-    scores: list[float] = []
-    for i, sample in enumerate(samples):
-        if i == 0 or i == n - 1 or sample.frame_index in locked_frames:
-            scores.append(1.0)
-            continue
-
-        is_local_extremum = (
-            velocities[i - 1] < velocities[i] > velocities[i + 1]
-            or velocities[i - 1] > velocities[i] < velocities[i + 1]
-        )
-
-        score = (
-            0.35 * (velocities[i] / max_velocity)
-            + 0.30 * (accelerations[i] / max_acceleration)
-            + 0.15 * confidence_deltas[i]
-            + 0.20 * (1.0 if is_local_extremum else 0.0)
-        )
-        scores.append(min(1.0, score))
-
-    return scores
+    scores = np.ones(n)
+    if n > 2:
+        v_prev, v, v_next = velocities[:-2], velocities[1:-1], velocities[2:]
+        extremum = ((v_prev < v) & (v > v_next)) | ((v_prev > v) & (v < v_next))
+        inner = (0.35 * (v / max_velocity) + 0.30 * (accelerations[1:-1] / max_acceleration)
+                 + 0.15 * confidence_deltas[1:-1] + 0.20 * extremum)
+        scores[1:-1] = np.minimum(1.0, inner)
+    if locked_frames:
+        scores[[i for i, sample in enumerate(samples) if sample.frame_index in locked_frames]] = 1.0
+    return scores.tolist()

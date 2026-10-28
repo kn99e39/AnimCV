@@ -11,6 +11,7 @@ import hashlib
 import json
 import math
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -109,8 +110,13 @@ def _rest_quaternion(rig: RigProfile, name: str) -> Quaternion:
     return _unit_quaternion(quaternion_from_matrix(tuple(tuple(float(v) for v in row) for row in matrix)))
 
 
+@lru_cache(maxsize=64)
+def _joint_lookup(joint_names: tuple) -> dict:
+    return {name: index for index, name in enumerate(joint_names)}
+
+
 def source_direction(semantics: AnimationSemanticsV2, frame, source_a: str, source_b: str) -> Vec3 | None:
-    lookup = {name: index for index, name in enumerate(semantics.joint_names)}
+    lookup = _joint_lookup(tuple(semantics.joint_names))
     if source_a not in lookup or source_b not in lookup:
         raise ContractGap("source_joint_not_in_semantics")
     a, b = lookup[source_a], lookup[source_b]
@@ -249,6 +255,18 @@ def solve_framepose_direction_candidate(
     entries.sort(key=lambda entry: (_depth(rig, entry.target_bone), entry.target_bone))
     alignment = _unit_quaternion(canonical_to_rig_rest) if canonical_to_rig_rest is not None else None
     mapping_names = {entry.target_bone for entry in entries}
+    # frame-invariant per-bone quantities (rest axis/rotation, mapped ancestor), or the contract gap they raise
+    static = {}
+    for entry in entries:
+        try:
+            axis_local, _ = target_rest_axis(rig, entry.target_bone)
+            rest = _rest_quaternion(rig, entry.target_bone)
+            if alignment is None:
+                raise ContractGap("canonical_to_rig_rest_alignment_missing")
+            ancestor = _mapped_ancestor(rig, entry.target_bone, mapping_names)
+            static[entry.target_bone] = (None, rest, ancestor, _unit(rotate_vector_by_quaternion(axis_local, rest)))
+        except ContractGap as exc:
+            static[entry.target_bone] = (str(exc), None, None, None)
     samples = []
     for frame in semantics.frames:
         world_deltas: dict[str, Quaternion | None] = {}
@@ -262,14 +280,11 @@ def solve_framepose_direction_candidate(
             rotation, reason = None, source_reason
             if direction is not None:
                 try:
-                    axis_local, _ = target_rest_axis(rig, entry.target_bone)
-                    rest = _rest_quaternion(rig, entry.target_bone)
-                    if alignment is None:
-                        raise ContractGap("canonical_to_rig_rest_alignment_missing")
-                    ancestor = _mapped_ancestor(rig, entry.target_bone, mapping_names)
+                    static_reason, rest, ancestor, rest_world_axis = static[entry.target_bone]
+                    if static_reason is not None:
+                        raise ContractGap(static_reason)
                     if ancestor is not None and world_deltas.get(ancestor) is None:
                         raise ContractGap("mapped_ancestor_rotation_unavailable")
-                    rest_world_axis = _unit(rotate_vector_by_quaternion(axis_local, rest))
                     target_world_axis = _unit(rotate_vector_by_quaternion(direction, alignment))
                     world_delta = _unit_quaternion(quaternion_from_vectors(rest_world_axis, target_world_axis))
                     parent_delta = world_deltas[ancestor] if ancestor is not None else _IDENTITY

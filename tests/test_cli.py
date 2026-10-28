@@ -58,7 +58,7 @@ def test_cli_estimate_pose_samples_depth_when_checkpoint_given(tmp_path, monkeyp
     )
     monkeypatch.setattr(PoseEstimator, "process_sequence", lambda self, frames: fake_poses)
     monkeypatch.setattr(
-        DepthEstimator, "infer_frame", lambda self, image: np.full((10, 10), 7.5, dtype=np.float32)
+        DepthEstimator, "infer_frames", lambda self, images: [np.full((10, 10), 7.5, dtype=np.float32) for _ in images]
     )
 
     out_path = tmp_path / "pose.json"

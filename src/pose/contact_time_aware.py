@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import bisect
+
 import math
 from dataclasses import dataclass
 
@@ -49,6 +51,8 @@ def kinematics(sequence: LiftedPoseSequence, foot: str, height_radius_seconds: f
     positions = _finite_diff_positions(sequence, foot)
     speeds: list[float | None] = []
     heights: list[float | None] = []
+    monotonic = all(b >= a for a, b in zip(times, times[1:]))
+    z = [p[2] if p is not None else None for p in positions]
     for index, current in enumerate(positions):
         previous = positions[index - 1] if index else None
         following = positions[index + 1] if index + 1 < len(positions) else None
@@ -62,8 +66,15 @@ def kinematics(sequence: LiftedPoseSequence, foot: str, height_radius_seconds: f
             speeds.append(float(np.linalg.norm(following - current) / (times[index + 1] - times[index])))
         else:
             speeds.append(None)
-        window = [p[2] for time, p in zip(times, positions)
-                  if p is not None and abs(time - times[index]) <= height_radius_seconds + 1e-9]
+        if monotonic:
+            # times are sorted: the +/- radius window is a contiguous slice found by bisection (was a full scan)
+            lo = bisect.bisect_left(times, times[index] - height_radius_seconds - 1e-9)
+            hi = bisect.bisect_right(times, times[index] + height_radius_seconds + 1e-9)
+            window = [v for time, v in zip(times[lo:hi], z[lo:hi])
+                      if v is not None and abs(time - times[index]) <= height_radius_seconds + 1e-9]
+        else:
+            window = [p[2] for time, p in zip(times, positions)
+                      if p is not None and abs(time - times[index]) <= height_radius_seconds + 1e-9]
         heights.append(float(np.std(window)) if len(window) >= 2 else None)
     return speeds, heights
 

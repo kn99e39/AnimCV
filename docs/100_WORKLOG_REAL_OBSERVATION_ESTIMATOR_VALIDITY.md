@@ -285,6 +285,8 @@ The latter is the reason for this CASE.
 - 6 passed with the system Python.
 - 20 passed in `.venv`, together with `test_mmpose_adapter.py`, `test_subject_tracker.py` and
   `test_parallel_vectorized_paths.py`.
+- 16 passed on LabServer63 (docker `animcv-external:cu124`), together with `test_parallel_vectorized_paths.py` and
+  `test_subject_tracker.py`.
 - The gate itself, the gate-detail reproduction and the S0 condition-B reproduction are experiment runs (§2, §4).
 
 **Not run:** broad regression (no shared contract changed) and any test of the unexecuted evaluation paths.

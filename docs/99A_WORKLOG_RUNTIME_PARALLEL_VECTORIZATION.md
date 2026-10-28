@@ -115,7 +115,11 @@ The rest-value caches also speed up every script that imports these helpers.
 - Full suite: 1003 passed, 57 skipped locally (system Python).
 - With the torch-equipped `.venv`, the new, depth, MMPose-adapter and CLI tests pass (44).
 - A real-model MMPose smoke run matched the old path (above).
-- LabServer63 docker run: see the commit notes.
+- LabServer63 (docker `animcv-external:cu124`): 1181 passed, 2 skipped and 4 failed. The two GUI test files were
+  excluded because the image has no `tkinter`. The 4 failures are the `torch.compile` tests
+  (`test_benchmark_torch_compile_candidate.py` ×3 and `test_supervised_temporal_lifter.py::…compile…`). They fail with
+  `InvalidCxxCompiler: No working C++ compiler found` because the image has no g++. Those tests exercise training code
+  that this task did not change.
 
 **Not run, per the user's instruction:** byte-level reproduction of historical worklog outputs. Most FramePose changes
 are bit-identical by construction.

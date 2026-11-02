@@ -504,3 +504,6 @@ change. The source video was not copied, redistributed or published.
 
 Final source revision: the commit adding this Worklog on `arch/single_frame_first`, the next commit after `12311cc`.
 The COMPLETE marker is added in a separate final commit.
+
+AUTOMATION_BATCH_STATUS: COMPLETE
+BATCH_NUMBER: 105

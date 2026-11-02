@@ -463,3 +463,6 @@ Resources:
 
 Final source revision: the commit adding this Worklog on `arch/single_frame_first`, the next commit after `ee804f6`.
 The COMPLETE marker is added in a separate final commit.
+
+AUTOMATION_BATCH_STATUS: COMPLETE
+BATCH_NUMBER: 106

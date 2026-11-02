@@ -1,216 +1,120 @@
-# BATCH 105 — Source-Only Joint Restoration: Rig-Level Utility and Failure Boundaries
+# BATCH 106 — Existing Rig Action Editability and Round-Trip Contract (Evidence Only)
 
 ## CURRENT ASSESSMENT — SUCCESS / FAILURE / UNCERTAINTY
 
-W103 (CASE C) separated the frozen S0 failure regimes: most severe frames and wrong-knee branches coincide with missing limb observations, while residual depth-sign errors on complete inputs have mixed and largely unresolved causes. W104 (declared CASE A) established a controlled causal effect of removing valid joints. On 4,803 well-observed rows, removing tokens at a fixed crop increased MPJPE by +84.5 mm; recropping alone contributed +10.0 mm on average, with large out-of-range exceptions for bilateral leg loss. In 1,223 naturally partial same-person rows, restoring the *existing* below-0.3 raw RTMPose coordinates (R11) improved MPJPE by 33.9 mm, reduced severe frames 133 to 24, and fixed 174 knee branches while newly breaking 13. These are strong frozen-S0 diagnostic results, not approval to change production masking.
+W105 is COMPLETE and conditionally CASE A on 417 uniquely associated 3DPW leg-restoration rows. Fixed R11 improves W102 rig geometry there, but the 199-frame historical real clip contains only wrist omissions and shows a new 80 ms hand-to-face flicker. W105's source-only R11 remains diagnostic, not a production observation policy. W101–W105 were cumulatively audited at `docs/AUDIT_W101_W105_2026_11_02.md` (PASS WITH DOCUMENTED LIMITS; Main-local binary evidence not independently replayed). Do not reopen the W105 audit as a prerequisite.
 
-The decisive missing evidence is downstream **animation usefulness**. W104's real 199-frame video contains only 38 left-wrist omissions and no natural knee/ankle omissions; its GT-free R11 output changed, but the quality of that change is unknown. W104 did not generate a new BaseRig render. W102 showed that source-to-rig discrepancies can exceed 90 degrees under the existing fixed-length zero-twist IK, so source MPJPE gains need not translate to better editable rig motion. W104's evaluation also excludes other-person/ambiguous actor associations, contains reused 3DPW TEST data, and has a limited low-confidence failure distribution. No unseen generalization or production benefit has been demonstrated.
+The product is **editable animation creation**, not an endless pose-estimation benchmark. W105 proved that the evaluation-only Blender output has inspectable Actions (32 F-curves, keyed sample frames, CONSTANT interpolation), **not** that a user can reliably edit, preserve, save, and reuse the resulting motion. In the real-clip diagnostic, 199 keys are at native 50 fps frame indices but the saved Blender scene plays at 30 fps (0.6× actual speed). In 3DPW, the source bank is 10 Hz. Existing BaseRig Actions are a useful but unvalidated boundary between reconstruction and authoring.
 
-This Batch must close the *source geometry -> fixed rig animation* evidence gap, inspect harm and distribution limitations, and determine whether the diagnostic R11 effect remains useful in the actual animation medium. It must not adopt R11 as a production policy or expand into another estimator research loop.
+**Human Assessment:** SUCCESS — a concrete rig Action is generated and inspectable, and the fixed W102 contract supports controlled rig comparison. FAILURE — real-clip playback timing is mismatched in the saved scene, and R11 arm flicker is visibly harmful. UNCERTAIN — whether existing Actions can support a reversible, local expressive edit and survive Blender/FBX export without unintentional track changes; whether the apparent editability is merely keyframe existence. ALTERNATIVE EXPLANATIONS — action-level edits may work while rig/world transforms, sampling semantics, FBX import or playback remain defective; differences may arise from exporter or rest-pose conventions rather than edit representation.
+
+This is an **artifact-contract diagnostic**, not authorization to adopt R11, repair retargeting, or build a style/authoring subsystem.
 
 ## HUMAN-READABLE SUMMARY
 
-**DIRECTION:** Evaluate the downstream animation consequences and failure boundaries of W104's source-only raw-joint restoration, with frozen geometry, rig, and observation contracts.
+**DIRECTION:** Measure the actual controllability, isolation, timing and round-trip reliability of *already exported* BaseRig Actions using bounded, reversible scratch edits.
 
-**PURPOSE:** Determine whether W104's measured reconstruction gain produces better rig-compatible motion rather than merely improving a 3D metric, and identify where the gain is negated by low-confidence hallucinations, temporal instability, identity coverage, or existing IK/retargeting limitations.
+**PURPOSE:** Determine whether the current reconstructed rig Action is a credible editable handoff artifact for a future user-directed animation workflow, or merely an evaluation render. Identify the first blocking ownership/serialization/timing boundary without redesigning it.
 
-**CENTRAL INTENT:**
+**CENTRAL INTENT:** Can one meaningful local bone-motion edit and one local timing edit be applied to an existing generated BaseRig Action, produce the intended observable rig change, preserve declared non-target animation, and survive save/reopen and optional FBX round-trip—without modifying reconstruction, rig, or production code?
 
-> With the existing observation source, frozen S0, and exactly the same BaseRig/FK/IK path, does the W104 R11 diagnostic produce a demonstrably more faithful and usable animation than M_Main on naturally partial observations, without material new animation failures? Where is any remaining failure owned: 2D observation, frozen S0, or the fixed retargeting contract?
+**DO:** Reuse W102/W105 frozen exports and historical clip where available; measure original Action, null controls, edit/inverse, local FK and visual consequences, Blender save/reopen, timing and export/import parity; retain negative cases and sample provenance.
 
-**DO:** Verify W102–W104 identities; compare M_Main and fixed R11 on the same real actor/time samples; generate and inspect matched BaseRig animations where feasible; quantify source-to-rig attribution, temporal and anatomical consequences, harms, and unchanged complete-frame controls; include the existing real-video clip as a limited GT-free diagnostic.
+**DO NOT:** Implement an animation editor, motion-style model, automatic retiming/filtering, new Motion IR, new observation policy, IK/root/contact repair, runtime FPS fix, exporter rewrite or production integration. Do not train or infer a new pose, tune thresholds, alter a frozen rig, or acquire/publish media.
 
-**DO NOT:** Modify production observation thresholds, masks, S0, checkpoints, detector, tracking, crop, IK, retargeting, root orientation, animation semantics, rig assets or runtime. Do not introduce a new imputation/temporal policy, fuse HMR2, train, optimize the render, acquire new footage, or implement an animation authoring subsystem.
+**DECISION ENABLED:** Whether the current Action can serve as an inspectable/editable output boundary, and which *existing* contract blocks it if not. No CASE approves a new authoring architecture or deployment.
 
-**DECISION ENABLED:** Whether source-only low-confidence restoration has evidence of *downstream animation utility* sufficient to justify a later human-owned observation-policy decision, or whether rig/identity/temporal risks make that claim premature. No CASE approves implementation.
+## DIRECTION AND OWNERSHIP
 
-## DIRECTION
+Work only in `kn99e39/AnimCV`, existing `arch/single_frame_first` branch. Read `AGENTS.md`, `PRODUCT_VISION.md`, `Architecture_v3_FramePose.md`, `Architecture_v2.md` (Motion Graph/retarget/Blender export sections), `COORDINATE_CONVENTIONS.md`, cumulative audits, W99A/W100, W102 and W104–W105, and the automation worker contract. Preflight remote HEAD, instruction blob SHA, working tree, lock and active jobs. Follow the existing automation worker's commit/publication protocol; do not create, switch, delete, merge, rebase or reset branches, force-push, resolve conflicts, or alter `docs/next_batch.md`. No independent next-Batch recommendation.
 
-Continue only on the existing branch `arch/single_frame_first` in `kn99e39/AnimCV`. Read `AGENTS.md`, `PRODUCT_VISION.md`, `Architecture_v3_FramePose.md`, `Architecture_v2.md` for downstream ownership, `COORDINATE_CONVENTIONS.md`, the cumulative audit, W95–W104 (especially W102 rig review, W103 CASE C and W104 CASE A), and the current automation worker's safety contract. Confirm remote HEAD, instruction blob SHA, dedicated checkout and running-job/lock state before doing any work.
+This is not a decision to prioritize style authoring over unresolved production safety. It is a one-time diagnostic of the current artifact boundary. Stop rather than implementing an editor or changing architecture.
 
-No branch creation, switching, deletion, merge, rebase, reset, force-push or conflict resolution. Do not modify `docs/next_batch.md`: it is ChatGPT-owned and READ-ONLY. Preserve W104's COMPLETE marker and every historical verdict. Use the worker's existing lock, completion and publication protocol. Do not create or archive a copy of this prompt.
+## PURPOSE AND CENTRAL INTENT
 
-## PURPOSE
+**Architecture hypothesis H106:** The current BaseRig Action is sufficiently self-contained to support *at least one bounded manual-style local motion edit* with explicit preservation of other channels and deterministic persistence. If this fails, the failing boundary (Action representation, rig hierarchy, timebase, serialization, exporter or missing information) can be identified without changing the production system.
 
-W104 establishes a promising *diagnostic intervention*, not a safe policy. A lower MPJPE can coexist with wrong limb direction, incorrect contact, motion pops, unnatural fixed-length IK, uneditable curves, or subject identity failures. The Product Vision requires validation in the final animation medium and avoidance of an endless isolated pose-estimator loop. Test that exact gap without changing the method.
-
-## CENTRAL INTENT
-
-Can the source-only R11 observation condition, already evaluated in W104, improve **actual rig animation fidelity and usability** compared with the unchanged M_Main condition, on the same fixed frames and rig, while preserving all negative examples and distinguishing source-pose error from retargeting artifacts?
+The falsifier is **not** lower MPJPE. A valid Action must be editable and replayable at the right time, and a deliberate edit must remain visible while unrelated channels are preserved. A scratch-only edit proves an artifact capability, not a user-facing authoring system.
 
 ## HISTORICAL BASELINE
 
-Preserve:
-- W102 B_Main/M_Main observations, predictions, same-person association accounting and historical real clip; W102 BaseRig rest, calibration, FK/IK, cameras, zero-twist local policy and rendered cases.
-- W103 source/GT validity sensitivity, well/partial/mislocalized groups, severe/knee/depth failures, qualitative identities and frozen HMR contextual outputs.
-- W104 F00/F10/F01/F11, R11/R10/R01/Rc, privileged P_oracle/P_bench, predeclared declaration hash `6a64c8d1ffc57f928fdf2fbaaf40dffd5b848a927b662e90ff584257bfbae487`, and the final CASE A report.
-- Original RGB bytes, actor IDs, timestamps, camera and coordinate contracts, S0 weights, model-visible tensor construction, M1 batch_size=1 and production 0.3 validity threshold.
-- Original GT-free runtime boundary: GT, benchmark identities and oracle projections are evaluation-only.
-- W99A production batch_size=8 default and W100 M8 parity failure.
-- No historical test, Worklog, source artifact, model or rig may be rewritten.
+Preserve byte-identical all W102–W105 outputs, prior Worklogs/verdicts, W99A production modules, original S0/HMR/J1X predictions, W91 renderer, W95 two-bone IK, BaseRig asset/rest/calibration, frame/timestamp alignment, original interpolation and Action values. Preserve the complete-frame no-op evidence and all W105 harms (18 newly failed individual legs, seated-cafe source/rig regression, real-clip R11 flicker). Never overwrite existing `.blend`, `.fbx`, media, reports or checkpoints.
 
-W104's raw outputs and manifest are stored locally on Main, not committed. Verify their availability and full recorded hashes before relying on them. If unavailable, reproduce only the fixed W104 conditions needed for this Batch using its published scripts and declared identity, in a fresh non-overwriting output directory, and report the additional run explicitly. Do not fabricate evidence or silently replace an artifact.
+Primary artifacts:
+- W105 Main-local `C:/Users/dna10/animcv-w105/results/` with manifest and saved candidate `.blend` files; W102 Main-local rig exports if needed. Verify hashes and case/slot identity against Worklogs; do not treat inaccessible outputs as verified.
+- 3DPW `complete_control` and one predeclared, usable moving-window Action under the frozen W102 mixed-source contract (10 Hz); keep M_Main as primary. W105 R11 is optional **negative comparison only**, not a new baseline.
+- Historical real-clip **M_Main** S0-only Action, 199 native frame indices at 50 fps, saved scene 30 fps; explicitly separate this from the W102 mixed-source contract. Do not redistribute the source clip or stills externally.
+- The committed `examples/e2e_demo/animated_rig.blend`/`.fbx` may serve as a **legacy smoke** only, separately labelled and never pooled with W102/W105 metrics.
 
 ## PRESERVE / CHANGE ONLY / DO NOT TUNE
 
-PRESERVE: Frozen M_Main and R11 source geometries, actor/frame selection semantics, exact timestamps, fixed BaseRig/skinned equivalent, W102 rest and FK/IK/zero-twist policy, camera, renderer, animation interpolation, and identical per-case rig configuration.
+**PRESERVE:** Original Actions, original keys, rest and bone naming, rigs, source timestamp/cadence, all observation/model contracts and negative results. Keep original files read-only.
 
-CHANGE ONLY: New isolated W105 diagnostic/evaluation scripts, focused tests, fresh evidence manifests, matched rig exports/renders and `docs/105_WORKLOG_SOURCE_ONLY_RESTORATION_RIG_UTILITY.md`. All edits must be diagnostic-only. No `src/` production module edits. Do not modify `docs/next_batch.md` or existing W102–W104 files.
+**CHANGE ONLY:** New isolated W106 diagnostic scripts, focused tests, W106 Worklog and scratch-only copies of Blender Actions/exports and reports. Test edits are explicit evaluation interventions on copied Actions, not new production functionality. Any Blender scene FPS change is scratch-only, labelled sensitivity; never overwrite the original.
 
-DO NOT TUNE: Joint visibility threshold, raw coordinate choice, crop, confidence, association threshold, S0 settings, temporal smoothing, motion interpolation, FK/IK reach, target bone lengths, pelvis/thorax ownership, root motion, contact policy, cameras, material/render settings, or selection/acceptance thresholds after viewing results.
+**DO NOT TUNE:** S0, raw RTMPose confidence/visibility, subject identity, pose/rig targets, keyframe collapse, interpolation, frame-rate metadata in baseline, IK/retarget, FBX exporter flags, root/torso ownership, contact, temporal stabilization, thresholds or error tolerances after viewing results.
 
-## 1. PREFLIGHT, DATA AND DECLARATION
+## 1. PREFLIGHT AND DECLARATION (BEFORE EDIT RESULTS)
 
-Verify W104's remote COMPLETE marker and the instruction/source/checkpoint/bank identities. Reconstruct or verify byte identity for the M_Main and R11 geometries on all 1,223 naturally partial same-person rows and the unchanged complete-row controls. Verify no GT is consulted by R11 input construction. Record source image hashes, source videos, actor identities, original frame numbers and timestamps. Keep VAL and TEST separate, and report the entire W102 actor-frame/identity denominator; never turn same-person conditional quality into whole-video success.
+1. Verify W105 COMPLETE and audit, immutable source Action identities, Blender version, scene FPS, frame indices, armature, active Action, layered F-curves, channel paths, rest/calibration, file hashes, original native timestamp contracts and private-media provenance. Record exactly which outputs are available; no hidden substitution if absent.
+2. Select **before viewing edit outcomes** one complete-control Action and one real moving Action with an existing animated left-arm or leg track. Select a deterministic window from existing metadata (for example, first qualifying moving window by stable sorted case ID); state why it is eligible. Do not cherry-pick a visually successful edit.
+3. Freeze an evaluation declaration JSON + SHA: exact file/case/window, armature and target bone/channel, selected keys, edit operation, intended changed descendants, non-target local channels, original and intended timestamps, tolerances, measurement units, evaluation views, optional FBX settings, expected stop gates and CASE mapping. No post-hoc widening of gates.
+4. If no existing real Action can be opened and associated with a reliable timestamp/rig contract, record **CASE D**. Do not reconstruct a replacement with new inference or invent an editability PASS.
 
-Before viewing new rig-level results, create a hashed declaration recording:
-- Eligible populations and exclusion reasons (missing source, ambiguous identity, invalid GT camera, no rig chain, no original neighbor).
-- Exact rig, rest, solver, renderer and timing configuration.
-- Deterministic case selection, random seed and sampling frame/sequence caps.
-- Metric definitions, evaluation-only GT access and uncertainty clustering.
-- A fixed interpretation contract for improvement, harm and unresolved cases.
-- Known W102 source-to-rig length-ratio limitations and their handling.
-Do not select only large W104 improvements. Include both improvement and harm strata, natural missing knees/ankles and wrists/elbows, complete-row no-op controls, high-motion segments, multi-actor/identity caveats, and at least one severe failure with existing BaseRig context. W104's already reported example frames are illustrative, not independent holdout evidence.
+## 2. PAIRED EDITABILITY PROBES (COPIES ONLY)
 
-## 2. PAIRED SOURCE-TO-RIG CONTRACT
+Use **M_Main** and exact copied baseline as the paired control. Do not apply R11 by default.
 
-Use the existing W102 BaseRig pipeline and, where possible, `scripts/w102_rig_review.py` with the existing skinned rig, rest snapshot, calibration, chain mapping and Blender executable. Only the 3D source pose is permitted to change between M_Main and R11. Preserve any pre-existing mixed-source/J1X arm policy exactly; do not accidentally present a frozen external arm track as newly recovered by S0. Report which bones actually consume S0 geometry.
+- **N0 null/reopen:** Copy an original Action to scratch, save/reopen without edits, sample all keyed frames and a declared set of between-key frames, and compare local channels, world bone transforms, keyframe counts/locations, scene timing and rendered poses to the original. Measure drift before interpreting any edit.
+- **E1 local motion-amplitude edit:** Apply a deterministic, bounded local rotation offset to **one already animated bone** over a predeclared short window (e.g. a modest forearm/upper-arm swing or leg-lift adjustment). Use only existing Blender Action editing, no new solver. Define the intended target and hierarchical descendants before execution. Confirm the edit changes the intended rig motion visibly, not merely numeric curves; verify all non-target **local** channels and non-descendant world transforms remain unchanged within the declared numerical tolerance. Descendant world changes are expected and must not be mislabelled harm.
+- **E2 local timing edit:** In an independent scratch copy, move a small selected group of keys on one declared track by a fixed positive/negative offset while preserving order and frame-domain bounds. Verify the intended phase/timing change and that other tracks retain their original keys and sampled local values. Do not infer high-FPS motion from 10 Hz data or silently interpolate.
+- **E3 reversibility:** In separate copies, apply exact inverse edits and compare Action value/key digests and sampled FK transforms to N0. If an inverse cannot exactly recover because of quaternion sign, key merging or Blender normalization, record the discrepancy and its animation impact rather than relaxing the gate.
+- **E4 save/reopen and FBX:** Save/reopen E1 and E2; compare edit effect and non-target preservation. If the existing export/import environment supports FBX, export a copied Action through **unchanged existing settings**, import into a clean scratch scene, and compare baseline and edited versions *relative to the unedited FBX round-trip drift*. Record rest-pose, bone naming, channel and timebase differences. If FBX is not available or reliable, label the Blender-only conclusion; do not silently claim FBX success.
 
-Verify:
-- Same actor, original frame index and timestamp on both conditions.
-- Identical target rig, rest and per-bone length.
-- Identical root/pelvis/thorax and zero-twist/IK policies.
-- Identical animation sampling and interpolation.
-- Identical camera, mesh, lights and viewport.
-- Reproducible Action/bone names, keyframe times and animation export identity.
-- Unchanged complete frames are byte/numerically identical where the path should be a no-op.
-- Missing/invalid source samples are not silently bridged or dropped.
-- No privileged GT, oracle or benchmark observation enters the exported candidate.
+Keep each intervention independent; never combine an E1/E2 edit into a new optimized or production policy.
 
-Do not claim an end-to-end production pipeline exists because evaluation-only Blender outputs render.
+## 3. TIMEBASE AND ANIMATION SEMANTICS
 
-## 3. PRIMARY RIG-LEVEL UTILITY COMPARISON
+For the W105 real clip, record original 50 fps timestamps, 199 keyed source-frame indices and saved Blender 30 fps scene rate. Quantify actual duration/playback factor and whether save/reopen or FBX preserves that mismatch. An **optional scratch-only 50 fps scene** may demonstrate the timebase effect, but it is not a production fix. Keep original 10 Hz 3DPW bank semantics separate and do not interpret 30 fps/50 fps Blender playback as measured temporal reconstruction.
 
-On predeclared natural PARTIAL cases, compare M_Main vs R11 through the same rig. Report, per split and anatomical stratum:
-- Source-level root-relative 3D MPJPE and per-joint/limb errors against the same evaluation-only GT.
-- Source-level knee branch, limb direction, torso and depth-sign error changes.
-- Rig bone direction and relevant joint-angle changes relative to the corresponding source and, where defensible, GT geometry mapped through the same fixed rig reference.
-- Source-to-rig discrepancy (angular, reach and length-ratio effects), separating improved source geometry from unchanged IK artifacts.
-- Invalid or degenerate rig poses, extreme knee/elbow folds, bone flips, foot/hand endpoint behavior, and original-timestamp temporal events.
-- Relevant contact/foot-slide *proxies* only if computable from existing inputs; no unmeasured contact GT or world-trajectory accuracy claim.
-- Action/keyframe editability of the diagnostic export (inspectable animation curves and timing, not a claim of style-authoring capability).
-- Material regressions and severe-tail distributions, not just average improvement.
+Report original CONSTANT interpolation and its consequences for in-between-frame appearance. Do not change interpolation to make the edit appear smoother. Inspect the existing flicker and missing root/contact semantics as known limitations; do not repair them or claim that the test covers them.
 
-Use existing W102 event definitions (for example source/rig direction steps >45 degrees and knee-branch rules) where compatible. Declare any additional rig-specific threshold from existing W95/W102 contracts or physical rig geometry before evaluation; do not threshold-sweep to force a favorable verdict.
+## 4. EVIDENCE AND CONTROLS
 
-Treat GT-referenced 3D and perceptual animation quality as separate evidence. A good MPJPE without better rig motion is not a pass.
+Produce machine-readable per-case baseline/edit/reopen/round-trip reports with original source IDs, Action and rig hashes, key/frame/timestamp alignment, per-channel value/keyframe deltas, quaternion/FK/world-transform deltas, root and unaffected-bone preservation, scene FPS, render evidence and manifest. Include at least:
+- Synthetic minimal armature/Action probe to test expected local-vs-descendant FK behavior, edit inversion, quaternion equivalence and serialization independently of the W105 rig.
+- Actual existing W105 3DPW BaseRig Action(s) and the GT-free historical real-clip Action; if unavailable, report exact missing prerequisites and a narrower verdict, never a synthetic-only product PASS.
+- No-op and unrelated-channel controls; unedited FBX round-trip reference; deterministic repeated run on copies; missing-key/CONSTANT interpolation boundary; start/end window and negative-key cases.
+- One fixed-view before/after paired Blender render or contact sheet for each real edit, plus a neutral numeric report. Private source frames stay local. Do not infer user preference, expressive style transfer, contact quality or unseen-scene performance.
+- Focused tests plus relevant existing Action/export/rig tests, not a blanket full regression absent a shared production change. Report executed, skipped, failing and nonexecuted checks separately.
 
-## 4. TEMPORAL AND IDENTITY BOUNDARIES
+A significant result is a **visible, controlled rig edit with preservation and replay**, not simply a modified F-curve or a passing unit test. Distinguish synthetic contract evidence, actual saved-Action behavior, real-clip playback and future product usability.
 
-Compare consecutive original same-person observations without crossing actor, sequence, missing or ambiguous boundaries. Preserve the 3DPW bank's sparse 10 Hz sampling: do not present held/interpolated 30/50 fps playback as measured high-frequency reconstruction.
+## 5. PREDECLARED DECISION RULES
 
-Quantify whether restoration causes or removes abrupt limb/torso direction steps, knee-branch changes, and frame-to-frame discontinuities at natural mask transitions (valid -> invalid -> valid). Distinguish a stable but wrong pose from temporal jitter.
+Before viewing results, specify and freeze numerical tolerances justified by Blender quaternion/FK precision and the original no-op/FBX drift. Do not set tolerance so wide that a visibly different pose passes. Distinguish channel-value equivalence from quaternion-sign equivalence and world-transform equivalence.
 
-Keep identity/coverage failures visible in the full denominator. Do not fill another actor's missing joints or infer association from GT at runtime. The original W102 selected-subject limitation is unchanged.
+- **CASE A — Bounded Action editability supported:** N0 identity holds; E1 produces a visible intended local motion change without undeclared non-target change; E2 changes intended timing while other tracks remain unchanged; inverse and Blender save/reopen preserve the declared contract; real W105 Action(s) are tested. FBX may be labelled a separate unresolved gate if not available; do not claim end-to-end export unless it passes.
+- **CASE B — Action boundary fails:** A real Action is available and measured, but local editing, preservation, inversion or save/reopen violates the predeclared contract, or the intended visible edit cannot be achieved. Attribute the first failing layer.
+- **CASE C — Mixed / inconclusive:** The probes work only in synthetic/legacy data, only for one track or scene, or timing/export effects cannot be isolated; report conditional sub-results and failures.
+- **CASE D — Contract blocked:** Required frozen artifacts, reliable Action identity, Blender/rig environment, source timing, reproducible test setup or baseline equivalence cannot be established. Stop without fabricating results.
 
-If temporal context suggests a possible solution, document evidence only. Do not implement propagation, filtering, prediction or hold policies.
-
-## 5. REAL-VIDEO QUALITATIVE EVIDENCE
-
-Use `examples/production_demo/source.mp4` only as the previously authorized historical real-video diagnostic. Source URL and redistribution rights are undocumented; do not redistribute or replace the source video, and do not call it unseen. Verify its actual content/visibility and W102's 199-frame/50-fps provenance before use.
-
-Produce matched GT-free M_Main and R11 rig render(s) or viewable local side-by-side animation where technically feasible, preserving the exact original timestamps and fixed rig. The clip's naturally missing observations are left wrist only; explicitly state that it does **not** validate low-confidence leg recovery. Evaluate whether the arm-side change is visually useful or harmful, temporal behavior and whether the output remains editable. No GT 3D accuracy may be claimed.
-
-For naturally missing legs, use selected 3DPW source images and corresponding fixed-rig renders with GT in a separate labelled evaluation-only panel. Keep the image/rig camera distinction explicit. If Blender or render dependencies fail, preserve the blocker; do not patch the solver or change cameras to make a candidate look better.
-
-Do not publish external media or create new data-acquisition tasks.
-
-## 6. HARM, ALTERNATIVE EXPLANATIONS AND TRANSFER LIMITS
-
-Inspect *all* natural R11 harm cases (including the reported `outdoors_parcours_00` frame 1018) and severe/new-wrong-knee cases, not only the largest gains. Stratify by restored joint type, raw confidence, number of restored tokens, pose/occlusion, image location, and observed 2D error where evaluation GT is valid.
-
-Distinguish:
-A. Raw 2D localization failure / low-confidence hallucination.
-B. Frozen S0 response to validity or input geometry.
-C. Crop change (already controlled in W104; do not repeat the full factorial).
-D. Source-to-rig/IK limitation.
-E. Identity/coverage uncertainty.
-F. GT, annotation or camera validity.
-G. Unresolved visual ambiguity.
-
-Do not claim low-confidence coordinates are universally trustworthy. W104 found only 42.5% PCK@0.10 among restored limb tokens and 16–21% for ankles, yet an average 3D gain relative to folded missing-limb predictions. Report that distinction and any observed rig regressions.
-
-Use VAL/TEST as reused diagnostic data; neither is an untouched holdout. Do not infer population-wide or cross-detector generalization from the 199-frame clip or 33-video paired subset. No new detector run, training or alternative method is authorized.
-
-## 7. INTERPRETATION AND DECISION CASES
-
-Predeclare the operational metrics and any bounded harm thresholds before viewing new rig results. Use video-clustered uncertainty where meaningful; do not treat many frames of one video as independent.
-
-**CASE A — Downstream animation utility supported (conditional):** Paired rig evidence on naturally partial same-person inputs shows material improvement in anatomical fidelity or animation usability from fixed R11, with tolerable measured harms and no hidden changes to rig or temporal policy. Explicitly scope by observed joints/videos and note that production adoption is still unauthorized.
-
-**CASE B — Source gain does not translate:** R11 improves source-level reconstruction but fixed-rig output is not materially better, or meaningful rig/temporal harms offset the benefit. Attribute whether the limiting mechanism is source, IK, or representation.
-
-**CASE C — Mixed or unresolved:** Improvement is confined to some joints/scenes, real-video quality is indeterminate, or source/rig/identity mechanisms cannot be separated. Preserve negative evidence and report the limits.
-
-**CASE D — Contract blocked:** Required source identity, GT separation, rig equivalence, original timestamps, provenance or reproducible evaluation cannot be established. Do not manufacture a qualitative PASS.
-
-The CASE is an evidence verdict, **not** a decision to change the production observation policy. No CASE authorizes a threshold change, default change, model replacement, retargeting fix, training, production integration or a new downstream subsystem.
-
-## 8. TESTING
-
-Run focused synthetic and stored-real tests for:
-- W104 source geometry and input identity; M/R11 no-op on complete frames.
-- GT-free construction and correct evaluation-only GT isolation.
-- Same-actor/frame/timestamp and split alignment.
-- Rig/rest/chain/camera equality between conditions.
-- Source-to-rig angular metrics and length-ratio handling.
-- Knee/limb/temporal events including degenerate and missing cases.
-- Animation Action/keyframe identity and frame spacing.
-- No hidden interpolation across invalid samples.
-- Case selection, uncertainty and denominator accounting.
-- Renderer exit codes and output manifests when Blender runs.
-
-Execute relevant W104/W102 focused regression tests if the new diagnostic imports shared helpers. Broad production regression is not required when no shared production contract changes. Report exactly which tests ran, failed, were fixed, or were skipped. No test or render may be reported PASS unless executed.
+The original real-clip 30/50 fps mismatch is a **known negative finding**, not automatically a failed local edit; it prevents any claim of native-time playback or complete end-to-end authoring readiness. A Blender-only CASE A must remain explicitly Blender-only. No CASE authorizes production code or architecture changes.
 
 ## STOP CONDITIONS
 
-STOP and report evidence-bounded CASE D or a narrower verdict if:
-- The frozen M/R11 artifact or original source identity cannot be established.
-- Required GT-free/evaluation-only separation fails.
-- Rig equivalence cannot be maintained without modifying historical solvers/assets.
-- Actor/frame/time alignment is ambiguous.
-- New results require adjusting masks, threshold, S0, IK or render settings.
-- The real-video clip cannot be used without unauthorized redistribution or data changes.
-- Another project or active Agent job would be disrupted.
-- Git publication or automation lock ownership is unsafe.
-- A Major Architecture Decision or user-only authorization is needed.
-- The central animation-utility question has received sufficient supported positive, negative or mixed evidence.
+STOP and report CASE D or a narrower negative outcome if frozen artifacts/hashes cannot be verified; a required file is missing; GT enters edit construction; edit results require modifying original Action/rig; a meaningful edit cannot be predeclared without selecting on success; timebase cannot be associated with source; exporter requires changing production settings; identity/camera/reference contracts are conflated; existing worker lock/branch/push contract is violated; or unexpected resource, license, privacy or safety problems arise.
 
-Do not automatically expand to training, a new dataset, production integration, temporal modeling, root/IK repair or style authoring. A valid negative or blocked outcome is completion.
+Do not repair the underlying product system, implement a new editor, retargeting policy, root-motion method, frame-rate fix, automatic filtering, observation threshold or style subsystem in response to a failure. Negative evidence is valid completion.
 
-## FINAL REPORT
+## FINAL EVIDENCE-ONLY REPORT
 
-Create `docs/105_WORKLOG_SOURCE_ONLY_RESTORATION_RIG_UTILITY.md` with:
-- Starting HEAD, branch, worktree and instruction identity.
-- Verified W102–W104 artifact hashes and any necessary deterministic reproduction.
-- Predeclared case/metric contract and selection manifest.
-- Full population and selected-rig denominators.
-- Same-source/same-rig invariants and Blender/Action provenance.
-- M_Main vs R11 source and rig metrics, uncertainty, temporal and harm distributions.
-- Representative improvement, failure, and regression renders with exact provenance.
-- Real-video GT-free quality judgment and its explicit limits.
-- Attribution among observation, S0, retargeting, identity and reference errors.
-- Executed and omitted tests; resources, changed files and exact reproduction commands.
-- CASE A/B/C/D with negative and unresolved findings.
+Write `docs/106_WORKLOG_EXISTING_RIG_ACTION_EDITABILITY_AND_ROUNDTRIP.md` with: original commit and exact data/rig/Action fingerprints; predeclared gates and SHA; selected cases/keys and why; paired synthetic/real results; native-time versus Blender-time measurements; before/after/inverse/null controls; save/reopen and optional FBX drift; concrete edit visual evidence; preservation violations and negative examples; test counts, provenance, reproduction commands, scratch outputs and resource use; precise CASE A/B/C/D; and clear separation of current implementation from future animation authoring.
 
-Do NOT include Next Work Recommendation, Next Architecture Decision, Recommended Next Experiment, Proposed Next Batch or Next Implementation Plan. Do not copy this instruction into the Worklog.
+Explicitly state whether the result proves only **editability of an existing Blender Action** or also an FBX round-trip. Do not claim user intent understanding, style transfer, production animation quality, GT-free root/contact reconstruction or user-facing editing UX.
 
-Follow the existing automation worker's final publication protocol. Add `AUTOMATION_BATCH_STATUS: COMPLETE` and `BATCH_NUMBER: 105` only after all authorized artifacts and Worklog are finalized and safely committed. Preserve any failed/interrupted state without a false COMPLETE marker.
+Do **NOT** include Next Work Recommendation, Next Architecture Decision, Proposed Next Batch or Next Implementation Plan. No Agent-led next-work suggestion.
 
 ## COMPLETION CONDITION
 
-The Batch is complete when paired, reproducible evidence answers:
-
-**"Does the fixed W104 source-only raw-joint restoration improve actual rig animation under the existing AnimCV BaseRig and temporal contracts, or are its 3D gains undermined by retargeting, low-confidence localization, temporal artifacts or identity/coverage limitations?"**
-
-A supported negative, mixed, or blocked outcome is valid completion. Do not implement the method, alter production defaults, choose the next Architecture direction, or initiate downstream work.
+Complete only when the declared real Action contract has been tested or a precise blocker has been preserved, evidence and limitations are written, focused tests and artifact manifests are recorded, and the final Worklog plus permitted diagnostic files are committed under the existing worker protocol. Add `AUTOMATION_BATCH_STATUS: COMPLETE` and `BATCH_NUMBER: 106` **only after** all outputs and Worklog are finalized and safely committed. Do not modify `docs/next_batch.md`, the existing baseline or any production path. A supported failure, mixed outcome or blocked result is valid completion.

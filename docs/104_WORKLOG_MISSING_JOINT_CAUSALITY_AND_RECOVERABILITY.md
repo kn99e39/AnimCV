@@ -509,3 +509,6 @@ no package changed.
 
 Final source revision: the commit that adds this Worklog on `arch/single_frame_first`, the next commit after
 `218335e`. The COMPLETE marker is added in a separate final commit.
+
+AUTOMATION_BATCH_STATUS: COMPLETE
+BATCH_NUMBER: 104

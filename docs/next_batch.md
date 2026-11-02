@@ -1,170 +1,216 @@
-# BATCH 104 — Missing-Joint Causality and Recoverability in Frozen S0
-
-## DIRECTION
-
-Continue AnimCV on the existing `arch/single_frame_first` branch only. Verify the remote HEAD, clean/safe execution workspace, prior Worklog completion and current instruction blob before any work. Never create, switch, merge, rebase, rename, delete or reset branches; never force-push or resolve unrelated conflicts.
-
-Read `AGENTS.md`, `PRODUCT_VISION.md`, `Architecture_v3_FramePose.md`, `COORDINATE_CONVENTIONS.md`, the cumulative architecture/codebase audit and Worklogs 97–103 (including 99A). Treat Worklogs as evidence, not as automatic proof. Respect the automation worker's exclusive execution claim and the immutable, ChatGPT-owned `docs/next_batch.md`. Do not edit, delete, archive, reproduce or rewrite this instruction file.
-
-This is an **evidence-only Estimator/Observation architecture diagnostic**, not a new model or runtime implementation. Execute on the authorized Main environment if the W102/W103 frozen artifacts and execution stack are available and do not interfere with other work. Do not silently move to LabServer63/69, install dependencies, change precision or alter the production environment.
-
-## PURPOSE
-
-W102 established that actual M1 RTMDet/RTMPose observations can improve frozen S0 over benchmark 2D on correctly associated people. W103 finished with CASE C and established a much sharper distinction:
-
-- Of 150 M1 severe (>200 mm) same-person frames, 133 have missing limb joints; 185/199 wrong knee-branch cases have a missing joint in the affected leg.
-- Among 4,803 well-observed M1 rows, only 3 severe cases remain, and 1/4,051 eligible knees has a wrong branch.
-- M1's gain over benchmark observations is concentrated where M1 supplies more valid joints: M−B MPJPE ≈ −46.5 mm on 2,457 such rows, versus +0.28 mm on 4,083 identical-mask rows.
-- W102's Mmask probe changed masks and sometimes crop geometry together. W103's crop-nearly-unchanged subset still lost 35.9 mm when M-only joints were removed, but this is not a randomized or full factorial causal intervention.
-- On well-observed rows, limb depth-sign errors remain; W103's 2D-neighbor attribution is mixed and mostly unresolved. HMR2's better results are contextual, not proof of an RGB causal effect.
-- W103 identified a GT root-behind-camera defect in one 3DPW sequence. Its primary result and reference-validity sensitivity are both preserved; do not silently erase either.
-
-The next architecture uncertainty is **not** whether missingness correlates with failure. It is whether the absence of specific model-visible joints *causally produces* the observed failures, whether changes in the valid-joint crop amplify the effect, and what usable evidence exists to recover those joints without privileged inference inputs.
-
-The product objective remains editable, controllable rig animation. A better MPJPE alone does not establish usable animation, and this Batch must not become an endless reconstruction-only optimization loop.
-
-## CENTRAL INTENT
-
-**When frozen S0 receives the same real M1 pose with predeclared joint evidence selectively removed, does the removal itself cause severe 3D/knee failures, independently of crop normalization? For naturally missing joints, how often does existing, GT-free observation evidence actually contain recoverable information, and where is new information or a different architecture likely necessary?**
-
-The answer must separate: (1) causal sensitivity to missing tokens, (2) normalization/crop interaction, (3) reliability of currently suppressed raw 2D detections, (4) temporal availability of independently observed joints, and (5) failures not explained by these mechanisms.
-
-No conclusion in this Batch authorizes adoption of a new mask rule, temporal reconstruction, visual model, or runtime fallback.
+# BATCH 105 — Source-Only Joint Restoration: Rig-Level Utility and Failure Boundaries
 
 ## CURRENT ASSESSMENT — SUCCESS / FAILURE / UNCERTAINTY
 
-Succeeded: W102 same-stack B/M comparison and W103 input-tensor reproduction, missingness stratification, video-aware statistics and reference-validity sensitivity.
+W103 (CASE C) separated the frozen S0 failure regimes: most severe frames and wrong-knee branches coincide with missing limb observations, while residual depth-sign errors on complete inputs have mixed and largely unresolved causes. W104 (declared CASE A) established a controlled causal effect of removing valid joints. On 4,803 well-observed rows, removing tokens at a fixed crop increased MPJPE by +84.5 mm; recropping alone contributed +10.0 mm on average, with large out-of-range exceptions for bilateral leg loss. In 1,223 naturally partial same-person rows, restoring the *existing* below-0.3 raw RTMPose coordinates (R11) improved MPJPE by 33.9 mm, reduced severe frames 133 to 24, and fixed 174 knee branches while newly breaking 13. These are strong frozen-S0 diagnostic results, not approval to change production masking.
 
-Failed or limited: missing-joint frames still exhibit catastrophic errors; the W102 mask intervention is partly confounded by crop; same-person evaluation excludes identity failures; real-video/rig usability remains unproven. Most complete-input depth-sign errors have no comparable independent 2D neighbor.
+The decisive missing evidence is downstream **animation usefulness**. W104's real 199-frame video contains only 38 left-wrist omissions and no natural knee/ankle omissions; its GT-free R11 output changed, but the quality of that change is unknown. W104 did not generate a new BaseRig render. W102 showed that source-to-rig discrepancies can exceed 90 degrees under the existing fixed-length zero-twist IK, so source MPJPE gains need not translate to better editable rig motion. W104's evaluation also excludes other-person/ambiguous actor associations, contains reused 3DPW TEST data, and has a limited low-confidence failure distribution. No unseen generalization or production benefit has been demonstrated.
 
-Uncertain: whether single-joint removal is sufficient to induce a knee/severe error, whether anatomical pattern or number of removed joints matters more, how much crop normalization contributes, whether low-confidence raw M1 joints are useful or dangerous, and whether neighboring real frames contain the missing evidence.
+This Batch must close the *source geometry -> fixed rig animation* evidence gap, inspect harm and distribution limitations, and determine whether the diagnostic R11 effect remains useful in the actual animation medium. It must not adopt R11 as a production policy or expand into another estimator research loop.
 
-Why this Batch: it can reduce these uncertainties **without a Major Architecture Decision** by testing fixed S0 with isolated, evaluation-only counterfactual inputs. Architecture selection remains with the human Reviewer.
+## HUMAN-READABLE SUMMARY
+
+**DIRECTION:** Evaluate the downstream animation consequences and failure boundaries of W104's source-only raw-joint restoration, with frozen geometry, rig, and observation contracts.
+
+**PURPOSE:** Determine whether W104's measured reconstruction gain produces better rig-compatible motion rather than merely improving a 3D metric, and identify where the gain is negated by low-confidence hallucinations, temporal instability, identity coverage, or existing IK/retargeting limitations.
+
+**CENTRAL INTENT:**
+
+> With the existing observation source, frozen S0, and exactly the same BaseRig/FK/IK path, does the W104 R11 diagnostic produce a demonstrably more faithful and usable animation than M_Main on naturally partial observations, without material new animation failures? Where is any remaining failure owned: 2D observation, frozen S0, or the fixed retargeting contract?
+
+**DO:** Verify W102–W104 identities; compare M_Main and fixed R11 on the same real actor/time samples; generate and inspect matched BaseRig animations where feasible; quantify source-to-rig attribution, temporal and anatomical consequences, harms, and unchanged complete-frame controls; include the existing real-video clip as a limited GT-free diagnostic.
+
+**DO NOT:** Modify production observation thresholds, masks, S0, checkpoints, detector, tracking, crop, IK, retargeting, root orientation, animation semantics, rig assets or runtime. Do not introduce a new imputation/temporal policy, fuse HMR2, train, optimize the render, acquire new footage, or implement an animation authoring subsystem.
+
+**DECISION ENABLED:** Whether source-only low-confidence restoration has evidence of *downstream animation utility* sufficient to justify a later human-owned observation-policy decision, or whether rig/identity/temporal risks make that claim premature. No CASE approves implementation.
+
+## DIRECTION
+
+Continue only on the existing branch `arch/single_frame_first` in `kn99e39/AnimCV`. Read `AGENTS.md`, `PRODUCT_VISION.md`, `Architecture_v3_FramePose.md`, `Architecture_v2.md` for downstream ownership, `COORDINATE_CONVENTIONS.md`, the cumulative audit, W95–W104 (especially W102 rig review, W103 CASE C and W104 CASE A), and the current automation worker's safety contract. Confirm remote HEAD, instruction blob SHA, dedicated checkout and running-job/lock state before doing any work.
+
+No branch creation, switching, deletion, merge, rebase, reset, force-push or conflict resolution. Do not modify `docs/next_batch.md`: it is ChatGPT-owned and READ-ONLY. Preserve W104's COMPLETE marker and every historical verdict. Use the worker's existing lock, completion and publication protocol. Do not create or archive a copy of this prompt.
+
+## PURPOSE
+
+W104 establishes a promising *diagnostic intervention*, not a safe policy. A lower MPJPE can coexist with wrong limb direction, incorrect contact, motion pops, unnatural fixed-length IK, uneditable curves, or subject identity failures. The Product Vision requires validation in the final animation medium and avoidance of an endless isolated pose-estimator loop. Test that exact gap without changing the method.
+
+## CENTRAL INTENT
+
+Can the source-only R11 observation condition, already evaluated in W104, improve **actual rig animation fidelity and usability** compared with the unchanged M_Main condition, on the same fixed frames and rig, while preserving all negative examples and distinguishing source-pose error from retargeting artifacts?
 
 ## HISTORICAL BASELINE
 
-Preserve all Worklogs 95–103 and their original verdicts, artifacts, hashes, data splits, image bytes, actor IDs, camera/coordinate conventions, checkpoints, bank, W102 B_Main/M_Main/Mmask/Mconf/Moa, W103 input and similarity declarations, W97/W98 external HMR2 evidence, W99A batch defaults and existing BaseRig/IK/Blender outputs.
+Preserve:
+- W102 B_Main/M_Main observations, predictions, same-person association accounting and historical real clip; W102 BaseRig rest, calibration, FK/IK, cameras, zero-twist local policy and rendered cases.
+- W103 source/GT validity sensitivity, well/partial/mislocalized groups, severe/knee/depth failures, qualitative identities and frozen HMR contextual outputs.
+- W104 F00/F10/F01/F11, R11/R10/R01/Rc, privileged P_oracle/P_bench, predeclared declaration hash `6a64c8d1ffc57f928fdf2fbaaf40dffd5b848a927b662e90ff584257bfbae487`, and the final CASE A report.
+- Original RGB bytes, actor IDs, timestamps, camera and coordinate contracts, S0 weights, model-visible tensor construction, M1 batch_size=1 and production 0.3 validity threshold.
+- Original GT-free runtime boundary: GT, benchmark identities and oracle projections are evaluation-only.
+- W99A production batch_size=8 default and W100 M8 parity failure.
+- No historical test, Worklog, source artifact, model or rig may be rewritten.
 
-The original W103 CASE C is not rewritten. Its invalid-root reference sensitivity must remain separately identifiable. The same-person 3DPW population is repeatedly used for architecture diagnosis and is **not an untouched holdout**.
+W104's raw outputs and manifest are stored locally on Main, not committed. Verify their availability and full recorded hashes before relying on them. If unavailable, reproduce only the fixed W104 conditions needed for this Batch using its published scripts and declared identity, in a fresh non-overwriting output directory, and report the additional run explicitly. Do not fabricate evidence or silently replace an artifact.
 
 ## PRESERVE / CHANGE ONLY / DO NOT TUNE
 
-PRESERVE: frozen S0 weights, exact architecture, confidence and mask policy (including current 0.3 rule), production observation adapter, checkpoint/bank, M1 source data, crop and derived-joint contracts, execution precision/batching, historical metrics and artifacts, rig contracts and default behavior.
+PRESERVE: Frozen M_Main and R11 source geometries, actor/frame selection semantics, exact timestamps, fixed BaseRig/skinned equivalent, W102 rest and FK/IK/zero-twist policy, camera, renderer, animation interpolation, and identical per-case rig configuration.
 
-CHANGE ONLY: isolated W104 diagnostic scripts, controlled counterfactual input tensors, new evidence/figures/manifests, focused tests, evaluation-only fixed-rig comparisons when justified, and the single new `docs/104_WORKLOG_MISSING_JOINT_CAUSALITY_AND_RECOVERABILITY.md`.
+CHANGE ONLY: New isolated W105 diagnostic/evaluation scripts, focused tests, fresh evidence manifests, matched rig exports/renders and `docs/105_WORKLOG_SOURCE_ONLY_RESTORATION_RIG_UTILITY.md`. All edits must be diagnostic-only. No `src/` production module edits. Do not modify `docs/next_batch.md` or existing W102–W104 files.
 
-DO NOT TUNE: S0/MMPose/HMR2/J1X weights; detector thresholds; validity/confidence policy; camera mapping; crop rule; skeleton; IK/retargeting; smoothing; interpolation; missing-frame policy; model fusion; runtime filtering. No production `src/` changes. Do not create or modify `docs/next_batch.md`, historical Worklogs, previous outputs or automation infrastructure.
+DO NOT TUNE: Joint visibility threshold, raw coordinate choice, crop, confidence, association threshold, S0 settings, temporal smoothing, motion interpolation, FK/IK reach, target bone lengths, pelvis/thorax ownership, root motion, contact policy, cameras, material/render settings, or selection/acceptance thresholds after viewing results.
 
-## 1. PREFLIGHT AND DECLARATION
+## 1. PREFLIGHT, DATA AND DECLARATION
 
-Verify artifact identities from W102/W103, current source and frozen model hashes, raw M1 observation provenance, same-person association, image/timestamp alignment, and availability of the authorized Main inference environment. If the source observations needed for a probe are not retained, explicitly mark that probe unavailable rather than manufacturing them.
+Verify W104's remote COMPLETE marker and the instruction/source/checkpoint/bank identities. Reconstruct or verify byte identity for the M_Main and R11 geometries on all 1,223 naturally partial same-person rows and the unchanged complete-row controls. Verify no GT is consulted by R11 input construction. Record source image hashes, source videos, actor identities, original frame numbers and timestamps. Keep VAL and TEST separate, and report the entire W102 actor-frame/identity denominator; never turn same-person conditional quality into whole-video success.
 
-Before looking at new S0 outcomes, persist a declaration containing: population, sampling seed, target joint sets, mask patterns, confidence policy, crop-factorial construction, control groups, statistical units, outcome metrics, qualitative selection rules and interpretation gates. Hash this declaration. Its construction may inspect source 2D inputs and W103 missingness frequencies, but must not use S0 error or GT to select favorable intervention patterns.
+Before viewing new rig-level results, create a hashed declaration recording:
+- Eligible populations and exclusion reasons (missing source, ambiguous identity, invalid GT camera, no rig chain, no original neighbor).
+- Exact rig, rest, solver, renderer and timing configuration.
+- Deterministic case selection, random seed and sampling frame/sequence caps.
+- Metric definitions, evaluation-only GT access and uncertainty clustering.
+- A fixed interpretation contract for improvement, harm and unresolved cases.
+- Known W102 source-to-rig length-ratio limitations and their handling.
+Do not select only large W104 improvements. Include both improvement and harm strata, natural missing knees/ankles and wrists/elbows, complete-row no-op controls, high-motion segments, multi-actor/identity caveats, and at least one severe failure with existing BaseRig context. W104's already reported example frames are illustrative, not independent holdout evidence.
 
-Use the W102/W103 same-person populations for paired accuracy, preserving the complete actor-frame and association denominators separately. Stratify by split, source video, actor, posture, visibility, limb and baseline error; never filter failures out after results are seen. Use the physically invalid GT-root sequence as a separately reported sensitivity rather than silently deleting it.
+## 2. PAIRED SOURCE-TO-RIG CONTRACT
 
-## 2. CONTROLLED JOINT-REMOVAL EXPERIMENT
+Use the existing W102 BaseRig pipeline and, where possible, `scripts/w102_rig_review.py` with the existing skinned rig, rest snapshot, calibration, chain mapping and Blender executable. Only the 3D source pose is permitted to change between M_Main and R11. Preserve any pre-existing mixed-source/J1X arm policy exactly; do not accidentally present a frozen external arm track as newly recovered by S0. Report which bones actually consume S0 geometry.
 
-Use **real M1 well-observed input frames** as the intervention substrate. Construct deterministic counterfactual missingness from the original valid 2D observations without using GT to form the candidate.
+Verify:
+- Same actor, original frame index and timestamp on both conditions.
+- Identical target rig, rest and per-bone length.
+- Identical root/pelvis/thorax and zero-twist/IK policies.
+- Identical animation sampling and interpolation.
+- Identical camera, mesh, lights and viewport.
+- Reproducible Action/bone names, keyframe times and animation export identity.
+- Unchanged complete frames are byte/numerically identical where the path should be a no-op.
+- Missing/invalid source samples are not silently bridged or dropped.
+- No privileged GT, oracle or benchmark observation enters the exported candidate.
 
-Predeclare representative patterns from the observed W103 missingness distribution, including single-joint hip/knee/ankle and shoulder/elbow/wrist removal, same-limb multi-joint loss, bilateral loss, and count-matched unrelated-joint negative controls. Keep each sample's original 2D coordinates and confidence unchanged except where the declared intervention explicitly removes evidence.
+Do not claim an end-to-end production pipeline exists because evaluation-only Blender outputs render.
 
-Implement and verify a **2 × 2 factorial** for each eligible sample/pattern:
-- F00: original valid joints and original crop (frozen M_Main control).
-- F10: intervention mask with the **original fixed crop** (mask-only diagnostic).
-- F01: original validity but crop recomputed as though the selected joints were missing (crop-only diagnostic).
-- F11: intervention mask and production-consistent recrop (combined missingness diagnostic).
+## 3. PRIMARY RIG-LEVEL UTILITY COMPARISON
 
-F01/F10 are **counterfactual diagnostics, not valid production observations**. All conditions must honor canonical joint identity, derived midpoint rules, neutral sign state and exact S0 input shape; record any pattern for which a well-defined factorial cannot be constructed. No GT, target 3D or HMR2 output may enter S0 inputs. Verify F00 reproduces the stored M_Main prediction to the declared numerical budget before interpreting changes.
+On predeclared natural PARTIAL cases, compare M_Main vs R11 through the same rig. Report, per split and anatomical stratum:
+- Source-level root-relative 3D MPJPE and per-joint/limb errors against the same evaluation-only GT.
+- Source-level knee branch, limb direction, torso and depth-sign error changes.
+- Rig bone direction and relevant joint-angle changes relative to the corresponding source and, where defensible, GT geometry mapped through the same fixed rig reference.
+- Source-to-rig discrepancy (angular, reach and length-ratio effects), separating improved source geometry from unchanged IK artifacts.
+- Invalid or degenerate rig poses, extreme knee/elbow folds, bone flips, foot/hand endpoint behavior, and original-timestamp temporal events.
+- Relevant contact/foot-slide *proxies* only if computable from existing inputs; no unmeasured contact GT or world-trajectory accuracy claim.
+- Action/keyframe editability of the diagnostic export (inspectable animation curves and timing, not a claim of style-authoring capability).
+- Material regressions and severe-tail distributions, not just average improvement.
 
-Analyze main effects and interactions rather than attributing F11−F00 entirely to the mask. Distinguish the number of removed joints, their anatomical location and crop changes. Count newly induced failures and newly improved cases, not only average errors. If large crop shifts or degenerate masks make a condition uninterpretable, retain the denominator and label it as such.
+Use existing W102 event definitions (for example source/rig direction steps >45 degrees and knee-branch rules) where compatible. Declare any additional rig-specific threshold from existing W95/W102 contracts or physical rig geometry before evaluation; do not threshold-sweep to force a favorable verdict.
 
-## 3. NATURALLY MISSING JOINTS: RECOVERABILITY BOUNDARY
+Treat GT-referenced 3D and perceptual animation quality as separate evidence. A good MPJPE without better rig motion is not a pass.
 
-On the existing naturally partial M1 rows, distinguish **missing observation** from **discarded but finite raw keypoint prediction**. Audit what was actually retained upstream of the validity policy. Record pixel bounds, confidence, finite values, missing-joint identity and source hashes.
+## 4. TEMPORAL AND IDENTITY BOUNDARIES
 
-Where raw M1 below-threshold coordinates are available, construct an evaluation-only diagnostic input that restores them under a **fixed, predeclared rule based solely on source availability**. Do not search confidence thresholds or select restored joints based on GT accuracy or predicted 3D improvement. Keep the original production M_Main condition unchanged. Separate the effect of newly added joint coordinates, confidence values and crop changes when the available evidence supports it. Compare the restored 2D coordinates to GT **after** inference, with the COCO/SMPL semantic mismatch acknowledged.
+Compare consecutive original same-person observations without crossing actor, sequence, missing or ambiguous boundaries. Preserve the 3DPW bank's sparse 10 Hz sampling: do not present held/interpolated 30/50 fps playback as measured high-frequency reconstruction.
 
-Use existing benchmark observations and, if coordinate semantics and camera validity permit, GT projections as **explicitly privileged reference/upper-bound counterfactuals** only. They are not GT-free candidates and cannot be used to claim deployment feasibility. Report the exact missingness and support conditions under which each comparison is meaningful. Do not mix oracle/benchmark results with real M1 outcomes in one success rate.
+Quantify whether restoration causes or removes abrupt limb/torso direction steps, knee-branch changes, and frame-to-frame discontinuities at natural mask transitions (valid -> invalid -> valid). Distinguish a stable but wrong pose from temporal jitter.
 
-For neighboring real M1 frames, audit how often a missing joint is independently observed before/after the target frame in the **same verified person track**, at original timestamps. Characterize gaps, motion, occlusion and association uncertainty. This is a measurement of **potential temporal evidence**, not an interpolation/propagation implementation. Do not fill missing joints using GT or future frames and then call the result a valid single-frame estimator.
+Keep identity/coverage failures visible in the full denominator. Do not fill another actor's missing joints or infer association from GT at runtime. The original W102 selected-subject limitation is unchanged.
 
-If the retained M1 artifacts do not expose pre-threshold coordinates, report that limitation and complete the factorial and temporal availability portions that remain valid.
+If temporal context suggests a possible solution, document evidence only. Do not implement propagation, filtering, prediction or hold policies.
 
-## 4. OUTCOMES AND CAUSAL ACCOUNTING
+## 5. REAL-VIDEO QUALITATIVE EVIDENCE
 
-Use fixed W102/W103 metric definitions:
-- Root-relative MPJPE and per-joint/limb errors.
-- Severe MPJPE > 200 mm and severe-tail quantiles.
-- Knee branch, bend eligibility, limb directions and depth-sign errors.
-- Torso orientation and original-neighbor temporal events.
-- Validity/crop shifts and model-visible tensor differences.
-- Changed and newly introduced failures, recovery and collateral harm.
-- Actual coverage and association denominators (not accuracy only on surviving rows).
+Use `examples/production_demo/source.mp4` only as the previously authorized historical real-video diagnostic. Source URL and redistribution rights are undocumented; do not redistribute or replace the source video, and do not call it unseen. Verify its actual content/visibility and W102's 199-frame/50-fps provenance before use.
 
-Report effect sizes as paired changes on the **same sample**, video-clustered uncertainty and sequence-level failure clusters. Avoid treating counterfactual copies of one frame as independent observations. Keep valid, partial, mislocalized, unresolved-association and reference-invalid populations distinct.
+Produce matched GT-free M_Main and R11 rig render(s) or viewable local side-by-side animation where technically feasible, preserving the exact original timestamps and fixed rig. The clip's naturally missing observations are left wrist only; explicitly state that it does **not** validate low-confidence leg recovery. Evaluate whether the arm-side change is visually useful or harmful, temporal behavior and whether the output remains editable. No GT 3D accuracy may be claimed.
 
-The factorial is an intervention on model inputs; it can establish S0's **input sensitivity**, but cannot alone prove that naturally missing observations have the same cause or that a proposed production fix is safe. Restoring noisy coordinates is not necessarily beneficial, and a lower mean MPJPE may conceal worse tail failures.
+For naturally missing legs, use selected 3DPW source images and corresponding fixed-rig renders with GT in a separate labelled evaluation-only panel. Keep the image/rig camera distinction explicit. If Blender or render dependencies fail, preserve the blocker; do not patch the solver or change cameras to make a candidate look better.
 
-Include no-change and count-matched negative controls. Check if effects reverse or amplify in difficult poses. Do not claim a universal depth-observability ceiling from the finite 3DPW population.
+Do not publish external media or create new data-acquisition tasks.
 
-## 5. REAL-VIDEO AND RIG CONSEQUENCES
+## 6. HARM, ALTERNATIVE EXPLANATIONS AND TRANSFER LIMITS
 
-Where the stored W102 real-video diagnostic or W103/W102 qualitative assets are accessible, inspect representative GT-free motion and missingness events. Use existing rig and camera conventions for a bounded side-by-side **diagnostic** of a few predeclared windows when informative. Change only the source 3D pose between controlled conditions; preserve BaseRig, bone lengths, rest pose, FK/IK, timestamps, interpolation, renderer, root/pelvis/thorax and any shared arm source. Do not correct the estimator by changing retargeting.
+Inspect *all* natural R11 harm cases (including the reported `outdoors_parcours_00` frame 1018) and severe/new-wrong-knee cases, not only the largest gains. Stratify by restored joint type, raw confidence, number of restored tokens, pose/occlusion, image location, and observed 2D error where evaluation GT is valid.
 
-Report whether the source differences are visible as folded legs, knee flips, invalid frames, discontinuities or unusable rig motion. Do not claim full-body animation success from the historical mixed-source rig, and do not invent GT accuracy for a real video. If the relevant real-video assets or Blender environment are absent, report the limitation rather than moving hosts or acquiring new data.
+Distinguish:
+A. Raw 2D localization failure / low-confidence hallucination.
+B. Frozen S0 response to validity or input geometry.
+C. Crop change (already controlled in W104; do not repeat the full factorial).
+D. Source-to-rig/IK limitation.
+E. Identity/coverage uncertainty.
+F. GT, annotation or camera validity.
+G. Unresolved visual ambiguity.
 
-## 6. INTERPRETATION AND DECISION CASES
+Do not claim low-confidence coordinates are universally trustworthy. W104 found only 42.5% PCK@0.10 among restored limb tokens and 16–21% for ankles, yet an average 3D gain relative to folded missing-limb predictions. Report that distinction and any observed rig regressions.
 
-CASE A — Missing evidence is causally dominant and some **existing GT-free** evidence is demonstrably recoverable. Controlled removal causes substantial failures beyond crop-only controls, and a predeclared source-only restoration improves paired outcomes without hiding meaningful regressions. This supports further consideration of a bounded observation-handling architecture, not adoption.
+Use VAL/TEST as reused diagnostic data; neither is an untouched holdout. Do not infer population-wide or cross-detector generalization from the 199-frame clip or 33-video paired subset. No new detector run, training or alternative method is authorized.
 
-CASE B — Missing evidence is causally dominant but **not reliably recoverable** from retained source-only observations. Controlled removal causes the failure, while raw low-confidence or temporal availability evidence is absent, unreliable or harmful. This supports the need to evaluate a genuinely additional evidence source, without selecting one.
+## 7. INTERPRETATION AND DECISION CASES
 
-CASE C — Mixed or non-missingness mechanisms. Mask and crop effects interact substantially, the naturally missing population is not explained by controlled removal, recovery introduces significant harm, or other failures dominate important use cases. Report the mechanisms separately.
+Predeclare the operational metrics and any bounded harm thresholds before viewing new rig results. Use video-clustered uncertainty where meaningful; do not treat many frames of one video as independent.
 
-CASE D — Diagnostic contract blocked. Artifact/provenance identity, same-stack reproduction, input validity, comparable populations or safe execution cannot be established.
+**CASE A — Downstream animation utility supported (conditional):** Paired rig evidence on naturally partial same-person inputs shows material improvement in anatomical fidelity or animation usability from fixed R11, with tolerable measured harms and no hidden changes to rig or temporal policy. Explicitly scope by observed joints/videos and note that production adoption is still unauthorized.
 
-Mixed outcomes may be reported by joint group, posture and failure type. A negative result or CASE D is a valid completed Batch. None authorizes production changes, new model training, a detector threshold change or an automatic next Batch.
+**CASE B — Source gain does not translate:** R11 improves source-level reconstruction but fixed-rig output is not materially better, or meaningful rig/temporal harms offset the benefit. Attribute whether the limiting mechanism is source, IK, or representation.
 
-## 7. TESTING
+**CASE C — Mixed or unresolved:** Improvement is confined to some joints/scenes, real-video quality is indeterminate, or source/rig/identity mechanisms cannot be separated. Preserve negative evidence and report the limits.
 
-Run focused synthetic and stored-real fixtures for:
-- Frozen checkpoint/bank/input artifact identities and prediction reproduction.
-- Exact tensor semantics and derived-joint handling.
-- Four factorial conditions, crop isolation and no-op equality.
-- GT isolation of intervention construction.
-- Deterministic source-only sampling and no outcome-driven selection.
-- Missing and low-confidence raw M1 provenance.
-- Same-person/sequence/time isolation.
-- Counterfactual reference-regime labels.
-- Joint, knee, depth and severe-tail metrics.
-- Video-aware uncertainty and paired denominators.
-- Degenerate/empty-mask refusal and invalid camera-reference sensitivity.
-- Fixed-rig invariants if rendering is performed.
+**CASE D — Contract blocked:** Required source identity, GT separation, rig equivalence, original timestamps, provenance or reproducible evaluation cannot be established. Do not manufacture a qualitative PASS.
 
-Do not run broad production regression unless a shared contract actually changed (none is authorized). Record failed attempts, skipped tests and resource usage. Do not call unexecuted tests PASS.
+The CASE is an evidence verdict, **not** a decision to change the production observation policy. No CASE authorizes a threshold change, default change, model replacement, retargeting fix, training, production integration or a new downstream subsystem.
+
+## 8. TESTING
+
+Run focused synthetic and stored-real tests for:
+- W104 source geometry and input identity; M/R11 no-op on complete frames.
+- GT-free construction and correct evaluation-only GT isolation.
+- Same-actor/frame/timestamp and split alignment.
+- Rig/rest/chain/camera equality between conditions.
+- Source-to-rig angular metrics and length-ratio handling.
+- Knee/limb/temporal events including degenerate and missing cases.
+- Animation Action/keyframe identity and frame spacing.
+- No hidden interpolation across invalid samples.
+- Case selection, uncertainty and denominator accounting.
+- Renderer exit codes and output manifests when Blender runs.
+
+Execute relevant W104/W102 focused regression tests if the new diagnostic imports shared helpers. Broad production regression is not required when no shared production contract changes. Report exactly which tests ran, failed, were fixed, or were skipped. No test or render may be reported PASS unless executed.
 
 ## STOP CONDITIONS
 
-Stop if historical identity or same-stack reproducibility fails materially; the 2×2 factorial cannot isolate the intended variables; an intervention requires GT during real-source input construction; actor/temporal alignment is unsafe; meaningful comparison requires changing production code or thresholds; an unrelated process owns the execution resources; a Git conflict/branch operation would be required; the work would overwrite another session's files; or the central causal question has received a supported positive, negative or mixed answer.
+STOP and report evidence-bounded CASE D or a narrower verdict if:
+- The frozen M/R11 artifact or original source identity cannot be established.
+- Required GT-free/evaluation-only separation fails.
+- Rig equivalence cannot be maintained without modifying historical solvers/assets.
+- Actor/frame/time alignment is ambiguous.
+- New results require adjusting masks, threshold, S0, IK or render settings.
+- The real-video clip cannot be used without unauthorized redistribution or data changes.
+- Another project or active Agent job would be disrupted.
+- Git publication or automation lock ownership is unsafe.
+- A Major Architecture Decision or user-only authorization is needed.
+- The central animation-utility question has received sufficient supported positive, negative or mixed evidence.
 
-Do not broaden into training, detector replacement, visual/RGB fusion, temporal inference implementation, rig repair, style subsystem development or a new Architecture proposal. Report the exact blocker.
+Do not automatically expand to training, a new dataset, production integration, temporal modeling, root/IK repair or style authoring. A valid negative or blocked outcome is completion.
 
 ## FINAL REPORT
 
-Create only the new numbered Worklog:
-`docs/104_WORKLOG_MISSING_JOINT_CAUSALITY_AND_RECOVERABILITY.md`.
+Create `docs/105_WORKLOG_SOURCE_ONLY_RESTORATION_RIG_UTILITY.md` with:
+- Starting HEAD, branch, worktree and instruction identity.
+- Verified W102–W104 artifact hashes and any necessary deterministic reproduction.
+- Predeclared case/metric contract and selection manifest.
+- Full population and selected-rig denominators.
+- Same-source/same-rig invariants and Blender/Action provenance.
+- M_Main vs R11 source and rig metrics, uncertainty, temporal and harm distributions.
+- Representative improvement, failure, and regression renders with exact provenance.
+- Real-video GT-free quality judgment and its explicit limits.
+- Attribution among observation, S0, retargeting, identity and reference errors.
+- Executed and omitted tests; resources, changed files and exact reproduction commands.
+- CASE A/B/C/D with negative and unresolved findings.
 
-Include starting branch/HEAD and working-tree state; W102/W103 identities; predeclared intervention manifest/hash; populations; F00/F10/F01/F11 construction and exact invariants; per-joint missingness effects; mask/crop interaction; natural missingness and low-confidence source-only recovery; privileged upper-bound controls separately; temporal evidence availability; GT-free video and rig consequences if available; video-level uncertainty; representative success/failure/harm; tests executed/skipped; reproduction commands; changed files; CASE A/B/C/D and limitations.
+Do NOT include Next Work Recommendation, Next Architecture Decision, Recommended Next Experiment, Proposed Next Batch or Next Implementation Plan. Do not copy this instruction into the Worklog.
 
-The Worklog is evidence-only. Do not include Next Work Recommendation, Next Architecture Decision, Recommended Next Experiment, Proposed Next Batch or Next Implementation Plan. Do not copy this Batch prompt into the Worklog.
-
-Follow the automation worker's final publication protocol: publish the explicit COMPLETE marker for this Batch only after all authorized artifacts, tests and Worklog are finalized and safely committed. Do not mark COMPLETE when publication or execution is still uncertain.
+Follow the existing automation worker's final publication protocol. Add `AUTOMATION_BATCH_STATUS: COMPLETE` and `BATCH_NUMBER: 105` only after all authorized artifacts and Worklog are finalized and safely committed. Preserve any failed/interrupted state without a false COMPLETE marker.
 
 ## COMPLETION CONDITION
 
-The Batch is complete when independently interpretable, paired evidence answers:
+The Batch is complete when paired, reproducible evidence answers:
 
-**"Does removing specific real M1 joints causally create frozen S0's severe and knee failures, how much of that effect is crop normalization, and can the naturally missing evidence be recovered from information actually available to a GT-free runtime without introducing unacceptable regressions?"**
+**"Does the fixed W104 source-only raw-joint restoration improve actual rig animation under the existing AnimCV BaseRig and temporal contracts, or are its 3D gains undermined by retargeting, low-confidence localization, temporal artifacts or identity/coverage limitations?"**
 
-A negative, mixed or blocked result is valid completion. Stop after publishing the evidence; do not implement a follow-on solution or select the next Architecture direction.
+A supported negative, mixed, or blocked outcome is valid completion. Do not implement the method, alter production defaults, choose the next Architecture direction, or initiate downstream work.

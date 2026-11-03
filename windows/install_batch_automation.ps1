@@ -73,9 +73,20 @@ $logon = New-ScheduledTaskTrigger -AtLogOn -User $User
 $settings = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit ([TimeSpan]::Zero) `
     -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
 $principal = New-ScheduledTaskPrincipal -UserId $User -LogonType Interactive -RunLevel Limited
-Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $every, $logon -Settings $settings -Principal $principal `
-    -Description "AnimCV: poll docs/next_batch.md on $Branch and execute each new ChatGPT Batch exactly once (Main only)." `
-    -Force -ErrorAction Stop | Out-Null
+$Arguments = "`"$Worker`" poll --config `"$Config`""
+$existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+$same = $existing -and $existing.Actions.Execute -eq $Pythonw -and $existing.Actions.Arguments -eq $Arguments -and
+        ($existing.Triggers | Where-Object { $_.Repetition.Interval -eq "PT$($IntervalMinutes)M" }) -and
+        $existing.Settings.MultipleInstances -eq "IgnoreNew" -and $existing.Principal.LogonType -eq "Interactive"
+if ($same) {
+    # Worker code and config are updated in place above; an identical registration is left untouched (overwriting an
+    # existing task can be denied to a non-elevated user).
+    Write-Output "Task '$TaskName' already registered with the identical action and schedule; not re-registered."
+} else {
+    Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $every, $logon -Settings $settings -Principal $principal `
+        -Description "AnimCV: poll docs/next_batch.md on $Branch and execute each new ChatGPT Batch exactly once (Main only)." `
+        -Force -ErrorAction Stop | Out-Null
+}
 # Never report success without reading the registration back.
 $check = Get-ScheduledTask -TaskName $TaskName -ErrorAction Stop
 if ($check.Actions.Execute -ne $Pythonw) { throw "registered task does not match the requested action" }

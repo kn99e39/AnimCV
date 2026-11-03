@@ -255,6 +255,45 @@ def test_repeated_noop_polls_are_quiet(env):
     assert len(log.read_text().splitlines()) == 1
 
 
+def test_poll_pulls_remote_state_into_clone_before_reading(env):
+    env["publish"]("notes\n", "docs/notes.md"); calls = []
+    s = ba.poll(env["cfg"], executor("ok", calls))
+    assert s["outcome"] == "noop" and calls == []
+    clone = env["clone"]
+    assert run(clone, "rev-parse", "HEAD").stdout.strip() == env["remote_head"]() and (clone/"docs"/"notes.md").exists()
+
+
+def test_extra_checkout_is_fast_forwarded_but_never_forced(env):
+    user = env["tmp"]/"user"
+    run(env["tmp"], "clone", "-q", "-b", BRANCH, str(env["tmp"]/"remote.git"), str(user))
+    cfg = dict(env["cfg"], pull_paths=[str(user)]); calls = []
+    env["publish"]("a\n", "docs/a.md")
+    ba.poll(cfg, executor("ok", calls))
+    assert run(user, "rev-parse", "HEAD").stdout.strip() == env["remote_head"]()
+    (user/"docs"/"a.md").write_text("user edit\n")                       # tracked modification: skipped, untouched
+    env["publish"]("b\n", "docs/b.md")
+    assert ba.poll(cfg, executor("ok", calls))["outcome"] == "noop"
+    assert (user/"docs"/"a.md").read_text() == "user edit\n" and not (user/"docs"/"b.md").exists()
+    assert "dirty" in (ba.state_paths(cfg)["logs"]/"poll.log").read_text()
+    run(user, "checkout", "--", "docs/a.md")
+    (user/"local.txt").write_text("x"); run(user, "add", "."); run(user, "commit", "-qm", "local")   # diverged: skipped
+    before = run(user, "rev-parse", "HEAD").stdout.strip()
+    ba.poll(cfg, executor("ok", calls))
+    assert run(user, "rev-parse", "HEAD").stdout.strip() == before and calls == []
+
+
+def test_clone_is_not_pulled_while_a_batch_holds_the_lock(env):
+    user = env["tmp"]/"user"
+    run(env["tmp"], "clone", "-q", "-b", BRANCH, str(env["tmp"]/"remote.git"), str(user))
+    cfg = dict(env["cfg"], pull_paths=[str(user)]); calls = []
+    before = run(env["clone"], "rev-parse", "HEAD").stdout.strip()
+    ba.acquire_lock(cfg, {"batch": 7, "worker": "w", "state": "CLAIMED", "poller_pid": os.getpid()})
+    env["publish"]("c\n", "docs/c.md")
+    assert ba.poll(cfg, executor("ok", calls))["outcome"] == "noop" and calls == []
+    assert run(env["clone"], "rev-parse", "HEAD").stdout.strip() == before            # running Batch's tree untouched
+    assert run(user, "rev-parse", "HEAD").stdout.strip() == env["remote_head"]()      # interactive checkout still updated
+
+
 def test_marker_and_instruction_parsing():
     assert ba.parse_instruction(instruction(104))[0] == 104
     assert ba.worklog_marker("x\n    AUTOMATION_BATCH_STATUS: COMPLETE\n    BATCH_NUMBER: 104\n") == {"status": "COMPLETE", "number": 104}

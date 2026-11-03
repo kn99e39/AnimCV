@@ -5,7 +5,8 @@ ChatGPT publishes one Agent-ready Batch in `docs/next_batch.md` on the authorize
 scheduler, executes each newly published Batch exactly once in a dedicated clone, then verifies the published Worklog.
 
 Commands:
-  poll            scheduled entry point: lightweight checks; executes only when every eligibility rule holds
+  poll            scheduled entry point: pull remote state (ff-only), then lightweight checks; executes only when
+                  every eligibility rule holds
   status          print the lock / last-poll status
   clear-lock      HUMAN ONLY: remove a preserved lock after inspection (--batch N --confirm-human-reviewed)
   selftest-claude verify the headless Claude entry point from the current (e.g. scheduler) context
@@ -40,7 +41,9 @@ TRAILER = "Automation-Batch"
 DEFAULT_ROOT = Path(os.environ.get("USERPROFILE", str(Path.home())))/"animcv-automation"
 DEFAULTS = {"branch": "arch/single_frame_first", "remote": "origin", "repo": str(DEFAULT_ROOT/"repo"),
             "state": str(DEFAULT_ROOT/"state"), "host": None, "python": r"C:\Projects\AnimCV\.venv_build_full\Scripts\python.exe",
-            "claude": "auto", "timeout_hours": 48, "gpu_busy_check": True, "notify": True}
+            "claude": "auto", "timeout_hours": 48, "gpu_busy_check": True, "notify": True,
+            # extra checkouts (e.g. the interactive one) fast-forwarded on every poll; never stashed/reset/merged/switched
+            "pull_paths": []}
 
 
 class Refuse(Exception):
@@ -382,6 +385,41 @@ def post_verify(cfg, batch, blob, start):
     return (not problems), problems, view.head
 
 
+def sync_checkout(cfg, path):
+    """Pull the authorized branch into one checkout, fast-forward only.
+
+    Skips (and says why) instead of stashing, resetting, merging or switching: wrong branch, tracked modifications,
+    or local commits not on the remote. Untracked files are left alone; git itself refuses if one would be overwritten.
+    """
+    path = Path(path)
+    if not (path/".git").exists():
+        return {"path": str(path), "result": "skipped", "reason": "not a git checkout"}
+    if git(path, "rev-parse", "--abbrev-ref", "HEAD") != cfg["branch"]:
+        return {"path": str(path), "result": "skipped", "reason": "not on the authorized branch; no checkout is performed"}
+    if git(path, "status", "--porcelain", "--untracked-files=no"):
+        return {"path": str(path), "result": "skipped", "reason": "dirty: tracked modifications; nothing is stashed or reset"}
+    ref = f"{cfg['remote']}/{cfg['branch']}"
+    git(path, "fetch", "--quiet", cfg["remote"], f"+refs/heads/{cfg['branch']}:refs/remotes/{ref}")
+    before = git(path, "rev-parse", "HEAD")
+    if git(path, "merge-base", "--is-ancestor", "HEAD", ref, check=False).returncode:
+        return {"path": str(path), "result": "skipped", "reason": "diverged from the remote branch; no merge or rebase"}
+    r = git(path, "pull", "--ff-only", "--quiet", cfg["remote"], cfg["branch"], check=False)
+    if r.returncode:
+        return {"path": str(path), "result": "skipped", "reason": "pull --ff-only refused: " + r.stderr.strip().splitlines()[-1][:200]}
+    after = git(path, "rev-parse", "HEAD")
+    return {"path": str(path), "result": "updated" if after != before else "up_to_date", "from": before, "to": after}
+
+
+def log_sync(cfg, results):
+    """Only real updates/skips are logged; an up-to-date pull stays quiet."""
+    noisy = [r for r in results if r["result"] != "up_to_date"]
+    if noisy:
+        paths = state_paths(cfg)
+        paths["logs"].mkdir(parents=True, exist_ok=True)
+        with open(paths["logs"]/"poll.log", "a", encoding="utf-8") as stream:
+            stream.write(json.dumps({"time": now(), "sync": noisy}, ensure_ascii=False)+"\n")
+
+
 def poll(cfg, executor=run_claude):
     paths = state_paths(cfg)
     Path(cfg["state"]).mkdir(parents=True, exist_ok=True)
@@ -390,8 +428,15 @@ def poll(cfg, executor=run_claude):
         return record_status(cfg, "stop", f"host {socket.gethostname()} is not the designated executor {cfg['host']}", notify_key="host")
     if paths["pause"].exists():
         return record_status(cfg, "paused", "PAUSE file present")
-    # Step 1: lock
+    # Step 0: pull the remote state here first. Extra checkouts always; the dedicated clone only when no Batch holds
+    # the lock (a running Batch owns its working tree and its bound start commit).
     lock = read_json(paths["lock"])
+    synced = [sync_checkout(cfg, p) for p in cfg.get("pull_paths", []) if Path(p).resolve() != Path(cfg["repo"]).resolve()]
+    clone = sync_checkout(cfg, cfg["repo"]) if lock is None else None
+    log_sync(cfg, synced + ([clone] if clone else []))
+    if clone and clone["result"] == "skipped":
+        return record_status(cfg, "stop", f"dedicated clone {clone['reason']}", notify_key="clone_sync")
+    # Step 1: lock
     if lock is not None:
         # Only an in-flight claim/run with a live owner is a quiet no-op; any other state (NEEDS_REVIEW, COMPLETE not
         # released, unknown) is preserved and reported, regardless of whether some process with that pid exists.

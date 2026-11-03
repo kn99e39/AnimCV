@@ -2,7 +2,9 @@
 #
 # What it sets up, all per-user, nothing system-wide:
 #   %USERPROFILE%\animcv-automation\repo   dedicated clone of arch/single_frame_first (hardlinked from the source
-#                                          checkout, origin = GitHub); the interactive checkout is never touched
+#                                          checkout, origin = GitHub)
+#   every poll first pulls (fast-forward only) the dedicated clone and the source checkout this script lives in;
+#   a checkout that is on another branch, has tracked modifications or has diverged is skipped, never repaired
 #   %USERPROFILE%\animcv-automation\bin    frozen copy of scripts/batch_automation.py (reinstall to update)
 #   %USERPROFILE%\animcv-automation\state  config.json, lock, journal, status, logs, blockers, PAUSE flag
 #   repo\.git\hooks\pre-commit, pre-push   refuse next_batch.md edits, other-branch/deletion/non-fast-forward pushes
@@ -53,7 +55,8 @@ Copy-Item (Join-Path $Source "scripts\batch_automation.py") $Bin -Force
 $Worker = (Join-Path $Bin "batch_automation.py")
 $Config = (Join-Path $State "config.json")
 $cfg = [ordered]@{ branch = $Branch; remote = "origin"; repo = $Repo; state = $State; host = $env:COMPUTERNAME
-                   python = $Python; claude = "auto"; timeout_hours = 48; gpu_busy_check = $true; notify = $true }
+                   python = $Python; claude = "auto"; timeout_hours = 48; gpu_busy_check = $true; notify = $true
+                   pull_paths = @($Source) }
 [IO.File]::WriteAllText($Config, ($cfg | ConvertTo-Json), $Utf8)
 
 $py = $Python -replace "\\", "/"; $wk = $Worker -replace "\\", "/"; $cf = $Config -replace "\\", "/"

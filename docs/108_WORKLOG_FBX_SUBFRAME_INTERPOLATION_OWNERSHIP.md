@@ -523,3 +523,6 @@ COMPLETE marker is added in a separate final commit.
 - **What P2 shows.** P2 shows only that the V1 imported keys are representationally sufficient for these
   integer-keyed, fully held Actions. It is not an exporter or importer fix, not evidence of FBX interoperability, and
   not a policy. The smooth control shows the harm of applying it to continuous motion.
+
+AUTOMATION_BATCH_STATUS: COMPLETE
+BATCH_NUMBER: 108

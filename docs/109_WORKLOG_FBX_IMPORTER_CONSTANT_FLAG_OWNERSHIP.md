@@ -477,6 +477,18 @@ New files only:
 | `tests/test_w109_fbx_constant_import.py` | Focused tests | `a8bcde4f…` |
 | this Worklog | | |
 
+**Line-ending note (post-commit check).** The SHAs above, and those in the declaration, are of the bytes executed
+on Main. Three of the files are CRLF in the working copy: host, contract and test. They were last edited by a Python
+`write_text` on Windows. The Blender stage file is LF. Git (`core.autocrlf=true`) stores all four LF-normalized, so
+the committed blob SHAs are:
+- host `5451d32b…`;
+- contract `2134a58a…`;
+- Blender `acd26dca…`;
+- test `e07e9ab5…`.
+
+The content is identical apart from line endings. Converting the committed LF blob to CRLF reproduces the declared
+`0949e9b2…` / `b3793c48…` / `a8bcde4f…` exactly.
+
 Reused, unchanged and read-only: the W108 contract (reader, metrics), the W108 Blender key-data helpers and `options`
 stage, the W108 host manifest/git helpers, and the W107/W106 Blender helpers.
 

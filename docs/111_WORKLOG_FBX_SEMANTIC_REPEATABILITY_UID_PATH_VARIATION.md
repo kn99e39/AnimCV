@@ -433,8 +433,9 @@ Not run:
   the record (ok, no stop).
 - **No reruns.** No stage failed, and none was rerun. No declared script changed after the declaration (all bound
   SHAs equal at analysis).
-- **Script SHAs.** They are of the working-tree bytes as executed: CRLF on this Windows checkout. Git stores them LF
-  (`core.autocrlf=true`).
+- **Script SHAs.** They are of the bytes as executed. All W111 files were written with LF line endings, and the
+  committed blobs are byte-identical to them (e.g. `git show HEAD:scripts/w111_fbx_semantic_identity.py` hashes to
+  `7ba33abe…`).
 - **Producer launch deviation.** The producer launch adds `--python-use-system-env` relative to W110. This is
   required to control the seed, and is declared. The environment was sanitized: no `PYTHON*` variables except the
   seed and `PYTHONNOUSERSITE`.
@@ -533,7 +534,7 @@ Other hashes:
 
 ## 17. Changed files, final source revision, environment
 
-New files only. SHAs are of the working-tree bytes as executed:
+New files only. SHAs are of the LF bytes as executed:
 
 | File | Role | SHA |
 |---|---|---|

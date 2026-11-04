@@ -166,3 +166,15 @@ def test_case_precedence():
 def test_runs_helper():
     assert V.runs(np.array([0, 1, 1, 0, 1, 0, 0, 1], bool)) == [(1, 2), (4, 4), (7, 7)]
     assert V.runs(np.zeros(3, bool)) == []
+
+
+def test_frozen_confidence_domain_rejects_detector_score_above_one(syn):
+    """The frozen W113 gate (declaration c3f7485c) is [0, 1]; authentic RTMPose/3DPW scores exceed it -> CASE D."""
+    assert V.CONFIDENCE_UPPER == 1.0
+    bad = V._clone(syn)
+    bad["arrays"]["obs2d_conf"][0, V.JI["left_ankle"]] = 1.05
+    V._redigest(bad)
+    with pytest.raises(V.ContractError) as e:
+        V.validate_view(bad)
+    assert e.value.code == "CONFIDENCE_AMBIGUOUS"
+    V.validate_view(syn)  # in-range scores still pass (positive)

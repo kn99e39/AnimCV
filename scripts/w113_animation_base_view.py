@@ -55,6 +55,10 @@ UNAVAILABLE = {
     "world_or_camera_motion": "not_produced: no camera/world motion estimate",
 }
 FORBIDDEN_TOKENS = ("target_3d", "target_valid", "ground_truth", "gt_", "_gt", "strata", "smpl", "evaluation_label")
+# Frozen (declaration c3f7485c): detector confidence must lie in [0, 1]. Authentic RTMPose / 3DPW scores exceed 1, so
+# the frozen real/benchmark views fail this gate (W113 CASE D). Only scripts/w113_animation_base_posthoc.py, a labelled
+# post-hoc diagnostic that never yields a CASE, overrides it.
+CONFIDENCE_UPPER = 1.0
 EDITABLE_SIGNALS = ("est3d_xyz",)
 IMMUTABLE_SIGNALS = ("obs2d_xy_px", "obs2d_conf", "obs2d_present", "obs2d_visible", "input_valid", "in_frame",
                      "frame_index", "timestamp")
@@ -243,8 +247,8 @@ def validate_view(view: dict, *, expected: dict | None = None, verify_files: boo
     present, conf, xy = arrays["obs2d_present"], arrays["obs2d_conf"], arrays["obs2d_xy_px"]
     if np.isnan(conf[present]).any():
         raise ContractError("CONFIDENCE_MISSING", "present observation without confidence")
-    if (conf[present] < 0).any() or (conf[present] > 1).any():
-        raise ContractError("CONFIDENCE_AMBIGUOUS", "confidence outside [0,1]")
+    if (conf[present] < 0).any() or (conf[present] > CONFIDENCE_UPPER).any():
+        raise ContractError("CONFIDENCE_AMBIGUOUS", f"confidence outside [0,{CONFIDENCE_UPPER}]")
     if not np.isfinite(xy[present]).all():
         raise ContractError("FIELD_MISSING", "present observation without a coordinate")
     if np.isfinite(xy[~present]).any() or np.isfinite(conf[~present]).any():

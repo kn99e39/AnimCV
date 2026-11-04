@@ -638,3 +638,6 @@ Nothing else changed:
 
 Final source revision: the commit adding this Worklog on `arch/single_frame_first`, directly after `186ed88`. The
 COMPLETE marker is added in a separate final commit.
+
+AUTOMATION_BATCH_STATUS: COMPLETE
+BATCH_NUMBER: 110

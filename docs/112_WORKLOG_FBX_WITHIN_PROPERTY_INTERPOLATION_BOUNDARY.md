@@ -581,3 +581,6 @@ COMPLETE marker is added in a separate final commit.
   candidate took 0.005 s (synthetic) or 0.37 s (real) per call.
 - 2.4 GB of scratch disk, mostly the real-rig evaluation FBX: 16 per case at about 15 MB each.
 - No GPU, network, LabServer or package change. This was within the declared cap.
+
+AUTOMATION_BATCH_STATUS: COMPLETE
+BATCH_NUMBER: 112

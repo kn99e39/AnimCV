@@ -561,3 +561,6 @@ Nothing else changed:
 
 **Final source revision.** The commit adding this Worklog on `arch/single_frame_first`, directly after `5f9ef0b`. The
 COMPLETE marker is added in a separate final commit.
+
+AUTOMATION_BATCH_STATUS: COMPLETE
+BATCH_NUMBER: 111

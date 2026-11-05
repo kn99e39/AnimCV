@@ -242,13 +242,15 @@ def render(o):
     shown = False
     for obj in bpy.data.objects:
         if obj.type == "MESH" and obj.parent == arm:
-            obj.hide_render = False
-            shown = True
+            obj.hide_render = bool(o.hide_mesh)  # post-hoc option (W116 close-ups); default unchanged
+            shown = shown or not o.hide_mesh
     if not shown:  # synthetic rig: bone proxies
         from review_framepose_fk_blender import _make_bone_proxies
         prox = {}
         for b in arm.pose.bones:
-            bpy.ops.mesh.primitive_cylinder_add(vertices=12, radius=0.012, depth=1)
+            if any(f in b.name for f in FINGER):
+                continue
+            bpy.ops.mesh.primitive_cylinder_add(vertices=12, radius=0.006 if o.hide_mesh else 0.012, depth=1)
             prox[b.name] = bpy.context.object
             prox[b.name].color = (0.75, 0.81, 0.92, 1.0)
     else:
@@ -302,6 +304,7 @@ def main():
     ap.add_argument("--probe-channels", default="spine_01,upperarm_l,lowerarm_l")
     ap.add_argument("--size", type=int, default=480)
     ap.add_argument("--ortho-scale", type=float, default=1.3)
+    ap.add_argument("--hide-mesh", action="store_true", help="post-hoc close-ups: bone proxies instead of the skinned mesh")
     o = ap.parse_args(argv)
     try:
         return {"probe": probe, "evaluate": evaluate, "render": render}[o.mode](o)

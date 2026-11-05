@@ -1,132 +1,903 @@
-# BATCH 115 — Animation Base Validity: Repeatability, Numerical Resolution, and Rig Authority
+# BATCH 116 — Semantic Constraint Architecture: World-Space Joint Position Pin Feasibility
 
 DIRECTION
-Continue the user-approved reference-guided Video-to-Animation Generator architecture program through ONE bounded evidence-only Batch. Re-evaluate W114's immutable-evidence and versioned-edit-state hypothesis using prospectively corrected measurement contracts. Do NOT continue FBX repairs, optimize Pose, train a Generator, or modify Production.
+
+Advance AnimCV toward a Reference-Guided,
+Reliability-Aware Video-to-Animation Generator.
+
+The human Architecture Owner has approved a Semantic
+Constraint Architecture as the long-term basis of
+user-directed Animation Editing.
+
+The first bounded capability is:
+WORLD-SPACE JOINT POSITION PINNING.
+
+Investigate whether a semantic constraint can be expressed
+independently of the solver and enforced in an actual
+rigged animation, while preserving immutable source
+evidence and reversible edit history.
+
+This Batch must produce functional animation-editing
+evidence, not another isolated numeric-contract exercise.
+
+Do not implement the full constraint system.
+Do not train a Generator.
+
 
 PURPOSE
-W114 returned CASE D INVALID for two distinct experimental-instrument errors. V6 treated a build-specific legacy MotionGraph pose_source path and its byte hash as semantic differences. G8 compared source-to-rig outputs with 1e-9 precision even though the candidate and Blender outputs used float32. The W114 C1 trunk-axis case had differences below representable Action precision. The earlier declared gates cannot be retrospectively changed. New, predeclared tests are necessary to determine whether the abstraction works under valid representation-aware controls.
 
-W114 also established a distinct uncertainty: "preserve" may mean local channel values or world-space positions of posed joints. This is a potential human product decision. W115 MUST compare both meanings without silently adopting either as the Production rule.
+AnimCV's objective is editable, production-usable
+animation, not merely 3D pose reconstruction.
+
+Users must eventually be able to issue intentions such as:
+- Keep this hand at this position.
+- Preserve this segment of the motion.
+- Prevent foot sliding.
+- Change the lower-body style without changing the upper
+  body's intended action.
+
+These are different semantic constraints.
+
+The approved architecture must represent them distinctly
+rather than using one generic Bone Lock.
+
+W116 focuses exclusively on World-Space Joint Position
+Pinning, while defining boundaries that can later support
+other constraint types.
+
+The result must establish whether this abstraction
+enables a meaningful animation edit in the existing
+AnimCV rig environment.
+
 
 CENTRAL INTENT
-Can a source-preserving Animation Base with immutable evidence and reversible editable states satisfy its bounded integrity, provenance, repeatability, user-edit and actual rig-influence contracts when semantic build-path volatility and numerical storage resolution are handled rigorously, while rejecting genuine identity changes and explicitly preserving unresolved user-intent semantics?
 
-Do not merely make the prior test pass. Test whether the abstraction, not the measurement instrument, is responsible for failures.
+Can a solver-independent Semantic Constraint describing
+a joint's desired world-space position be enforced on
+a real rigged Animation State, by adjusting only
+authorized degrees of freedom, without modifying source
+evidence or silently violating user constraints?
+
+Can the system also detect when a requested edit is
+unreachable, contradictory, unsupported by the rig,
+or outside the authorized modification domain?
+
+Determine whether Semantic Constraints provide an
+architecturally viable separation between user intent,
+animation generation, rig adaptation, and output
+validation.
+
+Do not equate mathematical constraint representation
+with successful animation editing.
+
+Do not equate a solver producing output with the
+requested user constraint actually being satisfied.
+
 
 CURRENT ASSESSMENT
-- W113 CASE D INVALID remains historical: detector score is not a bounded [0,1] probability and cannot be directly treated as 3D reliability.
-- W114 CASE D INVALID remains historical. Frozen V6 and G8 failed; W114 post-hoc checks are diagnostic only and do not supply a retroactive CASE.
-- W114 agent-reported results: real and benchmark observation views, reversible local mock edits, constraints, source digests, and representative source-to-rig influence behaved usefully under limited controls. The real clip contains 199 frames at 50 fps and only 38 low-evidence left-wrist cells. Blender Action is 30 fps. Per-frame same-person identity was not serialized. The tested W105 rig has real_s0_only and mixed_w102 variants with different arm ownership.
-- W114 reported C1 float32 transverse residual up to 1.62e-8m, whereas a float64 exact-direction diagnostic was invariant to approximately 3.4e-15. This does not authorize changing Production computation or choosing an arbitrary tolerance.
-- W114's world-space versus local-channel preservation semantics remain undecided.
+
+Historical findings:
+
+W113: CASE D INVALID.
+Detector score [0,1] was an invalid assumption.
+2D detector score is not calibrated 3D reliability.
+
+W114: CASE D INVALID.
+Repeatability and quaternion precision instruments failed.
+Scratch source-preserving, reversible editing showed
+bounded positive diagnostic behavior.
+
+W115: CASE D INVALID.
+Its V8 assumption incorrectly required mathematically
+invariant input to cause zero changed float32 stored
+values after floating-point evaluation.
+
+W115 also reported a material user-intent failure:
+a locally accepted edit could move world-space locked
+joint positions by up to approximately 3.4 mm.
+
+Conversely, tiny numerical changes to stored local
+quaternions could occur without measured world-space
+joint displacement.
+
+Therefore:
+- Local channel-value preservation is not equivalent
+  to world-space joint-position preservation.
+- Output constraints must be evaluated in their own
+  physical/semantic domain.
+- Source identity, numerical representation and actual
+  rig behavior must remain distinguishable.
+
+The cumulative W111-W115 audit has been completed.
+No earlier CASE is to be retrospectively changed.
+
+The immutable-source + versioned-edit representation
+remains a scratch architectural hypothesis, not a
+production implementation.
+
 
 HUMAN-READABLE SUMMARY
-Direction: predeclared instrument-validity and edit-authority architecture diagnostic.
-Purpose: independently test the same source-preserving representation without two known measurement defects.
-Central Intent: is observed success attributable to real source/edit/rig contracts rather than path normalization, precision artifacts or overly weak user constraints?
-DO: verify historical baselines; classify semantic and volatile path fields; run adversarial provenance controls; compare rig outputs in their actual storage representation; test local and world-space edit effects separately; replay existing real/benchmark/synthetic cases; report a bounded verdict.
-DO NOT: patch frozen W114, sweep thresholds, choose a Production lock policy, change source models/rig/schema/exporters, or advance to W116.
-Decision enabled: whether a minimum trustworthy Animation Base representation is supported, partially supported, contradicted or still invalid, and which evidence boundaries remain unknown.
+
+Direction:
+Build and test a minimal World-Space Joint Position
+Constraint using a scratch animation-editing prototype.
+
+Purpose:
+Determine whether meaningful user-directed edits can
+be implemented without losing source information or
+violating the user's intended positional lock.
+
+Central Intent:
+Is semantic, output-space constraint enforcement viable
+as an independent contract between editable motion
+and the rigged output?
+
+Do:
+- Define a minimal semantic constraint contract.
+- Validate semantic joint-to-rig bindings.
+- Apply controlled source-backed animation edits.
+- Use a bounded candidate constraint resolver.
+- Measure actual Blender world-space joint positions.
+- Compare constrained and unconstrained outcomes.
+- Include feasible and infeasible requests.
+- Validate preservation, rollback and output locality.
+- Report real-rig and synthetic evidence separately.
+
+Do NOT:
+- Implement the whole Semantic Constraint framework.
+- Introduce a trained Generator or style model.
+- Change production Rig, FK/IK, export, source data,
+  FramePose or MotionGraph schemas.
+- Assume all joints are controllable.
+- Manufacture source identity or confidence.
+- Resolve constraint failure using hidden fallback.
+- Select future research tasks.
+
+Decision enabled:
+Whether semantic world-position pinning offers a
+defensible functional foundation for an Animation
+Generator/Editor.
+
 
 HISTORICAL BASELINE
-Repo: kn99e39/AnimCV. Existing branch ONLY: arch/single_frame_first.
-Previously observed HEAD: 380a0e446c08912e2104cc2d1c2cb1fa2d1f0fae. Verify current remote HEAD before working. W114 is COMPLETE, and its original next_batch instruction and Worklog must remain unchanged.
-Read AGENTS.md, PRODUCT_VISION.md, Architecture_v3_FramePose.md and Architecture_v2.md with declared precedence; W113/W114 Worklogs, frozen W113/W114 instruments, tests, manifests and W102-W105 real/rig baselines. Verify SHA-based provenance locally. Do not claim local binaries were checked merely because Worklog hashes are available.
-No branch creation/switch/deletion, merge/rebase/reset/force operation. Preserve all historical Worklogs, CASEs, checkpoints, datasets, seed, source images, predictions, numerical and source contracts.
-PRESERVE: all src/ Production modules, MotionGraph/AnimationClip schema, detector scores and validity policy, source video FPS and timecodes, frozen S0/HMR2/J1X, W105 rig and FK/IK, calibrated/uncalibrated labels, exporter/importer, W113/W114 scripts and tests.
-CHANGE ONLY: new W115 scratch scripts, focused tests, evidence artifacts and W115 Worklog.
-DO NOT TUNE: masks, thresholds, pose model, rig configuration, 0.01m controlled perturbations, animation timing, comparison gates after results, smoothing, rendering, inference, retargeting or confidence interpretation.
-The Agent controls technical implementation details within these fixed evidence requirements, with new test parameters declared before outcomes.
 
-REQUIRED EVIDENCE — 1. PROSPECTIVE CONTRACT
-Inspect W114's V6 and G8 implementation and determine exactly why their declared premises fail. Before new real/rig outcomes, serialize and hash a W115 declaration specifying:
-- identical input datasets, frame/joint/actor indices, model hashes, case IDs, perturbation magnitudes and output formats;
-- positive controls, negative controls and exact expected outcomes;
-- explicit allowlist of build-generated volatile fields and their causal byte dependencies;
-- semantic comparison method for stable source identities and content;
-- numeric dtypes, casting points, equality rules and output-resolution account;
-- preservation interpretations and what counts as an unresolved human policy choice;
-- exact gates for CASE A/B/C/D and STOP conditions.
-Do not use GT-derived targets, GT stratification or evaluation identity labels to construct runtime inputs, edit masks or authorization.
+Repository:
+kn99e39/AnimCV
 
-REQUIRED EVIDENCE — 2. PATH SEMANTICS AND REPEATABILITY
-Run two independent scratch builds under distinct output paths and repeated same-input controls. Report separately:
-(A) raw file-byte identity;
-(B) equality of semantic source, observations, hypotheses, edit lineage and rig outputs;
-(C) declared build-path-dependent differences, including legacy MotionGraph pose_source and its resulting file SHA.
-Only normalize fields shown before results to reference the build directory rather than the actual input identity. Never normalize away a genuine source digest, image identity, model identity, input path when identity-bearing, frame ordering, timestamps, joint names or user constraint.
-Adversarial negatives must include:
-- same apparent filename with different real bytes;
-- changed source or frame digest;
-- changed authentic identity-bearing source path;
-- stale or mismatched content hash;
-- modified frame timestamp/order/joint;
-- modified edit parent or permission digest;
-- substantive MotionGraph/AnimationClip content change;
-- a path resembling a generated path that is actually source evidence.
-A canonicalized comparator that falsely accepts any true source mutation cannot pass. Report how path normalization was limited; do not sweep alternate allowlists after seeing failures.
+Existing branch ONLY:
+arch/single_frame_first
 
-REQUIRED EVIDENCE — 3. REPRESENTATION-RESOLUTION RIG TEST
-Preserve the original W114 rig conditions A1/A2, B1/B2, C1, D1/D2, RS1/RS1_arm and mixed MA/MB/MD controls where applicable. Keep W114 interventions unchanged.
-Inspect the actual source float32 -> rig computation -> quaternion -> Action F-curve storage stages. Prospectively define comparisons based on actual storage semantics rather than choosing a passing numerical tolerance. Prefer exact comparisons AFTER reproducing the documented representation casting, and report pre-cast and post-cast continuous deltas separately.
-For C1 include original float32 candidate behavior plus an explicitly diagnostic float64 exact-direction control, without changing the Production rig. Separate:
-- analytically zero/invariant behavior when supported;
-- nonzero but below output resolution;
-- actual material change in stored Action values;
-- missing or contradictory attribution evidence.
-Measure changed channel-frame counts at source/case/Action layers, float32 representation deltas, physical/angular magnitudes and independent ownership derivation. Include unconsumed-source no-effect controls and meaningful positive source-backed influence. Do NOT infer global dependency or derivative from one perturbation, and do NOT erase small-but-nonzero observations.
-If numerical equivalence cannot be defined without observing W115 results, STOP as invalid.
+Previously observed HEAD:
+c6f45e436500af73279a681fa0a5bec4d2290406
 
-REQUIRED EVIDENCE — 4. EDIT AUTHORITY VS USER INTENT
-Use W114's unchanged scratch candidate, source evidence, version lineage and deterministic mock edits to verify:
-- immutable source and original score >1 preservation;
-- provenance, parent digest, stale-state refusal, atomicity and exact revert;
-- permitted vs preserved vs prohibited joint/frame cells;
-- actual source owners and output channels under real_s0_only and mixed_w102;
-- correct negative control where S0 source changes do not drive the mixed W102 arm;
-- actual wrist-to-upperarm plus lowerarm effect and torso/shared influence;
-- output changes outside the local channel domain and outside world-space posed-joint preservation.
+Verify the current remote and local state before work.
+Do not assume the observed HEAD is still current.
 
-Evaluate TWO explicit, separate interpretations: local Bone/F-curve value preservation, and posed world-space joint-position preservation. Report which is satisfied, violated or unknowable for each representative mock edit. Do NOT choose which semantics the user intends as a permanent Production rule. Do not label a locally allowed edit a fully user-preserving edit if it moves a world-space locked joint.
+Read:
+- AGENTS.md
+- PRODUCT_VISION.md
+- Architecture_v3_FramePose.md
+- Architecture_v2.md
+- W113, W114, W115 Worklogs
+- docs/AUDIT_W111_W115_2026_11_05.md
+- W102-W105 source and rig evidence
+- W114/W115 scratch Animation Base and rig instruments
 
-Unverified per-frame subject identity must stay UNKNOWN and cross-frame edits requiring verified identity must fail closed. The 50fps source vs 30fps Action mismatch must remain explicit; sidecar-only recovery is not proof that Action/FBX preserves time.
+Architecture precedence remains unchanged.
 
-REQUIRED EVIDENCE — 5. POPULATIONS AND CONTROLS
-Keep results separate:
-- real_animcv_observation: authentic GT-free 199-frame W102 clip, 38 low-confidence left-wrist cells;
-- benchmark_detector_observation: W113 3DPW 319-row sequence, not untouched holdout;
-- real observation mixed with frozen HMR2/J1X/S0 windows for rig attribution;
-- synthetic oracle_geometry: integrity, edit, precision, path, identity and negative controls.
-Keep W114's fixed source input, predictions, constraints and perturbations. Synthetic edits are NOT recovered animations.
-Report exact numerator/denominator accounting for observed, derived, valid, missing, unknown; scores >1; authored and reverted edit cells; output channel-frames; false accepted mutation controls; source identity verified/unknown; eligible and rejected cross-frame operations; local/world lock outcomes; and real source vs Action time mapping.
-Provide qualitative before/after on real concrete frames, including C1, RS1/RS1_arm and a mixed arm negative control, with authentic source/target identity and provenance.
-Distinguish synthetic contract correctness, authentic replay, causal rig influence, practical animation quality and Architecture viability. Do NOT claim the latter two from successful mocks.
+Preserve all historical CASE verdicts, checkpoints,
+inputs, datasets, models, source images, original Actions,
+rigs, numerical contracts, and evaluation artifacts.
+
+Use existing source data and the frozen W105 rig
+configurations wherever possible.
+
+Do not create, switch, merge, rebase, reset or delete
+branches. Do not force-push.
+
+No existing production module under src/ may be modified.
+
+
+APPROVED ARCHITECTURE POLICY
+
+The user-approved policy is:
+
+SEMANTIC CONSTRAINT SYSTEM.
+
+Constraints describe the desired animation behavior,
+not merely internal Bone values.
+
+Different semantic requirements must remain distinct:
+- World position preservation.
+- Orientation preservation.
+- Original motion preservation.
+- Contact preservation.
+- Editing-region restrictions.
+- Soft style or motion preferences.
+
+Only WORLD_POSITION_PIN is within the implementation
+and validation scope of this Batch.
+
+A semantic constraint is independent of the algorithm
+used to satisfy it.
+
+A solver or future Generator may propose a new Animation
+State, but an independent evaluator must check whether
+the requested constraints are satisfied.
+
+Source evidence and historical animation states are
+never overwritten by constraint solving.
+
+A hard user constraint takes precedence over a generated
+motion preference.
+
+An impossible request must produce an explicit rejection
+or unsatisfied result.
+
+No hidden constraint relaxation is permitted.
+
+Unspecified joints are not automatically hard-locked.
+However, the solver must have an explicit authorized
+degree-of-freedom domain, and effects outside the
+declared output domain must be measured and reported.
+
+
+ARCHITECTURE HYPOTHESIS
+
+H1:
+
+A minimal semantic constraint contract, combined with
+a bounded rig-aware resolver and independent world-space
+output evaluator, can enforce selected joint-position
+locks while permitting meaningful animation modification.
+
+The architecture must distinguish:
+
+1. Immutable Source Evidence
+   Original video-derived observations and reconstruction
+   hypotheses, with source identity.
+
+2. Editable Animation State
+   Versioned candidate animation values and parent lineage.
+
+3. Semantic Constraint
+   A declarative description of a user-desired property.
+
+4. Rig Binding
+   Verified correspondence between semantic joints
+   and evaluated points on a specific rig.
+
+5. Constraint Resolver
+   A bounded mechanism that may change authorized rig
+   degrees of freedom.
+
+6. Constraint Evaluator
+   An independent measurement of actual output behavior.
+
+7. Edit Commit / Rejection
+   Accept only a valid candidate state, or preserve
+   the previous state with a complete failure report.
+
+These responsibilities must be distinguishable even
+if the scratch implementation uses fewer physical modules.
+
+Do not assume H1.
+
+
+MINIMUM SEMANTIC CONSTRAINT CONTRACT
+
+Implement only the information necessary for a
+WorldPositionPin constraint.
+
+Required semantics:
+
+- constraint identity;
+- constraint type = WORLD_POSITION_PIN;
+- semantic joint identity;
+- verified rig binding identity;
+- target coordinate frame;
+- target position, with explicit units;
+- source of the target position;
+- evaluation frame or declared interval;
+- hard constraint status;
+- authorized solver degrees of freedom;
+- relevant source state or parent state identity;
+- exact evaluation result and failure reason.
+
+For this Batch, WORLD means the actual Blender scene
+world coordinate system, including the Armature Object
+transform and posed skeleton.
+
+It does NOT mean the physical world coordinate system
+reconstructed from monocular video.
+
+A position captured from an existing rig pose must
+record the source frame and evaluated rig state.
+
+The target must not silently move when the Armature
+Object transform changes.
+
+The mapping of a semantic wrist or ankle to a Bone
+head, tail or other rig evaluation point must be
+verified, not inferred from naming similarity alone.
+
+Do not define unimplemented future constraint types
+as operationally supported.
+
+A small extension point is acceptable.
+A general-purpose rule engine is not authorized.
+
+
+WORLD-POSITION PIN SEMANTICS
+
+A pin requests that an evaluated joint position match
+a declared target in scene-world metres.
+
+Measure the residual:
+
+    r = || P_world_after - P_world_target ||
+
+P_world_after must come from the final evaluated rig,
+not solely from a pre-rig 3D pose array or local F-curve.
+
+For the first experiment:
+- use reference positions captured before editing;
+- use hard pins;
+- restrict the solver's changeable Bone channels;
+- preserve the initial source and unchanged rig;
+- treat unspecified joints as unconstrained but not
+  automatically authorized for arbitrary modification.
+
+Do not equate "hard" with "mathematically guaranteed
+solvable".
+
+The solver must reject or report unreachable targets,
+conflicting constraints, missing degrees of freedom,
+invalid mappings and output-contract violations.
+
+Record both position residuals and every resulting
+side effect on other evaluated joints.
+
+Declare the experimental positional acceptance target
+before outcome inspection. Use a concrete diagnostic
+target of 0.001 m (1 mm) for feasible 0.01 m
+controlled-edit cases, with separate accounting of
+numerical evaluation error. This is a provisional
+experiment criterion, NOT an approved Production
+tolerance.
+
+Do not adjust it after observing results.
+
+Report exact residuals even when the criterion passes.
+
+
+PRESERVE / CHANGE ONLY / DO NOT TUNE
+
+PRESERVE:
+- FramePose observations and reconstruction predictions.
+- W114/W115 source-preserving representation baselines.
+- Existing W105 source-to-rig behavior.
+- Original Blender Action and rig.
+- Original model parameters and weights.
+- Original source time and source identity.
+- Existing historical Worklogs and decisions.
+- All production modules and existing schemas.
+
+CHANGE ONLY:
+- New isolated W116 diagnostic scripts and tests.
+- Scratch Semantic Constraint representation.
+- Scratch rig-binding validation.
+- Scratch-only candidate constraint resolver.
+- Scratch-only editable Animation States.
+- Scratch-generated Action copies or rig evaluations.
+- W116 evidence and Worklog.
+
+DO NOT TUNE:
+- Detector thresholds or confidence.
+- S0/HMR/J1X predictions.
+- Original rig bone lengths.
+- Rig rest pose and source calibration.
+- Source frame rate.
+- FBX exporter/importer.
+- Existing pose smoothing or estimation behavior.
+- W115 numerical contracts.
+- Evaluation tolerance after results.
+
+The Agent may select an appropriate bounded solver
+algorithm and data structures.
+
+Solver parameters, allowed bones, joint-angle limits,
+failure thresholds and test interventions must be
+declared before examining candidate outcomes.
+
+Do not select successful frames post-hoc and present
+them as the entire population.
+
+
+REQUIRED EVIDENCE — PART 1
+SEMANTIC JOINT-TO-RIG BINDING
+
+Inspect actual W105 rig ownership and Blender-evaluated
+skeleton point locations.
+
+At minimum identify:
+- left wrist;
+- left elbow;
+- left shoulder;
+- right wrist where available;
+- relevant root and torso transforms.
+
+Verify how a semantic joint maps to the evaluated rig.
+
+Measure the frozen baseline's world positions.
+
+Check the effect of:
+- Armature Object transform;
+- parent Bone transforms;
+- local Bone rotations;
+- rig scale and coordinate conversion.
+
+Explicitly distinguish an actual missing controllable
+right-arm channel from an available left-arm chain.
+
+A semantic name match does not prove ownership.
+
+A missing or ambiguous joint binding must fail safely.
+
+
+REQUIRED EVIDENCE — PART 2
+MINIMUM CONSTRAINT RESOLVER
+
+Create a bounded scratch resolver for feasible
+joint-position requests.
+
+The implementation technique is not prescribed.
+A suitable IK or constrained kinematic optimizer may
+be used if justified.
+
+The resolver must operate on a copied editable state
+and authorized rig degrees of freedom.
+
+It must not directly modify immutable observations.
+
+For each request:
+- load exact parent state;
+- bind constraint to the rig;
+- identify authorized degrees of freedom;
+- evaluate the unconstrained proposed edit;
+- attempt to enforce the world pin;
+- evaluate final pose in Blender;
+- verify hard constraints and change scope;
+- accept atomically or reject without changing parent.
+
+Measure solver changes independently of semantic
+constraint declarations.
+
+Do not bypass the evaluator by assigning the target
+position directly as the reported result.
+
+Do not move the whole character root to satisfy a
+hand pin unless the experimental authorization
+explicitly permits root movement.
+
+Do not lengthen bones, modify the rest rig, teleport
+unrelated joints or silently change original Action
+timing to satisfy a pin.
+
+Declare a bounded execution and convergence policy.
+Report failure rather than running unrestricted retries.
+
+
+REQUIRED EVIDENCE — PART 3
+CONTROLLED A/B RIG EDITING
+
+Use the same frozen source pose, rig, user edit and
+time state for two comparisons:
+
+CONTROL:
+The requested animation modification without a
+world-position pin.
+
+CANDIDATE:
+The same modification with the semantic
+WorldPositionPin enforced.
+
+The solver and rig evaluator must otherwise be
+identical between both conditions.
+
+Use meaningful nonzero pose edits. A zero-change
+edit or an already-satisfied no-op cannot establish
+that pin enforcement works.
+
+Test feasible cases where:
+- the left hand can be kept in place by changing
+  authorized arm joints;
+- a shoulder/torso-related edit affects the hand;
+- a world-position pin requires compensating Bone
+  rotations.
+
+Use the existing W115 observations as historical
+reference, including the demonstrated divergence
+between local and world locks.
+
+Do not claim the W115 right-wrist case is solvable
+with the frozen left-arm-only degrees of freedom.
+
+Also include explicit negative cases where the
+available rig cannot satisfy the requested constraint.
+
+Report:
+- before-edit world position;
+- desired target;
+- unpinned edit position;
+- pinned edit position;
+- unpinned and pinned position residuals;
+- affected Bone channels;
+- changed other-joint world positions;
+- root movement;
+- solver convergence and failure status;
+- reversible state lineage.
+
+The user intent is satisfied only if the evaluated
+world position meets the declared criterion and
+other applicable constraints remain satisfied.
+
+
+REQUIRED EVIDENCE — PART 4
+SYNTHETIC FEASIBILITY AND NEGATIVE CONTROLS
+
+Use a simple known two-bone kinematic chain with
+ground-truth reachability.
+
+Include:
+- reachable pin with nonzero initial displacement;
+- reachable pin under an authorized shoulder change;
+- target beyond chain maximum reach;
+- conflicting hard constraints;
+- missing or invalid joint binding;
+- incorrect coordinate frame;
+- incorrect unit conversion;
+- locked root or insufficient degrees of freedom;
+- target altered after state binding;
+- stale candidate parent;
+- unauthorized Bone modification;
+- solver non-convergence;
+- unchanged original source evidence;
+- exact revert to parent state.
+
+Negative controls must distinguish:
+- a valid but infeasible user request;
+- an unsupported rig binding;
+- a solver failure;
+- a semantic-contract violation;
+- an invalid experiment.
+
+These are not interchangeable failure classes.
+
+An expected infeasible request should PASS its rejection
+control without being counted as a successful pin.
+
+Do not let solver failure change the immutable input.
+
+
+REQUIRED EVIDENCE — PART 5
+REAL-RIG AND REAL-OBSERVATION REPLAY
+
+Use the frozen W105 real_s0_only rig and authentic
+W102 real-observation clip where supported.
+
+Keep the original 199 frames and 50 fps source evidence.
+
+Include authentic low-evidence wrist windows
+109–118 and 154–181 as diagnostic populations.
+
+Perform edits on copied rig states only.
+
+The original source is GT-free.
+Do not claim a new animation is closer to the video's
+true 3D motion without ground-truth evidence.
+
+Per-frame tracked subject continuity remains UNKNOWN.
+Do not claim verified source-person continuity across
+the entire clip.
+
+For cross-frame and interval-oriented tests, distinguish:
+- known synthetic rig identity;
+- known output rig identity;
+- unverified video subject identity.
+
+Use a short controlled synthetic sequence with a
+known rig identity to test maintaining a fixed
+world-position pin over multiple frames.
+
+Report temporal continuity and whether the constraint
+creates discontinuities at interval boundaries.
+
+Authentic real-clip replay can validate output
+joint positions and rig behavior, but not verified
+cross-frame actor correspondence.
+
+Use the frozen mixed W102 configuration as a negative
+ownership control when appropriate:
+S0 arm values do not drive its J1X-owned arm.
+
+Do not repair source tracking, timebase or retargeting
+within W116.
+
+
+REQUIRED EVIDENCE — PART 6
+ACTUAL BLENDER OUTPUT VALIDATION
+
+Independently evaluate the generated scratch Action
+on the unchanged frozen rig.
+
+Use the evaluated Armature Object/world transforms
+and correctly bound joint positions.
+
+Compare these against the declared constraint targets.
+
+Do not infer success solely from:
+- a scratch solver's internal state;
+- a 3D pose array;
+- identical local F-curves;
+- generated keyframe count;
+- a successful Blender export;
+- a visually similar screenshot.
+
+For each representative real-rig edit, report
+target error and changed joint positions in metres.
+
+Include useful visual review of the before,
+unconstrained and constrained motions.
+
+Inspect:
+- wrist/hand drift;
+- unexpected shoulder or elbow motion;
+- bone lengths;
+- abrupt articulation;
+- joint bend or flip;
+- root displacement;
+- frame-to-frame discontinuity in synthetic sequences.
+
+Do not declare production animation quality based
+on satisfying one point constraint.
+
+Do not automatically add secondary heuristics to
+hide unnatural solutions.
+
+Report any unnatural result as a trade-off or failure.
+
+
+QUANTITATIVE ACCOUNTING
+
+Report, with explicit denominators:
+
+- requested constraints;
+- valid and invalid constraint specifications;
+- bound and unbound joint identities;
+- feasible and infeasible cases;
+- resolved and unresolved hard constraints;
+- baseline world-position residuals;
+- candidate world-position residuals;
+- criterion-pass and criterion-fail cases;
+- accepted and rejected edits;
+- intentionally changed Bone channels;
+- unintended channel changes;
+- unchanged and changed world-space joints;
+- root movement;
+- source evidence preserved;
+- successful exact reversals;
+- solver failures and reasons;
+- temporally discontinuous frames where evaluated;
+- source identity verified vs UNKNOWN cases.
+
+Maintain separate result groups:
+1. Synthetic contract correctness.
+2. Synthetic kinematic feasibility.
+3. Real-rig Blender output behavior.
+4. Authentic video-derived replay.
+5. Animation usability observations.
+6. Architecture viability.
+
+No aggregate PASS count may conceal failure of a
+required hard constraint.
+
+
+QUALITATIVE REVIEW
+
+Include at least:
+- one successful left-wrist world pin;
+- the identical edit without the pin;
+- one case where compensating arm movement is needed;
+- one unreachable or contradictory target;
+- one case where the rig has no authorized channel;
+- one case where local Bone values and world positions
+  lead to different preservation judgments;
+- one successful revert;
+- one temporal or articulation failure, if observed.
+
+Identify source frame, joint, rig channel, target,
+before/after result and evidence provenance.
+
+Negative results must remain visible.
+
+Do not describe mock or constrained edits as
+learned motion generation.
+
 
 TESTING
-Focused tests for semantic canonicalization and adversarial source changes, correct independent repeat, numeric comparator at casting boundary, error controls, edit lineage and rollback, local/world authority divergence, real/benchmark replay and frozen-rig source influence. Run appropriate focused legacy regressions; full suite optional for diagnostic-only work without Production changes. Report precise commands, PASSED/FAILED/NOT RUN counts. Preserve failed baselines. The W115 reviewer audit of cumulative W111-W115 code changes will be performed by the Architecture Reviewer AFTER W115 Worklog submission, not as an Agent recommendation.
+
+Run focused tests after meaningful implementation units.
+
+Tests must cover:
+- semantic constraint serialization and validation;
+- coordinate-frame and unit handling;
+- verified rig binding;
+- solver authorization scope;
+- feasible and infeasible targets;
+- constraint evaluation independently of solver;
+- source immutability;
+- edit lineage, stale rejection and rollback;
+- representative Blender A/B replay;
+- synthetic sequence continuity;
+- numerical measurement validity.
+
+Run relevant existing focused regressions where
+shared diagnostic contracts are used.
+
+No unnecessary full regression for diagnostic-only code.
+
+Tests not executed must be reported as NOT RUN.
+
+All original model and rig functionality must
+remain unchanged.
+
 
 STOP CONDITIONS
-Stop and preserve evidence if required artifacts fail authentication, canonicalization hides a real source mutation, numerical attribution requires an outcome-fitted tolerance, an ambiguous user lock policy must be decided to continue, source-to-rig effects cannot be separated under the frozen pipeline, or any Production/schema/model/rig/exporter modification is necessary. Do not work around invalidity by changing gates, tuning parameters or implementing heuristics.
 
-VERDICT CONTRACT
-Prospectively specify non-vacuous A/B/C/D predicates. Use these interpretations:
-A — BOUNDED SUPPORT only for demonstrated immutable evidence, authoritative lineage, repeatability under declared path semantics, adversarial rejection, correct edit/reversal and storage-aware local rig influence within an explicit LIMITED authority domain. Does not validate world-space preserve, real occlusion recovery, Generator quality or Production readiness.
-B — PARTIAL SUPPORT if valid controls support some guarantees while a material local/world authority or downstream identity/time guarantee remains unresolved or violated. Do not downgrade a necessary declared gate after outcomes.
-C — NOT SUPPORTED if valid controlled results contradict the candidate's minimum claimed guarantees.
-D — INVALID if source, numerical or repeatability control fails to establish a trustworthy verdict.
-D takes precedence. No retroactive W114 reclassification; W114 post-hoc remains post-hoc.
+Stop and preserve the evidence if:
+
+- the source or rig baseline cannot be authenticated;
+- the intended joint cannot be unambiguously bound;
+- world coordinates cannot be evaluated consistently;
+- a required candidate change needs Production code edits;
+- solver behavior requires changing the original rig;
+- hard constraints must be silently relaxed to proceed;
+- a required positive control has no real controllable
+  degrees of freedom;
+- the test cannot distinguish a solver result from an
+  actual evaluated rig result;
+- a major unapproved Architecture Decision is necessary.
+
+Do not replace a failed constraint by a heuristic pose
+correction and call it success.
+
+Do not tune tolerances after observing outcomes.
+
+A feasible request that the selected resolver cannot
+satisfy is evidence of a resolver limitation.
+It must not be hidden as an invalid input.
+
+Continue unrelated predeclared valid controls only when
+doing so does not violate a STOP condition.
+
+
+DECISION CONTRACT
+
+Declare exact objective gates before inspecting results.
+
+Use the following meanings:
+
+CASE A — BOUNDED SUPPORT
+
+A valid semantic world-position contract is successfully
+enforced on predeclared feasible synthetic and real-rig
+cases with meaningful nonzero edits.
+
+The evaluated output satisfies the declared positional
+acceptance target, the authorized change scope, source
+immutability, failure handling and reversal contracts.
+
+No claim of general production viability, style generation
+or arbitrary rig support is permitted.
+
+CASE B — PARTIAL SUPPORT
+
+Semantic constraints, rig bindings, and independent
+evaluation are valid, but one or more material execution
+guarantees remain unresolved or fail in valid cases.
+
+Distinguish solver limitation from a failure of the
+semantic representation.
+
+CASE C — NOT SUPPORTED
+
+Valid controlled evidence contradicts a required minimum
+architectural guarantee, such as inability to express,
+bind, measure, or safely reject user constraints under
+the declared scope.
+
+CASE D — INVALID
+
+Source authentication, test controls, rig identity,
+coordinate validation or experiment reproducibility
+fails such that an architecture verdict cannot be trusted.
+
+D supersedes other CASE outcomes.
+
+Do not reclassify W113, W114 or W115.
+
+A negative result is legitimate.
+
 
 FINAL REPORT
-Write W115 Worklog covering official verdict, claims separated by evidence level, exact baseline hashes, declared hypotheses and controls, path canonicalization with negative tests, numeric precision/rig attribution, both lock semantics, real-vs-synthetic-vs-benchmark accounting, reproduction, exact changed files, tests, uncertainties, failure examples and alternate explanations.
-Do NOT claim architecture success automatically. Report negative results honestly.
-Do NOT ask for or include Next Work Recommendation / Next Architecture Decision / Recommended Next Experiment / Proposed Next Batch / Next Implementation Plan. Do not start W116.
+
+Write a W116 Worklog that includes:
+
+1. Official CASE and experimental scope.
+2. Historical baseline fingerprints.
+3. Semantic constraint schema and semantics.
+4. Rig binding and world-coordinate definitions.
+5. Candidate solver and declared degrees of freedom.
+6. Synthetic feasibility results.
+7. Real-rig A/B results.
+8. Authentic observation replay limitations.
+9. World-space error and output-change accounting.
+10. Hard-constraint failures and infeasible cases.
+11. Animation quality and temporal observations.
+12. Edit lineage and reversal evidence.
+13. Alternative explanations.
+14. Unresolved uncertainties and non-claims.
+15. Exact changed files, tests, and reproducibility.
+
+Do NOT claim architecture success automatically.
+Report negative results honestly.
+
+Implementation completion, synthetic correctness,
+rig output correctness, animation usability, and
+Architecture viability are different levels of evidence.
+
+Do NOT provide:
+- Next Work Recommendation.
+- Next Architecture Decision.
+- Recommended Next Experiment.
+- Proposed Next Batch.
+- Next Implementation Plan.
+
+The Agent is an Evidence Producer.
+The human Architecture Owner and Architecture Reviewer
+decide subsequent work.
+
+Do not start W117.
+
 
 COMPLETION CONDITION
-Conclude only when the evidence can determine whether:
-1. stable source provenance survives controlled independent builds without false equivalence under adversarial changes;
-2. float32/Blender output semantics explain W114 C1 without outcome-driven tolerance tuning;
-3. reversible edits and actual source-to-rig effects hold within the declared authority domain;
-4. local-channel versus world-space user-preservation requirements can be kept separately assessable without silently choosing the Production policy;
-5. the minimum Animation Base representation is boundedly viable, partially viable, contradicted or still untestable.
 
-Negative/invalid outcomes count as completed evidence if honestly justified. Stop before any Production integration, trained Generator or Batch 116.
+W116 is complete when controlled evidence can determine:
+
+1. Whether a user-authored world-position constraint can
+   be represented independently from its solving method.
+
+2. Whether the constraint can be enforced on an actual
+   animated rig, rather than only within a pose array.
+
+3. Whether authorized compensating Bone movements can
+   preserve a pinned joint's world-space position during
+   meaningful edits.
+
+4. Whether impossible, unsupported, conflicting and
+   solver-failed requests are correctly distinguished
+   and handled without corrupting the parent state.
+
+5. Whether the Source-Preserving Animation Base and
+   Semantic Constraint separation provides a defensible
+   foundation for future Generator/Editor development.
+
+A negative result is valid.
+
+If any architectural judgment remains impossible,
+report exactly which evidence is missing and why.
+
+Do not proceed to additional constraint types,
+Generator training, Production integration, FBX repair,
+or Batch 117.

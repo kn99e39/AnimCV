@@ -1,149 +1,163 @@
-# BATCH 118 — Automatic Transition Editing with Explicit Edit-Footprint Visibility
+# BATCH 119 — Endpoint-Space Transition Compensation with Isolated Real-Rig Baselines
 
 DIRECTION
 
-Advance AnimCV toward a reference-guided, reliability-aware
-Video-to-Animation Generator/Editor that produces usable, editable
-rig animation under user-authored semantic constraints.
+Advance AnimCV's human-approved Semantic Constraint Architecture toward
+usable, inspectable, reversible Blender-rig animation editing.
 
-The human Architecture Owner has explicitly approved policy B:
-the system MAY automatically modify frames outside a requested
-hard-pin interval to make the transition more natural, PROVIDED
-that the modified interval is explicitly and intuitively visible
-to the user.
+The approved policy remains:
+- WORLD_POSITION_PIN is a hard Blender scene-world positional constraint.
+- Adjacent frames MAY be edited automatically to smooth a pin transition.
+- The planned edit domain and actual changed frames/Bones MUST be visible.
+- Source evidence, user-authored edits, and other hard constraints retain
+  their ownership; all edits must be bounded and reversible.
 
-This is an Architecture POLICY approval, not evidence that
-automatic smoothing works, nor permission to alter any arbitrary
-Bone, time span, source observation, or Production subsystem.
+W119 is an isolated architecture-evidence experiment. It is not a
+Production migration, general-purpose Editor, or learned Generator.
 
-Only WORLD_POSITION_PIN is in scope. This Batch is a bounded
-scratch experiment and must not implement a Production UI,
-trained Generator, new semantic constraint type, or schema change.
+Do not modify any existing production source module or historical Batch.
 
 
 PURPOSE
 
-W117 showed a genuine editing trade-off. A temporal swivel
-optimizer restricted to pinned frames did not establish reliable
-animation-quality improvement. Its transition-easing variant
-(TE) softened boundary jumps but necessarily changed frames
-outside the pin interval. Under W117's frozen side-effect
-criterion those changes counted as worse. The human owner has
-now authorized automatic transition edits outside the pin
-interval, with an explicit, intuitive display of the edit range.
+W118 has officially completed as CASE D INVALID. Its prospective V4 gate
+incorrectly assumed that each frozen W117 segment request had a separate
+frame-independent F state. In fact, F/T segment candidates were stored
+as family-shared states: a segment's Blender footprint included the
+pin frames of sibling segments. Six segment quality windows therefore
+had contaminated F comparisons. The independent footprint evaluator
+correctly detected those changes; the declaration's population
+assumption was wrong.
 
-The new decision does NOT make W117 CASE C invalid or
-retroactively turn TE into a success. It removes one policy
-blocker and permits a new, controlled test of whether a visible,
-bounded automatic edit can improve an animator's actual result.
+This is not a reason to erase W118's negative evidence. Even if V4 were
+mechanically ignored, its own frozen rule would yield C: synthetic
+near-straight regression and no qualifying real hold improvement.
+W118's X rotation-offset transition editor produced large synthetic
+boundary gains but mixed real-rig results, introduced near-straight
+frames and a bend flip, and often saturated its eight-frame budget.
+The real source also has pre-existing discontinuities and a nearly
+straight arm. Smoothing a local quaternion offset does not guarantee
+smooth wrist displacement when the parent motion changes.
 
-The next uncertainty is whether the solver can deliver a
-meaningful improvement, preserve hard pins and user edits,
-and truthfully show where and how the animation was changed.
+At the same time, W118 reported bounded evidence for distinct pin,
+budget, planned and actual edit domains, truthful Blender-derived
+footprint disclosure, source preservation, atomic rejection and
+reversal. Those are agent-run observations, not independently rerun
+Reviewer results.
+
+The next useful question is MECHANISTIC and PRODUCT-RELEVANT:
+can a transition method guided by the desired end-effector motion,
+rather than merely fading a fixed local rotation offset, preserve
+the hard pin and visible edit footprint while producing a genuinely
+better real-rig transition without new articulation failures?
+
+Clean per-request baselines are a mandatory precondition for that
+question, not a stand-alone gate-patching Batch.
 
 
 CENTRAL INTENT
 
-Can AnimCV automatically choose a bounded transition-edit
-region outside a user's WORLD_POSITION_PIN interval, improve
-the actual Blender-rig animation, and expose an accurate,
-intuitive, independently verifiable edit footprint that
-distinguishes pinned frames, automatically changed frames,
-unchanged frames, and failed/rejected edits?
+Under independently isolated, source-identical per-request baselines,
+can a bounded WORLD-SPACE END-EFFECTOR-GUIDED transition candidate
+improve the actual Blender-rig animation beyond W118's local
+quaternion-offset candidate, while preserving hard WORLD_POSITION_PIN,
+authorized channels, truthful visible footprint and exact rollback?
 
-Can it do so without silently modifying unauthorized channels,
-relaxing hard pins, corrupting source evidence, or concealing
-a solver failure or animation-quality trade-off?
+In particular, does representing the transition in end-effector
+world space prevent the near-straight / bend-flip regressions and
+source-motion confounding seen in W118, or are those failures
+intrinsic to the current two-bone rig and source trajectory?
+
+A valid negative answer is a useful architecture result.
 
 
 HUMAN ASSESSMENT
 
-Historical official results are frozen:
+The Architecture Owner has approved:
+1. Semantic Constraint System as the user-intent contract.
+2. WORLD_POSITION_PIN as the initial implemented constraint.
+3. Automatic bounded edits outside the pin interval.
+4. An intuitive, truthful display of planned and actual edits.
 
-W113 CASE D INVALID; W114 CASE D INVALID;
-W115 CASE D INVALID; W116 CASE B PARTIAL SUPPORT;
-W117 CASE C NOT SUPPORTED.
+The Owner has NOT approved:
+- a permanent transition budget, numerical smoothness threshold,
+  allowed elbow deviation, bend-angle policy or straight-arm limit;
+- a Production timeline UI, Production schema migration,
+  trained Generator, new constraint type or arbitrary root motion.
 
-W116 showed bounded functional feasibility of a semantic
-WORLD_POSITION_PIN, separate Rig Binding, resolver, independent
-Blender evaluation and reversible Animation State on a frozen
-W105 rig. Its real-rig feasibility numbers are Agent-run
-evidence, not independent Reviewer reruns.
+Historical official verdicts are immutable:
+W113 D, W114 D, W115 D, W116 B, W117 C, W118 D.
 
-W117 is officially COMPLETE at
-01749bfec5543c251d7a91b5c629f1bef2c1181b.
-Its declaration and CASE are immutable. W117's T solver
-did not materially improve held-out synthetic trajectories,
-had mixed real-rig effects, and introduced a new hard failure:
-H_RH2_RBpos was feasible and accepted by F but rejected by
-T/TE as NON_CONVERGED under the frozen absolute gradient
-criterion. A post-hoc Blender check found the rejected
-candidate's pin residuals acceptable; this does NOT erase
-the declared failure.
+W116:
+bounded Blender world-pin feasibility, source-preserving scratch
+states and atomic edits; temporal usability not established.
 
-W117's TE used four guide frames on either side of a hold.
-It visibly softened selected entry/release boundaries but
-deviated from unpinned elbow motion on those frames.
-The former W117 S1 side-effect cap is a HISTORICAL
-EXPERIMENTAL GATE, not an approved user-facing limit.
-W118 must measure and disclose such deviations, not silently
-reapply that historical cap as a universal policy.
+W117:
+temporal swivel smoothing did not improve held-out synthetic cases
+materially, had mixed real effects, and introduced a frozen
+NON_CONVERGED rejection of a feasible request.
 
-W117's own visual review was agent-authored, covered only
-three sheets, and was not independent. A successful rig pin
-is not equivalent to anatomically plausible animation.
+W118:
+completed at HEAD 913bac2193cd1d2dac508a67a44c45ec9a871ea4.
+Worklog:
+docs/118_WORKLOG_AUTOMATIC_TRANSITION_EDIT_FOOTPRINT_VISIBILITY.md.
+Its frozen V4 baseline-scope error yields CASE D. The shared-state
+segment comparisons are NOT admissible as isolated per-request A/B.
+Its X editor improved synthetic boundary compensation but failed
+declared real quality gates; near-straight frames and bend flips
+were introduced in selected cases. No retroactive reclassification.
 
-The authentic W102/W105 clip is GT-free; subject identity is
-UNKNOWN on 199/199 frames. Output rig identity is known.
-The source is 50 fps, historical Action plays at 30 fps,
-and evaluation used frame-indexed 25 fps factory context.
-No source-to-Action timing correctness is established.
+All Blender numbers, tests, screenshots, visual assessments and
+local manifests in W116–W118 were produced by the external Agent.
+The Reviewer inspected repository code and Worklogs but has not
+independently executed the Main-local Blender experiment.
+
+The W111–W115 cumulative audit is complete at
+docs/AUDIT_W111_W115_2026_11_05.md.
+The next cumulative audit is W120 (W116–W120), before W121.
 
 
 HUMAN-READABLE SUMMARY
 
 Direction:
-Automatic, bounded transition editing with an accurate,
-visually inspectable edit footprint.
+Test a genuinely different, end-effector-space transition mechanism
+with clean per-request real-rig controls.
 
 Purpose:
-Test whether the now-approved out-of-pin editing freedom
-delivers a practically useful Blender animation, rather
-than only a lower numeric smoothness score.
+Determine whether automatic, visible transition edits can improve
+usable Blender animation rather than merely reduce a synthetic
+compensation metric.
 
 Central Intent:
-Can an automatic resolver improve boundary motion while
-making its exact edits visible and reversible, without
-violating WORLD_POSITION_PIN or user-edit ownership?
+Can a world-space wrist trajectory guide produce better real-rig
+pin entry/release behavior than W118's rotation-offset fading,
+without introducing articulation or ownership regressions?
 
 Do:
-- Keep the pinned interval and actual edit interval separate.
-- Select bounded transition-edit frames automatically using
-  a predeclared policy; do not require a user-supplied range.
-- Independently measure the actual changed frames and Bones.
-- Show both intended edit coverage and actual edit footprint
-  in a clear timeline plus before/after rig motion.
-- Compare against identical unpinned, W116 framewise and
-  frozen W117 temporal/TE baselines.
-- Evaluate meaningful boundary quality and its costs.
-- Preserve hard pins, authorized DOF, source and reversal.
-- Include synthetic asymmetric and authentic real-rig cases.
+- Authenticate and preserve W116–W118 baselines.
+- Construct independent, isolated per-request F and X controls.
+- Use the same parent, user edit, rig, hard pin and authorized DOF.
+- Evaluate one bounded end-effector-guided candidate against F/X.
+- Match temporal budgets and disclose actual Blender footprints.
+- Distinguish raw motion discontinuities from edit-induced changes.
+- Measure elbow/flex/flip costs and view actual rig animation.
+- Test synthetic held-out and authentic real-rig populations.
+- Preserve source, historical decisions and exact reversal.
 
 Do NOT:
-- Ask the user to approve each automatic margin.
-- Implement a Production timeline UI or new editor module.
-- Train a Generator or add another semantic constraint type.
-- Change source reconstruction, rig, FBX, MotionGraph,
-  FramePose, timebase, historical Worklogs or CASE.
-- Declare a universal allowed elbow-deviation threshold.
-- Treat visually hidden or mislabeled edits as acceptable.
-- Hide solver nonconvergence with an unreported fallback.
-- Request or propose the next Batch.
+- Change W118's V4 gate, decision, CASE or shared historical states.
+- Count contaminated W118 segment A/B comparisons as clean.
+- Re-label W117 NON_CONVERGED as solved.
+- Fix the real clip's source discontinuities or timebase.
+- Tune thresholds or choose examples after seeing outcomes.
+- Train a Generator or implement a Production UI/schema.
+- Expand beyond WORLD_POSITION_PIN or modify the rig.
+- Ask the Agent to recommend the next Batch.
 
 Decision enabled:
-Whether bounded, transparent automatic transition editing
-is a viable practical behavior for the Semantic Constraint
-Generator/Editor architecture.
+Whether endpoint-space transition ownership is a viable next
+architecture mechanism for useful Semantic Constraint editing,
+or whether current rig/observation limitations dominate.
 
 
 HISTORICAL BASELINE
@@ -151,481 +165,564 @@ HISTORICAL BASELINE
 Repository: kn99e39/AnimCV
 Existing branch ONLY: arch/single_frame_first
 
-Expected pre-issuance HEAD:
-01749bfec5543c251d7a91b5c629f1bef2c1181b
+Last observed HEAD:
+913bac2193cd1d2dac508a67a44c45ec9a871ea4
 
-Read and honor:
+The current instruction was W118 at blob
+2468904ff2e087fcff65c09729014d1968e6936f.
+
+Verify actual HEAD, branch, instruction blob, last Worklog and
+input provenance before any experiment. Do not assume these
+historical values remain current after W119 issuance.
+
+Read:
 - AGENTS.md
 - PRODUCT_VISION.md
 - Architecture_v3_FramePose.md
-- Architecture_v2.md (standing MotionGraph/Rig/Blender scope)
+- relevant Architecture_v2.md
 - docs/AUDIT_W111_W115_2026_11_05.md
-- docs/116_WORKLOG_SEMANTIC_WORLD_POSITION_PIN_FEASIBILITY.md
-- docs/117_WORKLOG_SEMANTIC_WORLD_PIN_TEMPORAL_COHERENCE.md
-- scripts/w116_semantic_pin_base.py
-- scripts/w116_semantic_pin_contract.py
-- scripts/w116_blender_stages.py
-- scripts/w117_temporal_pin_base.py
-- scripts/w117_temporal_pin.py
-- scripts/w117_blender_timing.py
-- tests/test_w116_semantic_pin.py
-- tests/test_w117_temporal_pin.py
-- docs/next_batch.md
+- W116, W117 and W118 Worklogs and frozen declarations
+- W116 world-pin rig adapter, Blender evaluator and state store
+- W117 temporal metrics and frozen F/T/TE replay
+- W118 transition_edit, derive_footprint, display_spec,
+  check_display, assess and decision code
+- corresponding focused tests and W105 source-to-rig evidence
 
-Verify the live HEAD, issued instruction blob, Worklog
-COMPLETE markers and experiment source identity yourself.
-Do not assume an external Claude worker has already started.
+The official W118 COMPLETE marker must be present:
+AUTOMATION_BATCH_STATUS: COMPLETE
+BATCH_NUMBER: 118
 
-The W117 declared experimental artifacts live on Main-local
-storage and are not independently authenticated by the
-Architecture Reviewer. Verify them on the execution host.
-If they cannot be authenticated, STOP; do not fabricate data.
+No other Batch 119 Worklog may already exist.
 
-Do not create, switch, merge, rebase, reset, delete branches
-or force-push. Do not alter historical source assets.
+Do not create, switch, merge, rebase, reset or delete branches.
+Do not force-push. Do not overwrite a concurrent Agent's work.
 
+No existing src/ Production module, normative Architecture document,
+W116–W118 script/test/Worklog, frozen declaration, original
+Action, source data, model, checkpoint, rig or FBX pipeline may
+be modified.
 
-APPROVED HUMAN POLICY AND SCOPE BOUNDARIES
-
-1. A WORLD_POSITION_PIN defines a HARD CONSTRAINT DOMAIN:
-   the requested scene-world position must be preserved
-   on exactly its specified frames, under the existing
-   provisional W116 1 mm diagnostic acceptance criterion.
-
-2. Automatic temporal transition edits MAY occur outside
-   that domain to improve continuity. No separate user
-   approval of every extension is required.
-
-3. The automatic selection mechanism MUST be bounded,
-   deterministic/reproducible for fixed inputs, and
-   declared before examining evaluation outcomes.
-   Its search budget, maximum extent and behavior at clip
-   boundaries are EXPERIMENTAL parameters, not Production
-   defaults or new user-facing policies.
-
-4. The actual modification footprint MUST be clearly
-   visible to the user: time intervals and changed channels
-   must be inspectable, including any out-of-pin changes.
-   Displayed coverage must be based on actual candidate
-   output, not only the solver's intended margin.
-
-5. Hard pins are never silently relaxed. The user edit
-   itself remains authoritative. Source evidence remains
-   immutable. All candidate states are reversible.
-
-6. Unspecified joints are not automatically hard-locked.
-   Only explicitly authorized Bone channels may be changed
-   by the constraint resolver. Changes to other evaluated
-   joints caused by the original user edit must not be
-   misattributed to automatic pin compensation.
-
-7. The user has NOT fixed a Production limit on elbow
-   deviation, straight-arm use, compensation angles or
-   the maximum number of transition frames. Measure those
-   trade-offs honestly; do not invent a permanent policy.
-
-8. This approval concerns automatic edit behavior and
-   edit-range VISIBILITY. It is not approval to build a
-   Production UI, add new constraint types, alter source
-   tracking, train a model or change downstream contracts.
+All new implementation belongs in isolated W119 scratch
+scripts/tests and a new W119 Worklog.
 
 
 ARCHITECTURE HYPOTHESIS
 
-H1: A WorldPositionPin can retain its narrow hard-pin
-domain while a separate automatic transition editor
-operates on a bounded, explicitly recorded edit domain.
+H1 — End-effector-space ownership:
 
-H2: An independent Blender evaluator can derive a
-truthful per-frame/per-channel ACTUAL EDIT FOOTPRINT
-from the candidate vs the unpinned user-edit control,
-and that footprint can be displayed clearly enough
-for an animator to understand what the system changed.
+For transition frames outside a hard-pin interval, explicitly
+planning a world-space wrist trajectory relative to the
+unmodified user-edit motion, then resolving it on the existing
+two-bone chain with authorized DOF, can avoid at least some
+failure modes of fading a fixed local quaternion offset.
 
-H3: Within this ownership model, at least one controlled
-automatic transition strategy can reduce meaningful
-boundary discontinuity without introducing a new hard
-pin, ownership, atomicity or reversal failure.
+The wrist trajectory is a GUIDE, not an additional hard pin
+outside the requested interval. The requested pin remains hard.
 
-H1/H2/H3 are separate. An accurate display alone is
-not evidence of better animation. A smoother animation
-with a false footprint is not a viable editor result.
+This hypothesis must be falsifiable against:
+- source-motion discontinuity;
+- reachability and near-straight singularity;
+- elbow swivel / bend-plane ambiguity;
+- solver convergence or branch flips;
+- insufficient authorized degrees of freedom;
+- unacceptable collateral articulation;
+- excessive or hidden edit footprint.
+
+The new candidate is labelled Y. It is a scratch test of a
+mechanism, not a permanent Architecture implementation.
+
+The Agent may choose a bounded IK/kinematic method and
+regularization, but must predeclare its formulation, exact
+parameters, numerical criteria, DOF and fallback policy
+BEFORE evaluating the held-out population.
+
+Do not optimize the candidate by viewing held-out outcomes.
 
 
 PRESERVE / CHANGE ONLY / DO NOT TUNE
 
 PRESERVE:
-- All historical Worklogs and frozen CASE verdicts.
-- W116 and W117 code, declarations, decisions and manifests.
-- W105 original Rig, rest pose, Action and source evidence.
-- FramePose/MotionGraph/Blender/FBX production behavior.
-- Source time, identity and coordinate contracts.
-- W116 1 mm provisional hard-pin diagnostic criterion.
-- User-edit Bone channels and immutable parent states.
+- Original video-derived observations and source identity.
+- W102 authentic clip and 199-frame observations.
+- W105 frozen rig, rest lengths and original Actions.
+- W116 per-frame F world-pin resolver and 1 mm
+  provisional diagnostic pin criterion.
+- W117 frozen T/TE results and convergence failures.
+- W118 X algorithm, margins, historical states and CASE D.
+- Parent/user-edit motion U, hard-pin targets and authorized DOF.
+- Original source fps, Action frame axis and timing mismatch.
+- Source-preserving Animation State lineage and reversal.
+- Existing negative controls, seeds and evidence manifests.
 
 CHANGE ONLY:
-- New isolated W118 scripts and focused tests.
-- Scratch edit-domain/footprint metadata and renderer.
-- Scratch copied candidate Animation States and Actions.
-- W118 declaration, outputs, renders and Worklog.
-- New scratch diagnostic visualization (not Product UI).
+- New W119 scratch baseline-isolation harness.
+- New bounded endpoint-guided Y candidate.
+- New W119 independent Blender output accounting.
+- New scratch display and comparison artifacts as needed.
+- New focused W119 tests and W119 Worklog.
 
 DO NOT TUNE:
-- W116/W117 frozen thresholds, solvers, declared gates
-  or historical result files.
-- Input pose estimates, confidence or source identity.
-- Bone lengths, rest pose, original Action or retargeter.
-- Timebase, Blender exporter/importer or rig mapping.
-- W118 quality gates, selected cases or edit budget
-  after the pre-outcome declaration.
-- A candidate until it appears successful on selected
-  evaluation cases.
+- W116/W117/W118 historical algorithms or gate results.
+- W118 X M_MAX=8, SIGMA_STEP_M=0.010 or recorded margins.
+- Historical source, root, rest rig, user edit or retargeting.
+- Source 50 fps / historical Action 30 fps.
+- Previous decision classifications.
+- Evaluation thresholds after held-out results are seen.
 
-Do not modify existing production src/ modules.
-Do not rewrite previous scripts/tests/Worklogs.
+For the primary Y-vs-X comparison, Y must use the SAME
+per-side temporal edit margins as the frozen X candidate
+on the corresponding clean per-request source state.
+This isolates the proposed representation mechanism
+from the choice of margin width.
+
+If Y cannot use that margin, report UNSUPPORTED or
+FAILURE; do not silently widen it.
+
+A separate explicitly declared diagnostic may study Y's
+own automatic margin selection, but it cannot replace
+the primary matched-budget comparison or establish a
+Production default.
 
 
 REQUIRED EVIDENCE — PART 1
-SEPARATE PIN DOMAIN, AUTOMATIC BUDGET AND ACTUAL FOOTPRINT
+SOURCE AND BASELINE AUTHENTICATION
 
-Represent separately:
-- requested pin frames;
-- the predeclared automatic edit SEARCH BUDGET;
-- candidate-declared editable frame domain;
-- authorized Bone channels;
-- actual changed channel/frame pairs vs the unpinned
-  user-edit control U;
-- independently evaluated joint displacement vs U;
-- candidate status (proposed/accepted/rejected);
-- original source/parent identity and reversal lineage.
+Verify:
+- current branch and HEAD;
+- W118 instruction provenance and official COMPLETE marker;
+- W116–W118 Worklog/declaration/decision/CASE integrity;
+- source/rig/Action hashes and frozen input ownership;
+- frozen W117 and W118 local manifests if available;
+- W105 Blender-evaluated parent parity where possible.
 
-The algorithm chooses its transition domain automatically.
-The user does not need to specify it.
+If Main-local artifacts are unavailable or unauthenticated,
+stop rather than manufacturing baselines.
 
-The exact changed range may be non-contiguous. Do not
-reduce it to a misleading single continuous interval.
-Store both the union envelope and each contiguous run.
+No claim of independent Reviewer execution may be made.
+The Agent must label its own Blender and local-manifest runs.
 
-Differentiate numerical F-curve differences from material
-evaluated pose differences. Report exact changed values
-and a declared display resolution; never hide changes
-solely because they are smaller than the display threshold.
+Reproduce the W118 V4 failure mechanism in a read-only
+diagnostic: show that a family-shared SEG_<family>__F
+contains sibling segment changes. Preserve the failure.
 
-Report the time axis explicitly as Action frame indices.
-Do not convert to seconds using the source's 50 fps while
-the historical Action is 30 fps. If showing seconds,
-provide the explicit, verified frame-rate interpretation.
-
-If a candidate changes a frame outside its declared
-automatic budget, reject it even if the pin is satisfied.
+Do not change the frozen V4 gate or rerun W118 decide
+with a new criterion.
 
 
 REQUIRED EVIDENCE — PART 2
-INTUITIVE EDIT-RANGE VISIBILITY
+CLEAN PER-REQUEST BASELINES
 
-Produce a standalone scratch visual preview that an
-animator can read without parsing raw JSON.
+Create isolated scratch per-request states against the
+same authenticated U parent:
 
-At minimum:
-- a full-sequence frame timeline with clear legend;
-- hard-pin frames distinctly highlighted;
-- automatic out-of-pin changed frames highlighted
-  differently from pinned frames;
-- unchanged frames and rejected candidates distinct;
-- exact start/end frame labels and disjoint runs;
-- authorized Bone/channel change coverage;
-- before/after motion or rig-proxy animation;
-- an indication of how much movement changed, not
-  only whether a frame was touched.
+U_r: unpinned user edit.
+F_r: frozen W116 framewise pin resolver applied ONLY
+     to the requested pin frames.
+X_r: frozen W118 transition-offset mechanism applied
+     ONLY to that request, with its original declared
+     per-side margins and authorized channels.
+Y_r: the new candidate on the same request and budget.
 
-Include a side-by-side comparison of U, frozen F,
-frozen W117 TE and the W118 candidate for at least
-the declared representative cases.
+For F_r, prove that its actual changed-frame footprint
+is a subset of the request's pin frames, independently
+from Blender output.
 
-Show the candidate footprint BEFORE committing a
-scratch state, then show the ACCEPTed or REJECTed
-result with matching state ID. A rejected candidate
-must not be presented as applied.
+For X_r, prove the same source, hard pin, rig, edit
+authorization and temporal budget as F_r/Y_r.
 
-Validate the display against an independently derived
-Blender output diff. A timeline generated only from
-the solver's intended margin is insufficient.
+A family-shared historical SEG state is NOT a valid
+isolated F_r. No sibling segment edits are permitted
+in the per-request candidate.
 
-At least one negative control must deliberately make
-the displayed interval or channel coverage incomplete
-and verify that the display/contract check fails.
+Reconstruct all previously contaminated segment
+families rather than silently dropping their cases.
+If the reconstruction cannot be authenticated or
+its equality to the frozen single-frame resolver
+cannot be established, mark those cases INVALID
+and do not use them in a quality gate.
 
-Visual inspection is not a substitute for the numeric
-truth check. Clearly state whether the visuals were
-reviewed only by the Agent or independently.
+Add a negative control that deliberately uses the
+family-shared F state and confirms that the baseline
+isolation preflight rejects it.
+
+Keep W118's historical numbers and decision untouched.
+
+Before any Y held-out evaluation, freeze and hash the
+per-request control definitions and the expected
+case population.
 
 
 REQUIRED EVIDENCE — PART 3
-CONTROLLED TRANSITION EDITING
+BOUNDED WORLD-SPACE TRANSITION CANDIDATE
 
-Use the same parent rig, pin targets, user edit,
-source frames and independent Blender evaluator for
-all compared variants.
+Y must operate only on the existing left-arm two-bone
+chain and the authorized upper/lower arm channels.
 
-Controls:
-U — unpinned user edit.
-F — frozen W116 frame-independent pin resolver.
-T — frozen W117 temporal-only solver, where applicable.
-TE — frozen W117 fixed-margin transition easing.
+Inside pin frames:
+- use the same frozen F hard-pin result;
+- do not move the pin target or relax the hard pin;
+- do not alter the user-edit channel, root or object.
 
-Candidate:
-One bounded W118 automatic transition strategy, with
-predeclared search budget and objective/selection rule.
+Outside pin frames, within the matched X margin:
+- construct a target wrist WORLD-SPACE guide between
+  the boundary pinned pose and the original U motion;
+- resolve the guide on the unchanged rig with a
+  bounded kinematic method;
+- explicitly handle reachability, near-straight
+  degeneracy and bend-plane branch ambiguity;
+- preserve the declared edit-domain contract;
+- record residuals and all compensating articulation.
 
-The Agent may choose the internal algorithm. A framewise
-hard-pin base plus separate transition editor is an
-acceptable candidate if justified. Do not require the
-known W117 T optimizer as a dependency when it introduces
-a nonconvergence failure unrelated to hard-pin feasibility.
+The guide is a soft editing objective, not a hard
+constraint outside the pin domain. Failure to reach
+the guide may be reported without claiming a hard-pin
+failure, but any actual hard-pin failure is critical.
 
-Any fallback must be explicitly declared, logged per
-request and compared against the baseline. A fallback
-that merely returns F is not counted as a quality gain.
+The candidate must distinguish:
+- valid and reachable guide;
+- unreachable guide;
+- missing authorized DOF;
+- solver nonconvergence;
+- bend-plane ambiguity;
+- output contract violation;
+- valid but poor animation.
 
-No hidden frame expansion, root movement, unauthorized
-channel edit, bone stretching, hard-pin relaxation or
-source alteration is allowed.
+Do not fix reachability by changing bone lengths,
+moving the root, editing the source motion, changing
+the timebase or adding unauthorized channels.
 
-For every candidate, distinguish:
-- feasible pin but temporal optimizer failed;
-- hard-pin failure after Blender evaluation;
-- unreachable or conflicting request;
-- unauthorized output or footprint mismatch;
-- acceptable output with a quality trade-off;
-- valid accepted improvement.
+Do not use unreported fallback to F or X.
+A fallback, if tested, must be a separately declared
+candidate and cannot be counted as Y success.
 
-Do not turn solver-convergence tuning into the central
-purpose of this Batch. W117 C6 remains historical.
+Use one prospectively declared Y formulation.
+No post-hoc objective/threshold sweep.
 
 
 REQUIRED EVIDENCE — PART 4
-MEASURE ACTUAL ANIMATION QUALITY AND EDIT COST
+FAIR SYNTHETIC AND REAL-RIG A/B
 
-On Blender-evaluated output, measure:
-- hard-pin residual per frame;
-- boundary wrist displacement and step excess over U;
-- elbow world-space trajectory and step/acceleration;
-- upper/lower arm quaternion angular steps;
-- bend-plane flips and near-straight cases;
-- peak and mean elbow deviation from U;
-- changed frame count and number of disjoint edit runs;
-- per-Bone changed channel/frame counts;
-- extra frames outside pin interval;
-- root and non-arm collateral vs U;
-- solver runtime, failures and fallback usage;
-- reversal and source-integrity results.
-
-Report both absolute output motion and the extra
-compensation relative to U. A source jump already
-present in U is not automatically a solver defect.
-
-Do not reuse W117's frozen S1 10 mm limit as a new
-hard user-policy gate. It is a cost metric in W118.
-
-Predeclare meaningful improvement criteria before
-looking at candidate outcomes. Quality criteria must
-cover at least boundary discontinuity and introduced
-articulation defects; a single scalar smoothness score
-is not sufficient. Do not hide worsening in one metric
-behind an aggregate improvement in another.
-
-Use visual review to assess whether the observed change
-would actually help an animator. Avoid claims of
-anatomical plausibility without a reference.
-
-
-SYNTHETIC + REAL REPLAY
+Use identical parent, U, rig, pin, frame range and
+authorized DOF for each F_r, X_r and Y_r comparison.
 
 Synthetic:
-- Use W117's asymmetric holds H_A/H_B/H_C, including
-  the near-singular case and nonzero user edit.
-- Include at least one held-out asymmetric transition
-  not used to choose candidate parameters.
-- Include unreachable and contradictory requests,
-  clip-start/end clipping, zero margin, disjoint
-  intervals and a display-footprint corruption control.
-- Compare no-pin, F, TE and W118 on identical states.
-- Include a short multi-frame animation with real
-  entry/release behavior, not only static poses.
+- asymmetric holds H_A, H_B, H_C;
+- disjoint DJ_B;
+- clip-start and clip-end cases;
+- near-straight / singular trajectory;
+- infeasible hard pin and conflicting constraints;
+- at least one genuinely NEW held-out asymmetric
+  trajectory with frozen design and no evaluation
+  used to choose Y parameters.
 
 Real:
-- Reuse the authentic W102-derived W105 S0-only rig
-  and 199-frame Action, with original evidence.
-- Explicitly evaluate holds 109–118 and 154–181,
-  plus the feasible W117 real requests that exposed
-  improvements and regressions.
-- Preserve the W117 H_RH2_RBpos hard-failure case as
-  a named regression control: do not relabel it.
-- Include source discontinuity at 153→154 as a
-  confounder, not a new editing target.
-- Evaluate the same side-bend signs, feasible
-  populations and independent feasibility oracle
-  as the frozen baselines.
-- Display a real-rig timeline and representative
-  before/after playback with actual edit footprint.
+- H_RH1_none and RH1 bend-sign variants;
+- H_RH2_RBpos, including the W117 convergence
+  regression as an unchanged historical control;
+- DJ_R;
+- isolated S_RA_pos_* and S_RB_pos_* requests,
+  including the six contaminated W118 windows;
+- whole-clip requests with no transition availability;
+- W102/W105 low-evidence windows 109–118 and 154–181.
 
-The authentic source has NO ground-truth 3D motion.
-Subject continuity is UNKNOWN; only output rig identity
-is known. Do not claim performer fidelity or video
-identity continuity. Do not silently repair the
-50fps-source / 30fps-Action mismatch.
+Treat multiple bend-sign variants of one RH1 hold
+as a correlated family, not independent successes.
+
+Do not exclude an awkward source jump or near-straight
+frame because it hurts Y.
+
+Real clip is GT-free and video subject identity UNKNOWN
+for all 199 frames. Evaluate known output-rig motion only.
+Do not claim fidelity to the performer or true 3D motion.
+
+W118's X numbers may be shown as historical reference,
+but the PRIMARY comparison uses reconstructed clean
+F_r and X_r with the same per-request ownership.
+
+T/TE may be included as historical secondary controls,
+but only if their segment states are equally isolated.
+Do not silently use family-shared T/TE in primary A/B.
+
+
+REQUIRED EVIDENCE — PART 5
+INDEPENDENT BLENDER OUTPUT AND FOOTPRINT
+
+Evaluate every accepted candidate on the unchanged
+actual Blender rig, not only with Python FK.
+
+Use independently evaluated Blender world positions
+for hard pins, wrist guides, elbow and collateral points.
+
+Re-use W118's scratch footprint/disclosure contract,
+but do not trust the solver's planned frame list as
+the actual changed-frame truth.
+
+Record for every request:
+- exact pin frames, budget, planned and actual domains;
+- changed frames and channels, contiguous runs;
+- any numerical-only changes;
+- world-pin residuals and pass/fail;
+- wrist guide residuals outside the pin;
+- elbow displacement and flex;
+- bend-plane flips and near-straight frames;
+- raw wrist/elbow steps and source-relative
+  compensation steps;
+- root and unrelated joint movement;
+- accepted/rejected state and reason;
+- state lineage and exact reversal.
+
+Actual changed frames must be within declared budget
+and planned domain. Unauthorized channels and any
+violated hard pin require atomic rejection.
+
+A rejected candidate must not appear as an applied
+edit in the timeline.
+
+Provide clear timelines distinguishing requested
+pin, planned transition and actual changed frames/Bones,
+and a before/after rig animation view.
+
+Correct the W118 filmstrip-band readability defect
+in the NEW W119 scratch visualization only.
+Do not edit the historical W118 renders.
+
+
+REQUIRED EVIDENCE — PART 6
+MEANINGFUL ANIMATION QUALITY
+
+Evaluate BOTH:
+(A) edit-induced compensation continuity relative to U;
+(B) raw output motion continuity in the actual rig.
+
+A smaller compensation step can coexist with an
+unchanged 0.485 m source discontinuity. Report both.
+Do not call unchanged source motion a new edit defect.
+
+Report, on the same matched-budget windows:
+- peak and distribution of wrist compensation steps;
+- raw wrist steps and their changes vs U;
+- elbow compensation steps and acceleration;
+- arm rotation step excess over U;
+- introduced bend flips and near-straight frames;
+- peak/mean elbow deviation from U;
+- number of additional modified frames and channels;
+- solver failure/rejection rate and runtime.
+
+For near-straight and flip metrics, show the absolute
+angle/time series, not only a binary threshold.
+
+The historical W118 5-degree near-straight flag is
+a DIAGNOSTIC reference, not a user-facing rule.
+Do not declare a Production joint-quality limit.
+
+Predeclared primary improvement test:
+- compare Y_r to clean X_r on the same frames;
+- B1 wrist compensation peak must decrease by >= 20%
+  AND by >= 0.010 m;
+- no newly introduced bend flip or near-straight
+  crossing relative to clean X_r;
+- no material worsening of peak elbow compensation
+  step, rotation-step excess or raw wrist discontinuity;
+- all hard-pin, domain and atomicity contracts pass.
+
+For the last "material worsening" condition, declare
+a numeric experiment-only floor and rationale BEFORE
+held-out evaluation; do not tune it after outcomes.
+
+A useful real-rig result must appear in at least
+one RH1-family request and one independent RH2/DJ_R
+request, not just multiple correlated RH1 variants.
+At least one qualifying real result must be visibly
+discernible in actual rig playback/filmstrip at a
+declared review scale.
+
+A new held-out synthetic case must also meet the
+same improvement criterion, and no valid synthetic
+control may introduce a new critical hard failure.
+
+If these targets are not met, report the negative result.
+Do not reclassify a near-pass or change the thresholds.
+
+The Agent's own visual review is not independent.
+State exactly which GIFs/frames were actually inspected.
+Do not substitute numerical plots for actual rig review.
+
+
+REQUIRED EVIDENCE — PART 7
+NEGATIVE CONTROLS AND REVERSIBILITY
+
+Predeclare expected results for:
+- family-shared segment F erroneously used as F_r;
+- a sibling segment change outside the request pin;
+- mismatched U parent or rig identity;
+- mismatched margin/budget between X_r and Y_r;
+- changed unauthorized Bone;
+- changed root/object;
+- actual changed frame outside planned domain;
+- false timeline label or omitted changed frame;
+- unreachable guide but feasible hard pin;
+- infeasible hard pin;
+- contradictory hard constraints;
+- solver nonconvergence;
+- bend-plane branch ambiguity;
+- one corrupted hard-pin frame;
+- stale parent;
+- rejected candidate displayed as applied;
+- exact revert after accepted multi-frame edit.
+
+Expected rejection is not successful animation quality.
+A valid but unsolved Y guide must not corrupt the parent.
+
+No silent fallback, mutation of source evidence,
+hidden root motion or extra transition expansion.
 
 
 TESTING
 
-Preflight authentication:
-- HEAD, branch, instruction blob, historical Worklogs;
-- W116/W117 declarations, manifests, baseline identity;
-- source and Rig/Action fingerprints;
-- exact parent and frozen F/T/TE replay where possible.
+Run focused W119 tests for:
+- isolated per-request baseline construction;
+- detection of family-shared contamination;
+- equal-parent/equal-budget A/B;
+- world-space guide and reachability;
+- singularity and branch ambiguity;
+- hard-pin preservation;
+- actual Blender frame/channel accounting;
+- display truth and rejected-status checks;
+- source immutability, stale rejection and revert;
+- temporal metric attribution;
+- deterministic repeatability and provenance.
 
-Focused tests:
-- pin domain vs automatic edit budget separation;
-- deterministic selection and boundary clipping;
-- actual changed-frame and changed-Bone detection;
-- disjoint interval representation;
-- coordinate/time/frame labeling;
-- displayed timeline vs independent Blender diff;
-- false/missing edit-range disclosure rejection;
-- unauthorized frame/channel modification rejection;
-- hard-pin evaluation independent of solver;
-- feasible/infeasible and nonconvergence distinctions;
-- atomic commit, stale parent and exact revert;
-- source immutability and repeatability.
+Run relevant existing W116–W118 and rig tests only
+where contracts are reused. Do not run the entire
+suite merely for isolated scratch changes.
 
-Run focused relevant existing regressions only.
-Do not run unnecessary full suites for scratch code.
-Report unrun tests as NOT RUN, never PASS.
+Report actual commands, pass/fail, NOT RUN items,
+environment, code and artifact hashes.
 
-Use independent Blender output evaluation rather than
-only Python FK or candidate internal residuals.
+Tests and Blender results must be labelled AGENT-RUN.
 
 
 STOP CONDITIONS
 
-STOP with evidence preserved if:
-- a required historical baseline cannot be authenticated;
-- W117 is not officially COMPLETE or next_batch no longer
-  points to W118 at the declared instruction blob;
-- the selected rig cannot bind the pin unambiguously;
-- actual frame/channel changes cannot be measured;
-- the proposed display cannot be checked against output;
-- hard pins require silent relaxation;
-- the candidate requires changing Production code,
-  original Action, source, rig or timebase;
-- no predeclared positive control has authorized DOF;
-- a new major user-facing Architecture policy is required;
-- result selection requires post-hoc threshold tuning.
+Stop and preserve evidence if:
+- W118 COMPLETE or historical hashes cannot be verified;
+- clean per-request F/X baselines cannot be constructed
+  without altering frozen historical data;
+- a shared-state segment contaminates the primary A/B;
+- held-out outcomes were viewed before Y declaration;
+- the target rig/joint binding is ambiguous;
+- independent Blender evaluation is unavailable;
+- the candidate requires Production or rig changes;
+- user edit/root/hard pins must be changed to proceed;
+- source identity/timebase must be fabricated or repaired;
+- evaluation cannot distinguish source discontinuity
+  from edit-induced discontinuity;
+- a new Major Architecture/user policy decision is
+  necessary to interpret the experiment;
+- a concurrent branch or instruction conflict appears.
 
-Do not expand into a full UI, animation-style generator,
-additional semantic constraints or Production migration.
+Do not silently patch the invalid historical V4 gate
+or change W118's official CASE.
 
-Do not issue W119.
+If a new experimental solver fails, record the failure.
+Do not respond with uncontrolled parameter sweeps.
 
 
 DECISION CONTRACT
 
-Freeze populations, solver parameters, footprint display
-criteria, improvement criteria and CASE rule before any
-evaluation of the W118 candidate.
+Freeze validity, correctness and utility gates before
+building the new held-out Y evaluations.
 
 CASE A — BOUNDED SUPPORT:
-The automatic transition editor improves declared
-meaningful boundary motion on predeclared synthetic
-AND real-rig cases, with independently verified hard
-pins, authorized channels, complete truthful footprint,
-atomicity and reversal, and no new required hard failure.
-Visual evidence supports the claimed editing utility.
-Do not infer general Production readiness.
+All validity/contract gates pass, clean isolated
+baselines and independent Blender footprints are sound,
+hard pins and rollback hold, and the declared new
+synthetic and independent real-family utility gates
+pass with a visible actual-rig improvement.
+This is not Production readiness or anatomical proof.
 
 CASE B — PARTIAL SUPPORT:
-The separation and disclosure contracts hold but quality
-gain is mixed, the visual evidence is inconclusive,
-or important execution/quality limits remain.
+All validity/contract gates pass and the new
+representation demonstrates some bounded improvement,
+but the required cross-family real-rig utility or
+articulation trade-off remains mixed/unproven.
 
 CASE C — NOT SUPPORTED:
-Valid controlled evidence contradicts a required minimum
-guarantee (hard-pin safety, truthful footprint, authorized
-scope, atomicity) or no declared candidate demonstrates
-useful improvement under the frozen rule.
+Valid tests show the endpoint-space approach does not
+provide a material improvement in the declared scope,
+or it introduces critical hard-pin, ownership,
+rollback or articulation regressions.
 
 CASE D — INVALID:
-Source authentication, baseline reproduction, declared
-controls, coordinate/time contracts, or repeatability
-fails so an architecture verdict is untrustworthy.
-D supersedes other CASE outcomes.
+Baseline isolation, provenance, independent evaluation,
+predeclaration, population completeness, comparison
+fairness or reproducibility fails. D supersedes
+all other CASE outcomes.
 
-Preserve W116 B and W117 C, regardless of W118 result.
+Do not upgrade W118 D or any other historical CASE.
+
+Do not report a passing numerical metric as proof of
+user-facing animation quality.
 
 
 FINAL REPORT
 
-Write a W118 Worklog with:
-1. Official CASE, frozen gates and declaration hash.
-2. Source, rig, branch, baseline and blob fingerprints.
-3. Approved policy vs experimental implementation.
-4. Separate pin, search-budget, planned and actual domains.
-5. Candidate algorithm, predeclared parameters and runtime.
-6. Full synthetic and authentic real-rig A/B comparisons.
-7. Independent Blender pin and change-footprint accounting.
-8. Timeline visuals, labels, reviewed frames and limitations.
-9. Animation-quality benefits and measured edit costs.
-10. Hard failures, negative controls and fallback accounting.
-11. Source preservation, lineage and exact reversal.
-12. Timing, identity, GT-free and quality non-claims.
-13. Alternative explanations and unresolved uncertainties.
-14. Exact files, tests, environment and replay commands.
+Write one W119 Worklog with:
+1. Official CASE and frozen declaration identity.
+2. Historical baseline and immutable CASE fingerprints.
+3. W118 V4 contamination reproduction, not repair.
+4. Isolated per-request U_r/F_r/X_r/Y_r provenance.
+5. Y endpoint-guide formulation, DOF and parameters.
+6. Synthetic held-out and negative controls.
+7. Authentic real-rig A/B with correlated families noted.
+8. Blender pin residuals and exact changed-frame/Bone sets.
+9. Raw vs source-relative temporal motion accounting.
+10. Bend-plane, near-straight and elbow costs.
+11. Timeline and actual rig visual review, inspected items.
+12. Hard failures, rejection classes and no-fallback proof.
+13. Source immutability, atomic lineage and exact reversal.
+14. Alternative explanations and non-claims.
+15. Exact changed files, tests, hashes and replay commands.
 
-Distinguish CODE evidence, Agent-run outputs, visual
-judgments and unverified Main-local artifacts.
-
-Do not claim that a pretty timeline proves animation
-quality. Do not claim that a smooth arm motion is faithful
-to the source performer.
-
-Do not include:
+Do NOT provide:
 - Next Work Recommendation;
 - Next Architecture Decision;
-- Recommended Next Experiment;
-- Proposed Next Batch;
-- Next Implementation Plan.
+- Next Experiment;
+- Next Batch proposal;
+- Production migration recommendation.
 
-Claude is an Evidence Producer, not the Architecture Owner.
+The Agent is an Evidence Producer.
+The human Architecture Owner and independent Reviewer
+own architecture and subsequent Batch issuance.
+
+Do not start W120.
 
 
 COMPLETION CONDITION
 
-W118 is complete only when the evidence allows the
-Architecture Reviewer to determine:
+W119 is complete only when controlled evidence answers:
 
-1. Whether a WORLD_POSITION_PIN hard interval and an
-   automatically chosen out-of-pin edit interval can
-   coexist without confusing their semantics.
+1. Can W118's shared-segment baseline contamination be
+   excluded from a new fair, isolated per-request A/B,
+   without rewriting or upgrading W118?
 
-2. Whether every actual automatically modified frame
-   and Bone can be truthfully exposed in an intuitive
-   user-inspectable timeline, before acceptance and
-   after accept/reject.
+2. Can a bounded end-effector-world-space guide be
+   resolved on the actual Blender rig while maintaining
+   the same hard pin, user edit, DOF and temporal budget
+   as clean W118 X?
 
-3. Whether the automatic transition edits improve
-   meaningful Blender-rig motion on controlled synthetic
-   and authentic replay, not just internal solver metrics.
+3. Does that mechanism reduce real-rig transition
+   discontinuities without introducing near-straight,
+   bend-plane, collateral or solver failures?
 
-4. Whether hard pins, user edits, authorized DOF,
-   immutable evidence, atomicity and exact reversal
-   survive the automatic extension.
+4. Are the actual modified frames/Bones independently
+   disclosed, contract-valid and exactly reversible?
 
-5. Whether the added animation-quality benefit justifies
-   the measured extra edits under the APPROVED policy,
-   without inventing unapproved Production thresholds.
+5. Does the evidence justify endpoint-space transition
+   ownership as a practical Semantic Constraint Editor
+   mechanism, or does it expose a more fundamental
+   limitation of the source trajectory/two-bone rig?
 
-Negative results are legitimate. If any decision is
-blocked, report exactly what evidence is missing and why.
-
-Do not start W119, implement a Production UI, train a
-Generator, or expand the semantic constraint taxonomy.
+A negative or INVALID outcome is legitimate.
+Report missing evidence precisely.
+Do not start W120 or modify Production systems.

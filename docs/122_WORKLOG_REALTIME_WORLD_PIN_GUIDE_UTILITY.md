@@ -607,3 +607,6 @@ $PY -X utf8 scripts/w122_realtime_utility.py manifest --declaration-sha $S
   different picture. None was available.
 - How much blinding was weakened by the pair-id → request linkage and by the reviewer being the instrument's author.
 
+
+AUTOMATION_BATCH_STATUS: COMPLETE
+BATCH_NUMBER: 122

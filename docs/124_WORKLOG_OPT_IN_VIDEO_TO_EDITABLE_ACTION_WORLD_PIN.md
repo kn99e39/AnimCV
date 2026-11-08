@@ -474,3 +474,6 @@ $PY -X utf8 scripts/w124_vertical_slice_harness.py assess --out-dir $R/assess --
     experimental and Agent-run. Existing text is not rewritten.
 - Unchanged: `docs/next_batch.md`, every historical Worklog, every W1xx script, the models, the rig and the
   normative architecture documents.
+
+AUTOMATION_BATCH_STATUS: COMPLETE
+BATCH_NUMBER: 124

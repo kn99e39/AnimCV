@@ -94,13 +94,20 @@ Temporal Pose Baseline consume it; neither owns it. Its formulas are
 pinned bitwise by `tests/test_canonical_pose_parity.py` because A9-A16 and
 F0-F2 are defined by exactly those expressions — do not "clean up" one.
 
-## Branch layout
+## Branch layout (confirmed 2026-11-08)
 
-- `main`: kept lean on purpose — no `tests/`, and evaluation/verification
-  narrative is intentionally light. Only content needed to actually run
-  the framework.
-- `On_Work`: the real active development branch, full test suite
-  included. Most work happens here.
+- `main`: intentionally lean; not the active research branch.
+- `On_Work`: earlier full development branch and preserved history, **not** the current active branch despite prior text.
+- `arch/single_frame_first`: the **human-confirmed active research and development branch** as of 2026-11-08. Preserve existing commits and historical Worklogs on this branch.
+- Do **not** create, switch, delete, merge, rebase, reset or force-push branches without explicit human approval. This branch confirmation is not permission for future branch operations. Always inspect the remote HEAD and concurrent worker changes before a write.
+
+## Architecture decision and milestone documentation
+
+- When the human confirms a **major architecture decision**, update the appropriate normative/central document **before** treating it as an implementation baseline. Product purpose/system direction belongs in `PRODUCT_VISION.md`; FramePose perception contracts belong in `Architecture_v3_FramePose.md`; surviving legacy downstream contracts remain in `Architecture_v2.md`. Coordinate semantics belong in `COORDINATE_CONVENTIONS.md`.
+- When a **meaningful milestone** is reached, refresh `docs/00_마스터_플랜.md`, `docs/01_프레임워크_현황.md`, and the documentation index as applicable. Keep a dated evidence/status distinction: implemented module vs scratch experiment vs Production integration vs product goal.
+- Never rewrite an old Worklog, CASE, frozen evaluation, model/checkpoint or existing experiment to make the roadmap appear current. Amend living documents with dated supersession/precedence notes and cite the Worklog evidence.
+- If the proposed documentation would contradict an unresolved human decision or observed code behavior, flag the conflict for the human; do not silently select a new policy. Documentation synchronization is not authorization to implement downstream systems.
+- The approved *directional* flow is in `PRODUCT_VISION.md` §4.1. W123's learned uncertainty hypothesis is a bounded **scratch assessment**, not permission to implement the future Conditional Motion Generator or modify Production schema.
 
 ## Worklog conventions
 

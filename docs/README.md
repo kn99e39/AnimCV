@@ -2,14 +2,27 @@
 
 > **상위 제품 목표:** [PRODUCT_VISION.md](../PRODUCT_VISION.md). AnimCV의 장기 목표는 영상 동작의 단순 복원을 넘어 **편집 가능한 리그 애니메이션, 스타일 재현/전이, 사용자 주도 애니메이션 제작**이다. 아래 초기 보고서와 게이트는 이 제품 비전의 일부 단계만 다룬다.
 
+## 현재 기준 문서·진행상황 (2026-11-08)
+
+- **브랜치:** `arch/single_frame_first` (사용자 확인). `On_Work`가 활성이라는 오래된 `AGENTS.md` 문구는 수정되었다.
+- **제품·방향:** [PRODUCT_VISION.md](../PRODUCT_VISION.md) §4.1 — Reference → Pose Hypothesis + Learned Uncertainty → Reliability-Aware Base → 미래 Conditional Generator → Semantic Constraints + Rig Evaluator.
+- **Perception 계약:** [Architecture_v3_FramePose.md](../Architecture_v3_FramePose.md); v3가 대체하지 않은 MotionGraph/Blender 계약은 [Architecture_v2.md](../Architecture_v2.md).
+- **마스터 플랜 및 실구현 상태:** [00_마스터_플랜.md](00_마스터_플랜.md), [01_프레임워크_현황.md](01_프레임워크_현황.md). 둘의 과거 2D→Temporal-only 계획은 역사적으로 보존되며, 2026-11-08 최신 상태 절이 우선한다.
+- **최신 완료 Worklog:** [122 (Real-time World Pin Guide Utility)](122_WORKLOG_REALTIME_WORLD_PIN_GUIDE_UTILITY.md), CASE B (제한적); [121](121_WORKLOG_INDEPENDENT_REAL_VIDEO_WORLD_PIN_TRANSFER.md) CASE D; [120](120_WORKLOG_MATCHED_GUIDE_FLEX_FLOOR_ATTRIBUTION.md) CASE B.
+- **최신 누적 코드 감사:** [W116–W120 audit](AUDIT_W116_W120_2026_11_06.md). W121–W122는 다음 5배수 감사 주기 대상이며, 여기서 독립 재실행했다고 주장하지 않는다.
+- **발행되었지만 결과가 확인되지 않은 Batch:** [W123 — Learned 3D Reliability Assessor](next_batch.md). W123은 frozen 모델 + sidecar calibration/decision-utility 가설만 검증하며 Generator/Production 통합 승인과 다르다.
+- **Pose Completion:** [POSE_COMPLETION_PRODUCT_PLAN.md](POSE_COMPLETION_PRODUCT_PLAN.md) — 장기 제품 필수 요구, 현재 일부 메커니즘 실패가 요구 자체의 폐기를 뜻하지 않는다.
+
+아래 표는 **초기 00–22번 문서의 당대 판정 목차**다. '최신 판정' 열은 프로젝트 전체의 현행 상태가 아닌 해당 문서 작성 단계의 판정으로 읽는다.
+
 이 디렉터리는 사람이 읽는 한국어 중간 보고서의 기준 위치다. JSON은
 재현 가능한 기계 판정·파이프라인 입출력으로 계속 유지하며, 이 문서는
 그 결과의 목적·판정·한계를 설명한다.
 
 | 문서 | 내용 | 최신 판정 |
 | --- | --- | --- |
-| [00_마스터_플랜](00_마스터_플랜.md) | 유일한 선형 실행 계획 | 3D estimator/자체 학습 단계 진행 중 |
-| [01_프레임워크_현황](01_프레임워크_현황.md) | 현재 구조, 완료 범위, 남은 작업 | 3D 타깃 단계까지 구현, 최종 리타깃은 미완료 |
+| [00_마스터_플랜](00_마스터_플랜.md) | 현재 방향(상단 최신화) + 초기 선형 계획 보존 | W123 발행, Production 통합 미완료 |
+| [01_프레임워크_현황](01_프레임워크_현황.md) | 실제 코드·실험·제품 통합 상태 구분 | 최신 FramePose/Editing은 부분 구현 및 Scratch 검증 |
 | [02_품질_보강_보고서](02_품질_보강_보고서.md) | R1–R3 품질 게이트와 수치 | R1–R3 통과 |
 | [03_카메라_보정_보고서](03_카메라_보정_보고서.md) | 캘리브레이션·재투영 검증 방법 | 명시적 보정 지원, 데모 자동 추정은 거부 |
 | [04_MPI-INF-3DHP_보정_평가](04_MPI_INF_3DHP_보정_평가.md) | 외부 GT 기반 2D/3D/yaw 평가 | 3D·yaw 실패, 제품 채택 불가 |

@@ -1,5 +1,11 @@
 # Architecture v3 — Frame-First Pose Core
 
+## Reading the implementation-status statements (2026-11-08)
+
+This document stays **normative for perception/FramePose**, not for the complete future Animation Authoring stack. Statements such as “Layer B–E not implemented” record the scope **at the original v3 migration**, and must not be interpreted as an up-to-date inventory of every later module. Later Worklogs implemented or tested bounded Animation Semantics, root/rig ownership, FK/IK and semantic editing. They do **not** establish a single integrated Production path.
+
+The human-confirmed overall target direction is recorded in [PRODUCT_VISION.md](PRODUCT_VISION.md) §4.1: Pose Hypothesis plus a **candidate learned per-frame/joint uncertainty signal** → proposed Reliability-Aware Animation Base → future Conditional Motion Generator → Semantic Constraints and actual Rig Evaluator. W123 is issued to test reliability prediction around a **frozen** FramePose model with no Production change. Nothing in this notice changes FramePose numerical contracts, makes temporal lifting primary again, or pre-authorizes Generator training.
+
 ## Status and precedence
 
 **Product-level precedence:** [PRODUCT_VISION.md](PRODUCT_VISION.md) defines AnimCV's enduring product purpose: **reconstruct, edit, restyle and author usable rig animation**. This document remains normative for perception/FramePose only. Improvements in single-frame 3D pose are important but do **not** by themselves satisfy the long-term animation-authoring and style-control goals. The additional authoring/style layers in PRODUCT_VISION are future directions, **not currently implemented capabilities or permission for automatic scope expansion**.

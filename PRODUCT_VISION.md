@@ -73,6 +73,32 @@ Existing ownership remains intact:
 
 Do not redefine primitive 3D pose accuracy, root/world movement, contact inference and expressive style as if they were interchangeable.
 
+## 4.1 Confirmed architecture direction (2026-11-08)
+
+The human confirmed the following **target architecture direction** on the existing research/development branch `arch/single_frame_first`. This is a product/system direction, **not** an assertion that the complete path has been implemented, integrated, trained, or accepted for Production.
+
+```text
+Video / Reference (immutable source, timestamps, provenance)
+    -> Geometry Observation + FramePose (2D observations -> 3D estimate)
+    -> Pose Hypothesis + Learned Uncertainty (per-frame/per-joint, parallel evidence)
+    -> Reliability-Aware Animation Base (source + motion hypothesis + reliability + lineage)
+    -> Conditional Motion Generator (future candidate, NOT implemented/authorized)
+    -> Semantic Constraints + Rig Evaluator (hard authoring intent and actual-rig checks)
+    -> Editable Blender Action / FBX (output, interchange, real animation review)
+```
+
+**Ownership and invariants**
+
+- The original video, timestamps, subject/source identity and unmodified observations remain distinguishable from derived 3D pose hypotheses and their possible errors. Inference must not read evaluation ground truth.
+- The learned uncertainty/error signal is an **independent, candidate estimate for a specific frozen predictor and joint/frame**, not raw RTMPose detector score, an infallible confidence value, or a hard user constraint. W123 is authorized **only** to test a frozen-model learned assessor, calibration, generalization and GT-free-at-decision utility in isolated scratch outputs. An unproven signal must not be presented as calibrated 3D trust.
+- The Reliability-Aware Animation Base is the proposed source-bound handoff; W113-W122 supply **scratch contract/editability evidence**, not an approved Production replacement for MotionGraph or AnimationClip.
+- A future Conditional Motion Generator could retain well-supported reference motion and propose completion/variation for poorly supported regions. Its architecture, training, inference policy and Production integration **remain unapproved and unimplemented**. The Pose/Motion Completion requirement in `docs/POSE_COMPLETION_PRODUCT_PLAN.md` remains active.
+- Semantic **hard constraints** (e.g. an authorized WORLD_POSITION_PIN) take precedence over any learned soft reference-trust signal. The Rig Evaluator must check actual Blender-evaluated animation, authorized edit footprint, temporal behavior and reversibility. W116-W122 demonstrate limited scratch evidence, not a general-purpose Production Editor.
+- Blender/FBX availability is not proof of faithful continuous-time animation or external consumer interoperability. Historical FBX findings W107-W112 remain unresolved in the stock Production export path.
+- No future module, schema migration, generator training, new constraint type, solver policy, or branch operation is authorized merely by this diagram. Preserve official historical Worklog CASEs and require a separately bounded decision before implementation.
+
+**Evidence maturity (as of 2026-11-08):** FramePose, legacy MotionGraph/retargeting and some semantics/FK/IK modules exist; the standard CLI/GUI retarget path remains legacy MotionGraph-based. W116-W122 constraint experiments are scratch. W123 is **issued, not reported complete**. Learned Reliability, an integrated Animation Base, Conditional Motion Generator, and full authoring/style functionality must not be claimed as shipped.
+
 ## 5. Engineering priority rules
 
 1. **Working framework over research purity.** Scientific-style controlled evaluation is useful to avoid false progress, but publication novelty and perfect causal identification are not project goals.

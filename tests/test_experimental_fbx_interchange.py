@@ -147,7 +147,10 @@ def fx(tmp_path_factory):
     shutil.copytree(base, pinned)
     r = cli("commit", "--run", pinned, "--request-id", "P1", "--decision", "accept")
     assert r.returncode == 0, r.stderr
-    return {"base": base, "pinned": pinned, "v0": v0, "head": E.read_refs(pinned)[0]["head"]}
+    # POST-OUTCOME FIX (W127, disclosed): C1 reverts the shared pinned run, so C8 copies this untouched snapshot instead
+    pristine = base.parent / "pinned_pristine_for_repeat"
+    shutil.copytree(pinned, pristine)
+    return {"base": base, "pinned": pinned, "pinned_pristine": pristine, "v0": v0, "head": E.read_refs(pinned)[0]["head"]}
 
 
 @pytest.fixture(scope="session")
@@ -409,9 +412,11 @@ def test_C6_producer_failures_leave_no_package(fx, controls, tmp_path):
 @needs_blender
 def test_C7_stock_fbx_command_unchanged_and_still_fails(fx, tmp_path):
     def fn_src(text, name):
-        i = text.index(f"\ndef {name}(")
-        j = text.index("\ndef ", i + 1)
-        return text[i:j]
+        # POST-OUTCOME FIX (W127, disclosed): the frozen version cut the text at the next "def", which also captured the
+        # W127 section comment inserted AFTER cmd_fbx; compare the function's own source segment only.
+        import ast
+        node = [n for n in ast.parse(text).body if isinstance(n, ast.FunctionDef) and n.name == name][0]
+        return ast.get_source_segment(text, node)
     old = subprocess.run(["git", "show", f"{STARTING_COMMIT}:src/app/experimental_video_action.py"], cwd=ROOT, capture_output=True,
                          text=True, encoding="utf-8").stdout
     assert old and fn_src(old, "cmd_fbx") == fn_src((ROOT / "src/app/experimental_video_action.py").read_text(encoding="utf-8"), "cmd_fbx")
@@ -434,7 +439,8 @@ def test_C7_stock_fbx_command_unchanged_and_still_fails(fx, tmp_path):
 @needs_blender
 def test_C8_fresh_repeat_with_exporter_uid_and_path_variation(fx, head_pkg, tmp_path):
     run2 = tmp_path / "elsewhere" / "copied_run"
-    shutil.copytree(fx["pinned"], run2)
+    shutil.copytree(fx["pinned_pristine"], run2)
+    assert E.read_refs(run2)[0]["head"] == fx["head"]
     r = cli("fbx-interchange", "--run", run2, "--state", "head", "--out", tmp_path / "x2")
     assert r.returncode == 0, r.stderr
     a, b = load(head_pkg / "package" / X.PACKAGE_MANIFEST), load(tmp_path / "x2" / "package" / X.PACKAGE_MANIFEST)

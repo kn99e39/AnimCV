@@ -19,6 +19,14 @@ What it does (and nothing more):
   commit   explicit ACCEPT or REJECT of one proposal against the current head (atomic; stale parent refused; a gate-rejected
            candidate can never be accepted).
   revert   new state restoring the head's parent values; its .blend readback must equal the restored state's bitwise.
+  recover  (W125) complete or roll back an interrupted commit/revert from its journal; never invents an accepted state.
+  adopt    (W125) explicit, non-destructive upgrade of a W124 run (unversioned refs.json) to sealed transactional refs.
+
+W125 transaction model (see docs/EXPERIMENTAL_VIDEO_ACTION_WORLD_PIN.md): every head-moving operation runs under one
+OS-level non-blocking run lock, writes a sealed journal BEFORE staging, stages the content-addressed state, the .blend and
+its fresh-process Blender readback, verifies them, and only then publishes by ONE atomic replace of lineage/refs.json
+(compare-and-swap on the bytes read under the lock).  refs.json binds the head state id to its .blend SHA-256 and readback.
+Log, registry, commit.json and the final timeline are written after publication and are re-derivable by ``recover``.
   review   30 fps side-by-side video: original source | baseline Action | accepted edited Action, footprint overlaid.
   fbx      export a state's .blend through the existing ``blender.export.export_fbx`` and re-import it with the existing
            default importer; integer-frame / subframe / interpolation / timebase readback is REPORTED, never repaired.
@@ -39,6 +47,8 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+from app import experimental_action_txn as TX
 
 SLICE_ID = "animcv_exp_video_action_world_pin_v1"
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -381,21 +391,44 @@ def load_run(run):
     return R, man
 
 
+def _atomic_store_cls(S):
+    """The frozen W116 ``Store`` with ONE change: ``put`` writes the content-addressed state file atomically (temp + fsync +
+    rename) instead of a direct write, so a killed process can never leave a torn state file under a valid id.  The
+    commit/revert/lineage logic is inherited unchanged."""
+
+    class AtomicStore(S.Store):
+        def put(self, st):
+            if not S.verify_state(st):
+                raise ValueError("state id does not bind its content")
+            p = self.path(st["state_id"])
+            if p.exists():
+                if p.read_bytes() != S.canon(st):
+                    raise SliceStop("BLOCKED_STATE_FILE_CONFLICT", f"{p.name}: existing bytes differ from the content-addressed "
+                                    "state (torn or tampered); run `recover` / inspect manually")
+                return st["state_id"]
+            TX.atomic_write_bytes(p, S.canon(st))
+            p.chmod(0o444)
+            return st["state_id"]
+    return AtomicStore
+
+
 class PersistentStore:
-    """Persists the frozen W116 ``Store`` (content-addressed read-only states; refs move only on atomic commit)."""
+    """Persists the frozen W116 ``Store`` (content-addressed read-only states).  Since W125 the head is published ONLY by an
+    atomic replace of ``lineage/refs.json`` inside a journalled transaction (see ``_publish``); this class only loads it."""
 
     def __init__(self, run):
         S, *_ = frozen_modules()
         self.P = run_paths(run)
-        self.store = S.Store(Path(run) / "lineage")
+        self.store = _atomic_store_cls(S)(Path(run) / "lineage")
         if self.P["refs"].exists():
-            self.store.refs = load(self.P["refs"])
+            self.store.refs = {"head": load(self.P["refs"])["head"]}
 
     def save(self, new_log):
-        dump(self.P["refs"], self.store.refs)
-        with open(self.P["log"], "a", encoding="utf-8") as f:
-            for rec in new_log:
-                f.write(json.dumps(dict(rec, at=now()), sort_keys=True) + "\n")
+        """W124 API kept for compatibility (unversioned refs, used by the W124 store test only).  The W125 commands never
+        call it: they publish through ``_publish`` inside a journalled transaction."""
+        TX.atomic_dump(self.P["refs"], self.store.refs)
+        for rec in new_log:
+            TX.append_line_durable(self.P["log"], json.dumps(dict(rec, at=now()), sort_keys=True))
 
 
 def blend_registry(run):
@@ -404,13 +437,199 @@ def blend_registry(run):
 
 
 def register_blend(run, state_id, rec):
-    """state id -> its .blend record.  An existing entry is never overwritten (an accepted copy is recorded alongside)."""
+    """state id -> its .blend record.  An existing entry is never overwritten (an accepted copy is recorded alongside).
+    Written atomically; idempotent per transaction id (a recovery roll-forward never duplicates a record)."""
     reg = blend_registry(run)
+    tid = rec.get("txn_id")
     if state_id in reg:
+        if tid is not None and any(r.get("txn_id") == tid for r in [reg[state_id]] + reg[state_id].get("additional_records", [])):
+            return
         reg[state_id].setdefault("additional_records", []).append(rec)
     else:
         reg[state_id] = rec
-    dump(run_paths(run)["blends"], reg)
+    TX.atomic_dump(run_paths(run)["blends"], reg, default=_jdefault)
+
+
+# ------------------------------------------------------------------- W125 transaction authority and recovery ---
+REFS_SCHEMA = "animcv_exp_refs_v2"
+JOURNAL_SCHEMA = "animcv_exp_txn_journal_v1"
+TERMINAL = ("FINALIZED", "ABORTED")
+
+
+def _norm(obj):
+    """JSON-normalise (numpy scalars, tuples, Paths) so a record's digest is stable across write/read."""
+    return json.loads(json.dumps(obj, default=_jdefault))
+
+
+def _digest(obj) -> str:
+    return hashlib.sha256(json.dumps(obj, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def _sealed(obj, key):
+    obj = _norm({k: v for k, v in obj.items() if k != key})
+    obj[key] = _digest(obj)
+    return obj
+
+
+def _seal_ok(obj, key):
+    return isinstance(obj, dict) and obj.get(key) == _digest({k: v for k, v in obj.items() if k != key})
+
+
+def read_refs(run):
+    """-> (refs, raw bytes, kind) with kind 'V2' or 'LEGACY_W124'.  A V2 refs whose seal fails is a STOP (never repaired)."""
+    p = run_paths(run)["refs"]
+    if not p.exists():
+        raise SliceStop("BLOCKED_REFS_MISSING", str(p))
+    raw = p.read_bytes()
+    try:
+        refs = json.loads(raw.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        raise SliceStop("BLOCKED_REFS_CORRUPT", "lineage/refs.json does not parse (torn or tampered); it is never rewritten "
+                        "automatically") from None
+    if not isinstance(refs, dict) or not isinstance(refs.get("head"), str):
+        raise SliceStop("BLOCKED_REFS_CORRUPT", "lineage/refs.json has no head")
+    if refs.get("schema") is None and set(refs) == {"head"}:
+        return refs, raw, "LEGACY_W124"
+    if refs.get("schema") != REFS_SCHEMA or not _seal_ok(refs, "record_digest"):
+        raise SliceStop("BLOCKED_REFS_TAMPERED", "lineage/refs.json seal does not bind its content")
+    return refs, raw, "V2"
+
+
+def make_refs(head, generation, head_blend, txn_id, prev_head, op):
+    return _sealed({"schema": REFS_SCHEMA, "head": head, "generation": int(generation), "head_blend": head_blend, "txn_id": txn_id,
+                    "prev_head": prev_head, "op": op, "published_at": now(),
+                    "authority": "this file is the ONLY authority for the current head; it is replaced atomically at the "
+                                 "publication point of a journalled transaction"}, "record_digest")
+
+
+def verify_head(run, refs):
+    """head -> content-addressed state -> .blend (SHA-256) -> independent readback report (SHA-256 + bound blend hash)."""
+    S, *_ = frozen_modules()
+    run, probs = Path(run), []
+    hb = refs.get("head_blend") or {}
+    sp = run / "lineage" / "states" / f"{refs['head']}.json"
+    if not sp.exists():
+        probs.append("HEAD_STATE_MISSING")
+    else:
+        try:
+            if not S.verify_state(json.loads(sp.read_text())):
+                probs.append("HEAD_STATE_FAILS_CONTENT_BINDING")
+        except ValueError:
+            probs.append("HEAD_STATE_UNPARSABLE")
+    if hb.get("state_id") != refs["head"]:
+        probs.append("HEAD_BLEND_RECORD_FOR_OTHER_STATE")
+    for k in ("blend", "readback"):
+        f = run / hb.get(k, "\0missing")
+        if not hb.get(k) or not f.exists():
+            probs.append(f"HEAD_{k.upper()}_MISSING")
+        elif sha256_file(f) != hb.get(f"{k}_sha256"):
+            probs.append(f"HEAD_{k.upper()}_SHA256_MISMATCH")
+    if not probs:
+        rb = load(run / hb["readback"])
+        if rb.get("blend_sha256") != hb["blend_sha256"]:
+            probs.append("HEAD_READBACK_NOT_OF_THIS_BLEND")
+        if rb.get("value_digest") != hb.get("value_digest"):
+            probs.append("HEAD_READBACK_VALUE_DIGEST_MISMATCH")
+    return {"ok": not probs, "problems": probs}
+
+
+def require_v2_head(run):
+    refs, raw, kind = read_refs(run)
+    if kind != "V2":
+        raise SliceStop("BLOCKED_LEGACY_RUN_REQUIRES_ADOPT", "this run was written by W124 (unversioned refs.json); it stays "
+                        "readable (status/review/fbx) but is not mutated until you run `experimental-video-action adopt --run "
+                        f"{run}` explicitly (non-destructive: the legacy refs are preserved)")
+    v = verify_head(run, refs)
+    if not v["ok"]:
+        raise SliceStop("BLOCKED_HEAD_UNVERIFIED", f"authoritative head does not resolve to a verified .blend: {v['problems']}")
+    return refs, raw
+
+
+def _txn_dir(run):
+    return Path(run) / "lineage" / "txn"
+
+
+def read_journals(run):
+    """-> list of (path, journal or None if unreadable/tampered)."""
+    out = []
+    d = _txn_dir(run)
+    if d.exists():
+        for p in sorted(d.glob("*.json")):
+            try:
+                j = load(p)
+                out.append((p, j if _seal_ok(j, "journal_digest") else None))
+            except ValueError:
+                out.append((p, None))
+    return out
+
+
+def pending_journals(run):
+    return [(p, j) for p, j in read_journals(run) if j is None or j.get("state") not in TERMINAL]
+
+
+def require_no_pending(run):
+    pend = pending_journals(run)
+    if pend:
+        raise SliceStop("RECOVERY_REQUIRED", f"{len(pend)} interrupted transaction(s) "
+                        f"{[p.stem for p, _ in pend]}; nothing was assumed - run `experimental-video-action recover --run {run}`")
+
+
+def write_journal(run, j, state):
+    j = _sealed(dict(j, state=state, updated_at=now(), history=list(j.get("history", [])) + [[state, now()]]), "journal_digest")
+    TX.atomic_dump(_txn_dir(run) / f"{j['txn_id']}.json", j)
+    return j
+
+
+def new_txn(run, op, refs, **kw):
+    import uuid
+    tid = f"{datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%S')}_{op}_{uuid.uuid4().hex[:8]}"
+    return {"schema": JOURNAL_SCHEMA, "txn_id": tid, "op": op, "pid": os.getpid(), "created_at": now(),
+            "expected_head": refs["head"], "expected_generation": refs["generation"],
+            "expected_refs_sha256": hashlib.sha256(json.dumps(refs, sort_keys=True).encode()).hexdigest(), **_norm(kw)}
+
+
+def _publish(run, raw_before, new_refs):
+    """THE publication point: compare-and-swap on the exact refs bytes read under the lock, then one atomic replace."""
+    p = run_paths(run)["refs"]
+    if p.read_bytes() != raw_before:
+        raise SliceStop("BLOCKED_CONCURRENT_HEAD_CHANGE", "refs.json changed while this transaction held the run lock")
+    TX.atomic_dump(p, new_refs)
+
+
+def _log_append(run, rec, txn_id, torn_point=None):
+    """Append one lineage log record for a transaction exactly once (idempotent on txn_id)."""
+    recs, torn, bad = TX.read_jsonl(run_paths(run)["log"])
+    if torn is not None or bad:
+        raise SliceStop("RECOVERY_REQUIRED", "lineage/log.jsonl has a torn or unparsable line; run `recover`")
+    if any(r.get("txn_id") == txn_id for r in recs):
+        return False
+    TX.append_line_durable(run_paths(run)["log"], json.dumps(_norm(dict(rec, at=now(), txn_id=txn_id)), sort_keys=True),
+                           torn_point=torn_point)
+    return True
+
+
+def _quarantine(run, txn_id, rels):
+    """Move (never delete) unpublished staged outputs to quarantine/<txn_id>/, recording their SHA-256."""
+    run, moved = Path(run), []
+    for rel in rels:
+        src = run / rel
+        if not src.exists():
+            continue
+        dst = run / "quarantine" / txn_id / rel
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        if dst.exists():
+            raise SliceStop("BLOCKED_QUARANTINE_COLLISION", str(dst))
+        moved.append({"from": str(rel), "to": str(dst.relative_to(run)), "sha256": sha256_file(src)})
+        if not os.access(src, os.W_OK):
+            os.chmod(src, 0o644)
+        os.replace(src, dst)
+    return moved
+
+
+def _stray_tmp(run):
+    run = Path(run)
+    return sorted(str(p.relative_to(run)) for d in ("lineage", "lineage/txn", "accepted", "reverted") if (run / d).exists()
+                  for p in (run / d).glob(".*.tmp"))
 
 
 def readback_by_source(rb, sidecar):
@@ -425,8 +644,17 @@ def readback_by_source(rb, sidecar):
     return out
 
 
-def build_state_blend(run, blender, state, name, folder, prov, rest_json, rig_fbx, sidecar=None):
-    """Key one state into a NEW .blend and read it back in a fresh Blender process."""
+def _head_blend(run, rec, sid, role, blend=None, readback=None):
+    """The head -> .blend binding stored INSIDE refs.json (so head and .blend identity are published by one atomic replace)."""
+    run = Path(run)
+    blend, readback = blend or rec["blend"], readback or rec["readback"]
+    return {"state_id": sid, "role": role, "blend": str(blend), "blend_sha256": sha256_file(run / blend), "readback": str(readback),
+            "readback_sha256": sha256_file(run / readback), "value_digest": rec["value_digest"]}
+
+
+def build_state_blend(run, blender, state, name, folder, prov, rest_json, rig_fbx, sidecar=None, between=None):
+    """Key one state into a NEW .blend and read it back in a fresh Blender process.  ``between`` (W125) is called after the
+    build process and before the independent readback process (fault-injection boundary)."""
     S, C, *_ = frozen_modules()
     d = Path(run) / folder
     d.mkdir(parents=True, exist_ok=True)
@@ -438,6 +666,8 @@ def build_state_blend(run, blender, state, name, folder, prov, rest_json, rig_fb
     run_blender(blender, "build_blend", d / f"{name}_build.log", rig=rig_fbx, rest=rest_json, states=states, state_name=name,
                 action_name=f"AnimCV_EXP {name} {state['state_id'][:12]}", out_blend=blend, provenance=pv, report=d / f"{name}_build.json",
                 fps=SUPPORTED_FPS)
+    if between is not None:
+        between()
     run_blender(blender, "readback", d / f"{name}_readback.log", blend=blend, report=d / f"{name}_readback.json",
                 subframes=",".join(str(s) for s in SUBFRAMES))
     b, rb = load(d / f"{name}_build.json"), load(d / f"{name}_readback.json")
@@ -576,11 +806,7 @@ def _build(a, run, blender, rig_id_rep, code_rep, source_record, perc_rep, asset
                                                       "failed": {j: r["status"] for j, r in failed.items()}},
                "fk_model_max_error_m": worst, "rig_info": b["rig"]}
     sc_sha = dump(run_paths(run)["sidecar"], sidecar)
-    ps = PersistentStore(run)
-    ps.store.put(v0)
-    ps.store.init_ref("head", v0["state_id"])
-    ps.save(ps.store.log)
-    register_blend(run, v0["state_id"], dict(rec, role="baseline"))
+    init_lineage(run, v0, rec)
     immutable = {str(Path(rec["blend"])): rec["blend_sha256"], "baseline/action_sidecar.json": sc_sha,
                  "manifest/input_manifest.json": man_sha, "baseline/baseline_readback.json": sha256_file(run / rec["readback"])}
     dump(run_paths(run)["run"], {"schema": SLICE_ID + ":run", "created": now(), "input_manifest_sha256": man_sha,
@@ -590,6 +816,17 @@ def _build(a, run, blender, rig_id_rep, code_rep, source_record, perc_rep, asset
                       "action_value_digest": rb["value_digest"], "perception": perception["label"],
                       "bindings_bound": sorted(sidecar["bindings"]["bound"])}, indent=1))
     return 0
+
+
+def init_lineage(run, v0, rec):
+    """New run: content-addressed baseline state, registry, log, then the sealed v2 refs (generation 0) last."""
+    ps = PersistentStore(run)
+    ps.store.put(v0)
+    ps.store.init_ref("head", v0["state_id"])
+    register_blend(run, v0["state_id"], dict(rec, role="baseline", txn_id="build"))
+    _log_append(run, ps.store.log[-1], "build")
+    TX.atomic_dump(run_paths(run)["refs"], make_refs(v0["state_id"], 0, _head_blend(run, rec, v0["state_id"], "baseline"), "build",
+                                                     None, "INIT"))
 
 
 def _git_head():
@@ -747,11 +984,18 @@ def subframe_report(cand_rb, head_rb, sidecar, pin, binding):
 
 
 def cmd_propose(a):
+    run = Path(a.run).resolve()
+    with TX.RunLock(run / "lineage", "propose", SliceStop):
+        return _propose(a, run)
+
+
+def _propose(a, run):
     import numpy as np
     S, C, XB, W121 = frozen_modules()
-    run = Path(a.run).resolve()
     R, man = load_run(run)
     require_frozen_code()
+    require_no_pending(run)
+    refs, _ = require_v2_head(run)
     req_bytes = Path(a.request).read_bytes()
     req = json.loads(req_bytes)
     rid = req.get("request_id")
@@ -760,11 +1004,10 @@ def cmd_propose(a):
     ed = new_dir(run / "edits" / rid)
     (ed / "request.json").write_bytes(req_bytes)
     ps = PersistentStore(run)
-    head_id = ps.store.refs["head"]
+    head_id = refs["head"]
     head = ps.store.get(head_id)
-    reg = blend_registry(run)
     sidecar = load(run_paths(run)["sidecar"])
-    head_rb = load(run / reg[head_id]["readback"])
+    head_rb = load(run / refs["head_blend"]["readback"])
     head_eval = readback_by_source(head_rb, sidecar)
     bnd = load(run_paths(run)["bindings"])
     rig = C.rig_from(R["rest_json"], sidecar["rig_info"])
@@ -793,7 +1036,9 @@ def cmd_propose(a):
         if rec["decision"]["decision"] == "ACCEPT" and not sub["changed_intervals_within_pin_frames"]:
             rec["decision"] = {"decision": "REJECT", "failure_class": "CONTRACT_VIOLATION", "reasons": ["SUBFRAME_CHANGE_OUTSIDE_PIN_FRAMES"]}
             rec["status"] = "GATE_REJECTED"
-    dump(ed / "proposal.json", rec)
+    rec["head_blend_at_proposal"] = refs["head_blend"]
+    rec["note"] = "PROPOSED only: a proposal (and its candidate.blend) is NEVER an accepted edit; only refs.json is authority"
+    TX.atomic_dump(ed / "proposal.json", rec, default=_jdefault)   # written last: an interrupted propose has no proposal.json
     draw_timeline(ed / "timeline.png", rec, sidecar, head["frames"])
     print(json.dumps({"request_id": rid, "status": rec["status"], "decision": rec["decision"], "candidate": rec.get("candidate"),
                       "hard_pin_residual_max_m": rec.get("hard_pin_residual_max_m"),
@@ -824,8 +1069,10 @@ def draw_timeline(path, rec, sidecar, frames):
     for ax, (lo, hi), tag in ((axes[0], (frames[0], frames[-1]), "whole Action"), (axes[1], zoom, "zoom")):
         _timeline_axis(ax, rows, lo, hi, frames, pin, changed, fp, rejected, fps, rec, status, tag)
     fig.tight_layout()
-    fig.savefig(path, dpi=110)
+    tmp = Path(path).with_name(f".{Path(path).name}.{os.getpid()}.tmp.png")
+    fig.savefig(tmp, dpi=110, format="png")
     plt.close(fig)
+    os.replace(tmp, path)          # W125: a killed process never leaves a torn timeline under the final name
 
 
 def _timeline_axis(ax, rows, lo, hi, frames, pin, changed, fp, rejected, fps, rec, status, tag):
@@ -863,106 +1110,528 @@ def _timeline_axis(ax, rows, lo, hi, frames, pin, changed, fp, rejected, fps, re
 
 
 # ----------------------------------------------------------------------------------------- commit / revert ---
-def cmd_commit(a):
+RB_KEYS = ("world", "matrix_world", "stored_wxyz")
+
+
+def _frames_equal(rb1, rb2):
+    ints = [{k: f[k] for k in RB_KEYS} for f in rb1["frames"]] == [{k: f[k] for k in RB_KEYS} for f in rb2["frames"]]
+    subs = [{k: f[k] for k in ("world", "matrix_world")} for f in rb1["subframes"]] == \
+        [{k: f[k] for k in ("world", "matrix_world")} for f in rb2["subframes"]]
+    return ints, subs
+
+
+def _parent_readback(run, prop):
+    hb = prop.get("head_blend_at_proposal")
+    return load(Path(run) / (hb["readback"] if hb else blend_registry(run)[prop["parent_state_id"]]["readback"]))
+
+
+def _display_final(run, prop, final):
+    """W124 display-final record + frozen W118 display truth check (unchanged logic)."""
     S, C, XB, W121 = frozen_modules()
+    out = {"display_final": dict(prop.get("display") or {}, status=final) if prop.get("display") else None}
+    if prop.get("display"):
+        sidecar = load(run_paths(run)["sidecar"])
+        U = readback_by_source(_parent_readback(run, prop), sidecar)
+        X = readback_by_source(load(Path(run) / prop["candidate_blend"]["readback"]), sidecar)
+        frames = [r["source_frame"] for r in sidecar["frame_mapping"]]
+        out["display_final_check"] = XB.check_display(out["display_final"], X, U, frames, prop["pin_frames"], prop["candidate"],
+                                                      decision="ACCEPT" if final == "ACCEPTED" else "REJECT")
+    return out
+
+
+def _publication_checks(run, R, prop, rb_acc, rb_cand, rb_par, dst_sha):
+    """Before publication: the accepted copy, read back by a FRESH Blender process, must be bit-identical to the gated
+    candidate and its actual footprint (frozen W118 ``derive_footprint``, exact equality) must equal the proposal's."""
+    import numpy as np
+    S, C, XB, W121 = frozen_modules()
+    sidecar = load(run_paths(run)["sidecar"])
+    ints, subs = _frames_equal(rb_acc, rb_cand)
+    rig = C.rig_from(R["rest_json"], sidecar["rig_info"])
+    dom = S.domain_points(rig, sorted(prop["constraint"]["authorized_channels"]))
+    X, U = readback_by_source(rb_acc, sidecar), readback_by_source(rb_par, sidecar)
+    frames = [r["source_frame"] for r in sidecar["frame_mapping"]]
+    fp = _norm(XB.derive_footprint(X, U, frames, prop["pin_frames"], dom))
+    b = load(run_paths(run)["bindings"])["bound"][prop["constraint"]["binding_id"]]
+    tgt = np.array(prop["constraint"]["target"], float)
+    resid = max(float(np.linalg.norm(np.array(X[k]["world"][b["bone"]][b["point"]]) - tgt)) for k in prop["pin_frames"])
+    c = {"accepted_blend_sha256_equals_gated_candidate": dst_sha == prop["candidate_blend"]["blend_sha256"],
+         "readback_bound_to_accepted_blend": rb_acc.get("blend_sha256") == dst_sha,
+         "value_digest_equals_gated_candidate": rb_acc["value_digest"] == rb_cand["value_digest"] == prop["candidate_blend"]["value_digest"],
+         "integer_frames_bit_equal_gated_candidate": ints, "subframes_bit_equal_gated_candidate": subs,
+         "actual_footprint_frames_equal_proposal": fp["frames_changed"] == prop["footprint"]["frames_changed"],
+         "actual_footprint_bones_equal_proposal": fp["channel_frames"] == prop["footprint"]["channel_frames"]}
+    return {"ok": all(c.values()), "checks": c, "actual_changed_frames": fp["frames_changed"],
+            "actual_changed_bones": sorted(fp["channel_frames"]), "hard_pin_residual_max_m_integer_frames": resid,
+            "proposal_hard_pin_residual_max_m": prop.get("hard_pin_residual_max_m")}
+
+
+def _is_published(run, j):
+    try:
+        refs, _, kind = read_refs(run)
+    except SliceStop:
+        return None            # cannot tell -> caller must not guess
+    return kind == "V2" and refs.get("txn_id") == j["txn_id"]
+
+
+def _abort(run, j, reason):
+    """Roll back an UNPUBLISHED transaction: staged outputs are moved to quarantine/<txn>/ (never deleted); a valid
+    content-addressed state file it wrote is retained but unreferenced (it is never an accepted state by existence)."""
+    S, *_ = frozen_modules()
+    run = Path(run)
+    rels = list(j.get("planned_outputs", []))
+    if j["op"] == "REVERT" and (run / "reverted").exists():
+        rels += [str(p.relative_to(run)) for p in sorted((run / "reverted").glob(f"reverted_{j['revert_state'][:12]}*"))
+                 if str(p.relative_to(run)) not in rels]
+    retained = None
+    sf = j.get("state_file")
+    if sf and not j.get("state_preexisting") and (run / sf).exists():
+        try:
+            st = json.loads((run / sf).read_text())
+            valid = S.verify_state(st) and (run / sf).read_bytes() == S.canon(st)
+        except ValueError:
+            valid = False
+        if valid:
+            retained = sf
+        else:
+            rels.append(sf)
+    moved = _quarantine(run, j["txn_id"], rels)
+    write_journal(run, dict(j, abort_reason=reason, quarantined=moved, retained_unreferenced_state=retained), "ABORTED")
+    return moved, retained
+
+
+def _finish(run, j, recovered_by=None):
+    """Everything AFTER the publication point.  Idempotent: a recovery roll-forward completes exactly what is missing."""
+    run = Path(run)
+    op = j["op"]
+    _log_append(run, dict(j["store_record"], **({"completed_by_recovery": recovered_by} if recovered_by else {})), j["txn_id"],
+                torn_point="torn_log_append")
+    TX.fault("after_log_append")
+    if op in ("ACCEPT", "REVERT"):
+        register_blend(run, j["registry_state"], j["registry_record"])
+    if op in ("ACCEPT", "DECISION"):
+        ed = run / "edits" / j["request_id"]
+        if not (ed / "commit.json").exists():
+            TX.atomic_dump(ed / "commit.json", dict(j["commit_result"], **({"completed_by_recovery": recovered_by} if recovered_by else {})))
+        TX.fault("before_timeline_final")
+        if not (ed / "timeline_final.png").exists():
+            prop = load(ed / "proposal.json")
+            sidecar = load(run_paths(run)["sidecar"])
+            draw_timeline(ed / "timeline_final.png", dict(prop, final_status=j["commit_result"]["final_status"]), sidecar,
+                          [r["source_frame"] for r in sidecar["frame_mapping"]])
+    TX.fault("before_finalize")
+    sd = run / j["stage_dir"] if j.get("stage_dir") else None
+    if sd is not None and sd.is_dir() and not any(sd.iterdir()):
+        sd.rmdir()                     # an EMPTY staging dir only (all staged files were promoted); never deletes a file
+    return write_journal(run, dict(j, **({"completed_by_recovery": recovered_by} if recovered_by else {})), "FINALIZED")
+
+
+def _after_publish(run, j):
+    try:
+        TX.fault("after_publish")
+        j = write_journal(run, j, "PUBLISHED")
+        return _finish(run, j)
+    except Exception as e:  # the head IS published (verified); only ancillary output is incomplete
+        raise SliceStop("RECOVERY_REQUIRED_AFTER_PUBLICATION", f"head already published as {j['new_refs']['head']} (txn {j['txn_id']}); "
+                        f"ancillary output incomplete ({type(e).__name__}: {e}); run `recover` to complete it") from e
+
+
+def _staging_failed(run, j, e):
+    pub = _is_published(run, j)
+    if pub is False:
+        moved, _ = _abort(run, j, f"{type(e).__name__}: {e}")
+        return SliceStop("TRANSACTION_ABORTED_ROLLED_BACK", f"txn {j['txn_id']} failed before publication ({type(e).__name__}: {e}); "
+                         f"head unchanged = {j['expected_head']}; {len(moved)} staged file(s) moved to quarantine/{j['txn_id']}/")
+    return SliceStop("RECOVERY_REQUIRED", f"txn {j['txn_id']} failed ({type(e).__name__}: {e}); publication state "
+                     f"{'PUBLISHED' if pub else 'UNKNOWN'}; run `recover`")
+
+
+def cmd_commit(a):
     run = Path(a.run).resolve()
+    if not REQUEST_ID_RE.match(a.request_id):
+        raise SliceStop("INVALID_REQUEST_ID", repr(a.request_id))
+    with TX.RunLock(run / "lineage", "commit", SliceStop):
+        return _commit(a, run)
+
+
+def _commit(a, run):
+    S, C, XB, W121 = frozen_modules()
     R, man = load_run(run)
+    require_no_pending(run)
+    refs, raw = require_v2_head(run)
     ed = run / "edits" / a.request_id
+    if not (ed / "proposal.json").exists():
+        raise SliceStop("PROPOSAL_MISSING_OR_INCOMPLETE", f"{a.request_id}: no proposal.json (absent or an interrupted propose); "
+                        "nothing to decide")
     prop = load(ed / "proposal.json")
     if (ed / "commit.json").exists():
         raise SliceStop("REFUSED_ALREADY_DECIDED", a.request_id)
-    ps = PersistentStore(run)
-    n0 = len(ps.store.log)
-    head_before = ps.store.refs["head"]
     cand = load(ed / "candidate_state.json") if (ed / "candidate_state.json").exists() else None
-    if cand is not None and not S.verify_state(cand):
-        raise SliceStop("INVALID_CANDIDATE_TAMPERED", "candidate state id does not bind its content")
+    if cand is not None and (not S.verify_state(cand) or cand["state_id"] != prop.get("candidate")):
+        raise SliceStop("INVALID_CANDIDATE_TAMPERED", "candidate state id does not bind its content or is not the proposal's candidate")
+    ps = PersistentStore(run)
+    head_before = refs["head"]
     guard = {k: sha256_file(run / k) for k in R["immutable_files"]}
-    if a.decision == "accept":
-        if prop["decision"]["decision"] != "ACCEPT" or cand is None:
-            out = {"op": "commit", "decision": "REJECT", "reasons": ["GATE_REJECTED_CANNOT_ACCEPT"] + prop["decision"].get("reasons", []),
-                   "head_before": head_before, "head_after": head_before}
-            ps.store.log.append(out)
-        else:
-            out = ps.store.commit("head", prop["parent_state_id"], cand, prop["decision"])
+    if a.decision == "accept" and (prop["decision"]["decision"] != "ACCEPT" or cand is None):
+        out = {"op": "commit", "decision": "REJECT", "reasons": ["GATE_REJECTED_CANNOT_ACCEPT"] + prop["decision"].get("reasons", []),
+               "head_before": head_before, "head_after": head_before}
+    elif a.decision == "accept":
+        if sha256_file(run / prop["candidate_blend"]["blend"]) != prop["candidate_blend"]["blend_sha256"]:
+            raise SliceStop("INVALID_CANDIDATE_BLEND_TAMPERED", "staged candidate.blend differs from the gated candidate; "
+                            "nothing decided, head unchanged")
+        if prop["parent_state_id"] == head_before and cand["parent_id"] == head_before:
+            return _accept(a, run, R, prop, cand, refs, raw, ps, guard)
+        out = ps.store.commit("head", prop["parent_state_id"], cand, prop["decision"])   # STALE_PARENT / PARENT_MISMATCH record
     else:
         out = ps.store.commit("head", prop["parent_state_id"], cand, {"decision": "REJECT", "reasons": ["USER_REJECTED"]})
-    ps.save(ps.store.log[n0:])
-    head_after = ps.store.refs["head"]
-    final = "ACCEPTED" if head_after != head_before and head_after == (cand or {}).get("state_id") else "REJECTED"
-    res = {"request_id": a.request_id, "user_decision": a.decision.upper(), "store_record": out, "final_status": final,
-           "head_before": head_before, "head_after": head_after,
+    if out["head_after"] != head_before:
+        raise SliceStop("INTERNAL_INVARIANT", "a non-accept decision moved the in-memory head")
+    return _record_decision(a, run, R, prop, refs, out, guard)
+
+
+def _record_decision(a, run, R, prop, refs, out, guard):
+    """REJECT / gate-rejected / stale: the head NEVER moves.  Publication point of the decision = atomic commit.json."""
+    ed = run / "edits" / a.request_id
+    res = {"request_id": a.request_id, "user_decision": a.decision.upper(), "store_record": out, "final_status": "REJECTED",
+           "head_before": refs["head"], "head_after": refs["head"], "generation": refs["generation"],
            "immutable_files_unchanged": guard == {k: sha256_file(run / k) for k in R["immutable_files"]}}
-    if final == "ACCEPTED":
-        src_blend = run / prop["candidate_blend"]["blend"]
-        n_prev = len(list((run / "accepted").glob("*.blend"))) if (run / "accepted").exists() else 0
-        dst = run / "accepted" / f"accepted_{n_prev + 1:02d}_{head_after[:12]}.blend"
-        if dst.exists():
-            raise SliceStop("REFUSED_EXISTING_OUTPUT", str(dst))
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(src_blend, dst)
-        if sha256_file(dst) != prop["candidate_blend"]["blend_sha256"]:
-            raise SliceStop("INVALID_BLEND_IDENTITY", "accepted copy differs from the gated candidate")
-        register_blend(run, head_after, dict(prop["candidate_blend"], role="accepted", accepted_copy=str(dst.relative_to(run))))
-        res["accepted_blend"] = str(dst.relative_to(run))
-    res["display_final"] = dict(prop.get("display") or {}, status=final) if prop.get("display") else None
-    if prop.get("display"):
-        sidecar = load(run_paths(run)["sidecar"])
-        reg = blend_registry(run)
-        U = readback_by_source(load(run / reg[prop["parent_state_id"]]["readback"]), sidecar)
-        X = readback_by_source(load(run / prop["candidate_blend"]["readback"]), sidecar)
-        head = ps.store.get(prop["parent_state_id"])
-        res["display_final_check"] = XB.check_display(res["display_final"], X, U, head["frames"], prop["pin_frames"],
-                                                      prop["candidate"], decision="ACCEPT" if final == "ACCEPTED" else "REJECT")
-    dump(ed / "commit.json", res)
-    prop2 = dict(prop, final_status=final)
-    draw_timeline(ed / "timeline_final.png", prop2, load(run_paths(run)["sidecar"]), ps.store.get(prop["parent_state_id"])["frames"])
+    res.update(_display_final(run, prop, "REJECTED"))
+    j = new_txn(run, "DECISION", refs, request_id=a.request_id, user_decision=a.decision.upper(), store_record=out)
+    res["txn_id"] = j["txn_id"]
+    j["commit_result"] = _norm(res)
+    j = write_journal(run, j, "PREPARED")
+    try:
+        TX.fault("reject_before_record")
+    except BaseException as e:
+        raise _staging_failed(run, j, e) from e
+    TX.atomic_dump(ed / "commit.json", j["commit_result"])
+    try:
+        _finish(run, j)
+    except Exception as e:
+        raise SliceStop("RECOVERY_REQUIRED", f"decision recorded (REJECTED, head unchanged) but ancillary output incomplete "
+                        f"({type(e).__name__}: {e}); run `recover`") from e
     print(json.dumps({k: res[k] for k in ("request_id", "user_decision", "final_status", "head_before", "head_after",
-                                         "immutable_files_unchanged")}, indent=1))
+                                         "immutable_files_unchanged", "txn_id")}, indent=1))
+    return 0
+
+
+def _accept(a, run, R, prop, cand, refs, raw, ps, guard):
+    acc = run / "accepted"
+    n_prev = len(list(acc.glob("*.blend"))) if acc.exists() else 0
+    name = f"accepted_{n_prev + 1:02d}_{cand['state_id'][:12]}"
+    dst, rbp, rbl = acc / f"{name}.blend", acc / f"{name}_readback.json", acc / f"{name}_readback.log"
+    for f in (dst, rbp, rbl):
+        if f.exists():
+            raise SliceStop("REFUSED_EXISTING_OUTPUT", f"{f} (an unrecovered orphan? run `status`)")
+    rel = lambda f: str(Path(f).relative_to(run))  # noqa: E731
+    sp = ps.store.path(cand["state_id"])
+    TX.fault("before_stage")
+    j = new_txn(run, "ACCEPT", refs, request_id=a.request_id, candidate=cand["state_id"], planned_outputs=[rel(dst), rel(rbp), rel(rbl)],
+                state_file=rel(sp), state_preexisting=sp.exists())
+    stage = _txn_dir(run) / f"{j['txn_id']}.stage"     # every staged byte (and any orphan Blender write) stays here
+    j["stage_dir"] = rel(stage)
+    j = write_journal(run, j, "PREPARED")
+    try:
+        TX.fault("after_journal_prepared")
+        out = ps.store.commit("head", prop["parent_state_id"], cand, prop["decision"])   # atomic state put; in-memory ref only
+        if out["head_after"] != cand["state_id"]:
+            raise SliceStop("INTERNAL_INVARIANT", f"store refused the accept: {out.get('reasons')}")
+        TX.fault("after_state_write")
+        stage.mkdir(parents=True)
+        sb = stage / "accepted.blend"
+        shutil.copyfile(run / prop["candidate_blend"]["blend"], sb)
+        TX.fsync_file(sb)
+        dst_sha = sha256_file(sb)
+        if dst_sha != prop["candidate_blend"]["blend_sha256"]:
+            raise SliceStop("INVALID_BLEND_IDENTITY", "accepted copy differs from the gated candidate")
+        TX.fault("after_blend_copy")
+        TX.fault("during_blender")
+        run_blender(R["blender"], "readback", stage / "accepted_readback.log", blend=sb, report=stage / "accepted_readback.json",
+                    subframes=",".join(str(s) for s in SUBFRAMES))
+        rb_acc = load(stage / "accepted_readback.json")
+        checks = _publication_checks(run, R, prop, rb_acc, load(run / prop["candidate_blend"]["readback"]), _parent_readback(run, prop), dst_sha)
+        if not checks["ok"]:
+            raise SliceStop("BLOCKED_PUBLICATION_CHECK_FAILED", json.dumps(checks["checks"]))
+        acc.mkdir(parents=True, exist_ok=True)            # verified bytes only now get their final (still unpublished) names
+        for f_src, f_dst in ((sb, dst), (stage / "accepted_readback.json", rbp), (stage / "accepted_readback.log", rbl)):
+            TX._replace(f_src, f_dst)
+        if sha256_file(dst) != dst_sha:
+            raise SliceStop("INVALID_BLEND_IDENTITY", "accepted .blend changed while being promoted")
+        res = {"request_id": a.request_id, "user_decision": "ACCEPT", "store_record": out, "final_status": "ACCEPTED",
+               "head_before": refs["head"], "head_after": cand["state_id"], "generation": refs["generation"] + 1,
+               "immutable_files_unchanged": guard == {k: sha256_file(run / k) for k in R["immutable_files"]},
+               "accepted_blend": rel(dst), "accepted_readback": rel(rbp), "publication_checks": checks, "txn_id": j["txn_id"]}
+        res.update(_display_final(run, prop, "ACCEPTED"))
+        hb = dict(_head_blend(run, rb_acc, cand["state_id"], "accepted", blend=rel(dst), readback=rel(rbp)), request_id=a.request_id)
+        new_refs = make_refs(cand["state_id"], refs["generation"] + 1, hb, j["txn_id"], refs["head"], "ACCEPT")
+        j.update(_norm({"store_record": out, "commit_result": res, "new_refs": new_refs, "registry_state": cand["state_id"],
+                        "registry_record": dict(prop["candidate_blend"], role="accepted", accepted_copy=rel(dst), accepted_readback=rel(rbp),
+                                                txn_id=j["txn_id"])}))
+        j = write_journal(run, j, "STAGED")
+        TX.fault("before_publish")
+        _publish(run, raw, new_refs)
+    except BaseException as e:
+        raise _staging_failed(run, j, e) from e
+    _after_publish(run, j)
+    print(json.dumps({k: res[k] for k in ("request_id", "user_decision", "final_status", "head_before", "head_after",
+                                         "immutable_files_unchanged", "accepted_blend", "txn_id")}, indent=1))
     return 0
 
 
 def cmd_revert(a):
-    S, C, XB, W121 = frozen_modules()
     run = Path(a.run).resolve()
+    with TX.RunLock(run / "lineage", "revert", SliceStop):
+        return _revert(a, run)
+
+
+def _revert(a, run):
+    S, C, XB, W121 = frozen_modules()
     R, man = load_run(run)
+    require_no_pending(run)
+    refs, raw = require_v2_head(run)
     ps = PersistentStore(run)
-    n0 = len(ps.store.log)
-    head = ps.store.get(ps.store.refs["head"])
+    head = ps.store.get(refs["head"])
     if head["parent_id"] is None:
         raise SliceStop("NOTHING_TO_REVERT", "head is the baseline")
-    st, rec = ps.store.revert("head")
-    ps.save(ps.store.log[n0:])
-    restored = ps.store.get(rec["restores"])
+    restored = ps.store.get(head["parent_id"])
+    st_id = S.make_state(head["state_id"], restored["rig_id"], restored["frames"], restored["channels"], restored["values"],
+                         {"kind": "REVERT", "reverts": head["state_id"], "restores": restored["state_id"]}, restored.get("source"))["state_id"]
+    tag = f"reverted_{st_id[:12]}"
+    rd = run / "reverted"
+    planned = [f"reverted/{tag}{s}" for s in (".blend", "_state_for_blender.json", "_provenance.json", "_build.log", "_build.json",
+                                               "_readback.log", "_readback.json", "_report.json")]
+    if any((run / p).exists() for p in planned):
+        raise SliceStop("REFUSED_EXISTING_OUTPUT", f"{tag}* already exists (an unrecovered orphan? run `status`)")
+    sp = ps.store.path(st_id)
+    TX.fault("before_stage")
+    j = new_txn(run, "REVERT", refs, reverts=head["state_id"], restores=restored["state_id"], revert_state=st_id,
+                planned_outputs=planned, state_file=str(sp.relative_to(run)), state_preexisting=sp.exists())
+    stage_rel = f"lineage/txn/{j['txn_id']}.stage"     # Blender builds here; an orphan Blender can only write here
+    j["stage_dir"] = stage_rel
+    j = write_journal(run, j, "PREPARED")
+    try:
+        TX.fault("after_journal_prepared")
+        st, rec = ps.store.revert("head")          # atomic put; in-memory ref only (published below)
+        if st["state_id"] != st_id:
+            raise SliceStop("INTERNAL_INVARIANT", "revert state id differs from the journalled id")
+        TX.fault("after_state_write")
+        reg = blend_registry(run)
+        sidecar = load(run_paths(run)["sidecar"])
+        prov = {"slice": SLICE_ID, "status": "EXPERIMENTAL", "input_manifest_sha256": R["input_manifest_sha256"], "state_id": st["state_id"],
+                "parent_state_id": st["parent_id"], "role": f"REVERT of {head['state_id']} restoring {restored['state_id']}"}
+        brec, b, rb = build_state_blend(run, R["blender"], st, tag, stage_rel, prov, R["rest_json"], R["rig_fbx"],
+                                        between=lambda: TX.fault("during_blender"))
+        rb0 = load(run / reg[restored["state_id"]]["readback"])
+        same_int, same_sub = _frames_equal(rb, rb0)
+        out = {"revert_record": rec, "reverted_state_id": st["state_id"], "restored_state_id": restored["state_id"],
+               "values_equal_restored": canon(st["values"]) == canon(restored["values"]), "value_digest_equal": rb["value_digest"] == rb0["value_digest"],
+               "blender_eval_integer_frames_bit_equal": same_int, "blender_eval_subframes_bit_equal": same_sub,
+               "reverted_blend": brec, "lineage": ps.store.lineage(st["state_id"]), "txn_id": j["txn_id"]}
+        out["exact_undo"] = all(out[k] for k in ("values_equal_restored", "value_digest_equal", "blender_eval_integer_frames_bit_equal",
+                                                "blender_eval_subframes_bit_equal"))
+        if not out["exact_undo"]:
+            raise SliceStop("REVERT_NOT_EXACT", json.dumps({k: out[k] for k in ("values_equal_restored", "value_digest_equal",
+                                                                               "blender_eval_integer_frames_bit_equal",
+                                                                               "blender_eval_subframes_bit_equal")}))
+        rd.mkdir(parents=True, exist_ok=True)              # verified -> final (still unpublished) names
+        for f in sorted((run / stage_rel).glob(f"{tag}*")):
+            TX._replace(f, rd / f.name)
+        for k in ("blend", "build_report", "readback"):
+            brec[k] = str(Path("reverted") / Path(brec[k]).name)
+        if sha256_file(run / brec["blend"]) != brec["blend_sha256"]:
+            raise SliceStop("INVALID_BLEND_IDENTITY", "reverted .blend changed while being promoted")
+        out["reverted_blend"] = brec
+        dump(rd / f"{tag}_report.json", out)
+        new_refs = make_refs(st_id, refs["generation"] + 1, _head_blend(run, brec, st_id, "reverted"), j["txn_id"], head["state_id"], "REVERT")
+        j.update(_norm({"store_record": rec, "new_refs": new_refs, "registry_state": st_id,
+                        "registry_record": dict(brec, role="reverted", txn_id=j["txn_id"]), "report": f"reverted/{tag}_report.json"}))
+        j = write_journal(run, j, "STAGED")
+        TX.fault("before_publish")
+        _publish(run, raw, new_refs)
+    except BaseException as e:
+        raise _staging_failed(run, j, e) from e
+    _after_publish(run, j)
+    print(json.dumps({k: out[k] for k in ("reverted_state_id", "restored_state_id", "exact_undo", "txn_id")}, indent=1))
+    return 0
+
+
+# ------------------------------------------------------------------------------------------- recover / adopt ---
+def _recover_one(run, j, rid):
+    refs, raw, kind = read_refs(run)
+    if j["op"] == "DECISION":
+        cj = Path(run) / "edits" / j["request_id"] / "commit.json"
+        if cj.exists():
+            if load(cj).get("txn_id") != j["txn_id"]:
+                raise SliceStop("BLOCKED_DIVERGENT_JOURNAL", f"{j['txn_id']}: commit.json belongs to another transaction")
+            _finish(run, j, recovered_by=rid)
+            return {"txn_id": j["txn_id"], "op": j["op"], "outcome": "ROLLED_FORWARD (decision REJECTED was recorded; head never moved)"}
+        _abort(run, j, f"recovered by {rid}: interrupted before the decision record; the proposal remains UNDECIDED")
+        return {"txn_id": j["txn_id"], "op": j["op"], "outcome": "ROLLED_BACK (no decision recorded; proposal UNDECIDED; head never moved)"}
+    if kind == "V2" and refs.get("txn_id") == j["txn_id"]:
+        if j.get("state") not in ("STAGED", "PUBLISHED") or refs != j.get("new_refs"):
+            raise SliceStop("BLOCKED_DIVERGENT_JOURNAL", f"{j['txn_id']}: refs name this transaction but differ from its staged refs")
+        v = verify_head(run, refs)
+        if not v["ok"]:
+            raise SliceStop("BLOCKED_HEAD_UNVERIFIED", f"published head of {j['txn_id']} does not verify: {v['problems']}")
+        _finish(run, j, recovered_by=rid)
+        return {"txn_id": j["txn_id"], "op": j["op"], "outcome": f"ROLLED_FORWARD (head was already published = {refs['head']})"}
+    if refs["head"] != j["expected_head"] or refs.get("generation") != j["expected_generation"]:
+        raise SliceStop("BLOCKED_DIVERGENT_JOURNAL", f"{j['txn_id']}: unpublished, but the head moved since it started "
+                        f"({j['expected_head'][:12]}@{j['expected_generation']} -> {refs['head'][:12]}@{refs.get('generation')})")
+    moved, retained = _abort(run, j, f"recovered by {rid}: interrupted before publication")
+    return {"txn_id": j["txn_id"], "op": j["op"], "outcome": f"ROLLED_BACK (head unchanged = {refs['head']})", "quarantined": moved,
+            "retained_unreferenced_state": retained}
+
+
+def cmd_recover(a):
+    run = Path(a.run).resolve()
+    with TX.RunLock(run / "lineage", "recover", SliceStop):
+        return _recover(a, run)
+
+
+def _recover(a, run):
+    import uuid
+    R, man = load_run(run)          # tampered immutable outputs / manifest STOP here: never repaired
+    rid = f"recover_{datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%S')}_{uuid.uuid4().hex[:8]}"
+    refs, raw, kind = read_refs(run)   # torn / tampered refs STOP here: the authority is never invented
+    actions = []
+    recs, torn, bad = TX.read_jsonl(run_paths(run)["log"])
+    if bad:
+        raise SliceStop("BLOCKED_LOG_CORRUPT", f"{bad} unparsable non-final log line(s): not a crash signature; inspect manually")
+    if torn is not None:     # crash signature: an incomplete final append.  Keep the bytes, restore the complete prefix.
+        qd = run / "quarantine" / rid
+        qd.mkdir(parents=True, exist_ok=True)
+        (qd / "log_torn_tail.bin").write_bytes(torn)
+        full = run_paths(run)["log"].read_bytes()
+        TX.atomic_write_bytes(run_paths(run)["log"], full[: len(full) - len(torn)])
+        actions.append({"action": "LOG_TORN_TAIL_QUARANTINED", "bytes": len(torn), "to": str((qd / "log_torn_tail.bin").relative_to(run))})
+    for p, j in pending_journals(run):
+        if j is None:
+            raise SliceStop("BLOCKED_JOURNAL_CORRUPT_OR_TAMPERED", f"{p.name}: unreadable or seal mismatch; recovery will not guess")
+        actions.append(_recover_one(run, j, rid))
+    stray = _stray_tmp(run)
+    if stray:
+        actions.append({"action": "STRAY_TEMP_FILES_QUARANTINED", "files": _quarantine(run, rid, stray)})
+    refs, raw, kind = read_refs(run)
+    head_check = verify_head(run, refs) if kind == "V2" else {"ok": None, "problems": ["LEGACY_W124_REFS (not adopted)"]}
+    if kind == "V2" and not head_check["ok"]:
+        raise SliceStop("BLOCKED_HEAD_UNVERIFIED", f"after recovery the head does not verify: {head_check['problems']}")
+    rep = {"recovery_id": rid, "at": now(), "refs_kind": kind, "head": refs["head"], "generation": refs.get("generation"),
+           "head_verified": head_check, "actions": actions}
+    dump(run / "recovery" / f"{rid}.json", rep)
+    print(json.dumps({k: rep[k] for k in ("recovery_id", "head", "generation", "head_verified", "actions")}, indent=1, default=str))
+    return 0
+
+
+def cmd_adopt(a):
+    run = Path(a.run).resolve()
+    with TX.RunLock(run / "lineage", "adopt", SliceStop):
+        return _adopt(a, run)
+
+
+def _adopt(a, run):
+    """Explicit, non-destructive upgrade of a W124 run (unversioned refs) to sealed v2 refs.  STOPs on any divergence."""
+    S, *_ = frozen_modules()
+    R, man = load_run(run)
+    refs, raw, kind = read_refs(run)
+    if kind != "LEGACY_W124":
+        raise SliceStop("REFUSED_NOT_LEGACY", "refs.json is already v2")
+    if read_journals(run):
+        raise SliceStop("BLOCKED_DIVERGENT_JOURNAL", "a legacy run must not contain transaction journals")
+    ps = PersistentStore(run)
+    head = refs["head"]
+    lin = ps.store.lineage(head)
+    if not all(x["verifies"] for x in lin):
+        raise SliceStop("BLOCKED_LEGACY_LINEAGE_INVALID", str(lin))
+    recs, torn, bad = TX.read_jsonl(run_paths(run)["log"])
+    if torn is not None or bad:
+        raise SliceStop("BLOCKED_LEGACY_LOG_CORRUPT", "legacy log has torn/unparsable lines")
+    moves = [r for r in recs if (r.get("op") == "commit" and r.get("head_after") != r.get("head_before")) or r.get("op") == "revert"]
+    last = recs[0]["head"] if recs and recs[0].get("op") == "init" else None
+    for r in moves:
+        last = r.get("head_after") if r["op"] == "commit" else r.get("to")
+    if last != head or len(lin) - 1 > len(moves):
+        raise SliceStop("BLOCKED_LEGACY_DIVERGENT", f"legacy log final head {last} != refs head {head}")
     reg = blend_registry(run)
-    sidecar = load(run_paths(run)["sidecar"])
-    tag = f"reverted_{st['state_id'][:12]}"
-    prov = {"slice": SLICE_ID, "status": "EXPERIMENTAL", "input_manifest_sha256": R["input_manifest_sha256"], "state_id": st["state_id"],
-            "parent_state_id": st["parent_id"], "role": f"REVERT of {head['state_id']} restoring {restored['state_id']}"}
-    brec, b, rb = build_state_blend(run, R["blender"], st, tag, "reverted", prov, R["rest_json"], R["rig_fbx"])
-    register_blend(run, st["state_id"], dict(brec, role="reverted"))
-    rb0 = load(run / reg[restored["state_id"]]["readback"])
-    keys = ("world", "matrix_world", "stored_wxyz")
-    same_int = [{k: f[k] for k in keys} for f in rb["frames"]] == [{k: f[k] for k in keys} for f in rb0["frames"]]
-    same_sub = [{k: f[k] for k in ("world", "matrix_world")} for f in rb["subframes"]] == \
-               [{k: f[k] for k in ("world", "matrix_world")} for f in rb0["subframes"]]
-    out = {"revert_record": rec, "reverted_state_id": st["state_id"], "restored_state_id": restored["state_id"],
-           "values_equal_restored": canon(st["values"]) == canon(restored["values"]), "value_digest_equal": rb["value_digest"] == rb0["value_digest"],
-           "blender_eval_integer_frames_bit_equal": same_int, "blender_eval_subframes_bit_equal": same_sub,
-           "reverted_blend": brec, "lineage": ps.store.lineage(st["state_id"])}
-    out["exact_undo"] = all(out[k] for k in ("values_equal_restored", "value_digest_equal", "blender_eval_integer_frames_bit_equal",
-                                            "blender_eval_subframes_bit_equal"))
-    dump(run / "reverted" / f"{tag}_report.json", out)
-    print(json.dumps({k: out[k] for k in ("reverted_state_id", "restored_state_id", "exact_undo")}, indent=1))
+    if head not in reg:
+        raise SliceStop("BLOCKED_LEGACY_HEAD_BLEND_UNREGISTERED", head)
+    e = reg[head]
+    blend = e.get("accepted_copy") or e["blend"]
+    if sha256_file(run / blend) != e["blend_sha256"] or load(run / e["readback"]).get("blend_sha256") != e["blend_sha256"]:
+        raise SliceStop("BLOCKED_LEGACY_HEAD_BLEND_UNVERIFIED", blend)
+    legacy = run / "lineage" / "refs.legacy_w124.json"
+    if legacy.exists():
+        raise SliceStop("REFUSED_EXISTING_OUTPUT", str(legacy))
+    TX.atomic_write_bytes(legacy, raw)
+    hb = _head_blend(run, e, head, e.get("role", "legacy"), blend=blend, readback=e["readback"])
+    tid = f"adopt_{datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%S')}"
+    new_refs = make_refs(head, len(moves), hb, tid, None, "ADOPT_LEGACY_W124")
+    j = write_journal(run, {"schema": JOURNAL_SCHEMA, "txn_id": tid, "op": "ADOPT", "legacy_refs_sha256": hashlib.sha256(raw).hexdigest(),
+                            "legacy_refs_preserved_as": "lineage/refs.legacy_w124.json", "new_refs": new_refs,
+                            "verified": {"lineage": lin, "log_head_moves": len(moves)}}, "STAGED")
+    _publish(run, raw, new_refs)
+    _log_append(run, {"op": "adopt", "ref": "head", "head": head, "generation": len(moves)}, tid)
+    write_journal(run, j, "FINALIZED")
+    print(json.dumps({"adopted": True, "head": head, "generation": len(moves), "head_blend": hb["blend"], "txn_id": tid}, indent=1))
     return 0
 
 
 def cmd_status(a):
+    """Read-only (takes no lock, writes nothing).  Everything shown derives from the authoritative refs.json."""
+    S, *_ = frozen_modules()
     run = Path(a.run).resolve()
     R, man = load_run(run)
+    refs, raw, kind = read_refs(run)
     ps = PersistentStore(run)
-    print(json.dumps({"head": ps.store.refs.get("head"), "lineage": ps.store.lineage(ps.store.refs["head"]),
-                      "blends": blend_registry(run)}, indent=1, default=str))
+    lin = ps.store.lineage(refs["head"])
+    chain = {x["state_id"] for x in lin}
+    pend = []
+    for p, j in pending_journals(run):
+        if j is None:
+            pend.append({"journal": p.name, "state": "UNREADABLE_OR_TAMPERED"})
+            continue
+        pub = kind == "V2" and refs.get("txn_id") == j["txn_id"]
+        pend.append({"txn_id": j["txn_id"], "op": j["op"], "state": j["state"], "request_id": j.get("request_id"),
+                     "published": pub, "meaning": ("head ALREADY moved to " + refs["head"] + "; ancillary records incomplete") if pub else
+                     "NOT published: head unchanged; staged files are NOT accepted",
+                     "staged_files_present": [f for f in j.get("planned_outputs", []) if (run / f).exists()]})
+    edits = {}
+    if (run / "edits").exists():
+        for ed in sorted(p for p in (run / "edits").iterdir() if p.is_dir()):
+            if not (ed / "proposal.json").exists():
+                edits[ed.name] = {"state": "INCOMPLETE_PROPOSAL (interrupted propose; not decidable)"}
+                continue
+            pr = load(ed / "proposal.json")
+            cm = load(ed / "commit.json") if (ed / "commit.json").exists() else None
+            edits[ed.name] = {"gate": pr["decision"]["decision"], "candidate": pr.get("candidate"),
+                              "decision": cm["final_status"] if cm else "UNDECIDED (proposal only; NOT applied)",
+                              "in_current_head_lineage": pr.get("candidate") in chain if pr.get("candidate") else False,
+                              "changed_frames": (pr.get("footprint") or {}).get("frames_changed"),
+                              "changed_bones": sorted((pr.get("footprint") or {}).get("channel_frames", {}))}
+    reg = blend_registry(run)
+    all_states = {p.stem for p in (run / "lineage" / "states").glob("*.json")}
+    reachable = set(chain)
+    for x in list(reg):
+        if x in all_states:
+            reachable |= {y["state_id"] for y in ps.store.lineage(x)}
+    acc_reg = {str(Path(r.get("accepted_copy", ""))) for r in reg.values() if r.get("accepted_copy")}
+    if (refs.get("head_blend") or {}).get("blend"):
+        acc_reg.add(str(Path(refs["head_blend"]["blend"])))
+    orphan_acc = [str(p.relative_to(run)) for p in sorted((run / "accepted").glob("*.blend"))
+                  if str(p.relative_to(run)) not in acc_reg] if (run / "accepted").exists() else []
+    recs, torn, bad = TX.read_jsonl(run_paths(run)["log"])
+    hv = verify_head(run, refs) if kind == "V2" else {"ok": None, "problems": ["LEGACY_W124_REFS: run `adopt` before editing"]}
+    need = bool(pend) or torn is not None or bool(_stray_tmp(run)) or bool(orphan_acc)
+    out = {"refs_kind": kind, "head": refs["head"], "generation": refs.get("generation"), "head_blend": refs.get("head_blend"),
+           "head_verified": hv, "last_publication": {k: refs.get(k) for k in ("txn_id", "op", "prev_head", "published_at")},
+           "lineage": lin, "pending_transactions": pend, "recovery_required": need,
+           "recovery_action": f"experimental-video-action recover --run {run}" if need else None,
+           "edits": edits, "unreferenced_states_not_accepted": sorted(all_states - reachable),
+           "orphan_accepted_folder_blends_not_published": orphan_acc, "stray_temp_files": _stray_tmp(run),
+           "staging_dirs_never_authority": sorted(p.name for p in _txn_dir(run).glob("*.stage")) if _txn_dir(run).exists() else [],
+           "log": {"records": len(recs), "torn_tail_bytes": len(torn) if torn else 0, "bad_lines": bad},
+           "quarantine": sorted(str(p.relative_to(run)) for p in (run / "quarantine").rglob("*") if p.is_file())
+           if (run / "quarantine").exists() else [], "blends": reg}
+    print(json.dumps(out, indent=1, default=str))
     return 0
 
 
@@ -972,6 +1641,7 @@ def cmd_review(a):
     import numpy as np
     run = Path(a.run).resolve()
     R, man = load_run(run)
+    require_no_pending(run)
     ed = run / "edits" / a.request_id
     prop, com = load(ed / "proposal.json"), load(ed / "commit.json")
     if com["final_status"] != "ACCEPTED":
@@ -1104,6 +1774,7 @@ def cmd_fbx(a):
     import numpy as np
     run = Path(a.run).resolve()
     R, man = load_run(run)
+    require_no_pending(run)
     ps = PersistentStore(run)
     sid = ps.store.refs["head"] if a.state == "head" else R["baseline_state_id"] if a.state == "baseline" else a.state
     reg = blend_registry(run)
@@ -1221,8 +1892,12 @@ def add_subparser(sub):
     f = s.add_parser("fbx", help="export a state's .blend with the existing exporter and re-import it (characterisation only)")
     f.add_argument("--run", required=True)
     f.add_argument("--state", default="head", help="head | baseline | <state id>")
-    t = s.add_parser("status", help="print head, lineage and .blend registry")
+    t = s.add_parser("status", help="print the authoritative head, lineage, .blend registry, pending transactions and recovery need")
     t.add_argument("--run", required=True)
+    rc = s.add_parser("recover", help="complete (roll forward) or roll back interrupted transactions; never invents accepted state")
+    rc.add_argument("--run", required=True)
+    ad = s.add_parser("adopt", help="explicitly upgrade a W124 run to sealed transactional refs (non-destructive; legacy refs kept)")
+    ad.add_argument("--run", required=True)
     return p
 
 
@@ -1232,10 +1907,13 @@ def dispatch(args):
             args.blender_exe = find_blender(args.blender)
             return cmd_build(args)
         return {"propose": cmd_propose, "commit": cmd_commit, "revert": cmd_revert, "review": cmd_review, "fbx": cmd_fbx,
-                "status": cmd_status}[args.exp_action](args)
+                "status": cmd_status, "recover": cmd_recover, "adopt": cmd_adopt}[args.exp_action](args)
     except SliceStop as e:
         print(f"[experimental-video-action] STOP {e.code}: {e.detail}", file=sys.stderr)
         return 2
+    except TX.InjectedFault as e:     # fault injection (tests / evidence harness only)
+        print(f"[experimental-video-action] STOP INJECTED_FAULT: {e}", file=sys.stderr)
+        return 3
 
 
 def main(argv=None):

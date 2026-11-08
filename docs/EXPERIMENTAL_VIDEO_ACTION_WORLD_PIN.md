@@ -55,6 +55,7 @@ $PY -m app.cli experimental-video-action review  --run runs/my_run --request-id 
 $PY -m app.cli experimental-video-action fbx     --run runs/my_run --state head
 $PY -m app.cli experimental-video-action revert  --run runs/my_run
 $PY -m app.cli experimental-video-action status  --run runs/my_run
+$PY -m app.cli experimental-video-action recover --run runs/my_run   # only if status says recovery_required
 ```
 
 `source.json` must contain `title`, `license`, `author`, `source_uri`. The slice records these values; it does not judge them.
@@ -89,10 +90,75 @@ run/
   edits/<request_id>/            request.json, proposal.json, candidate.blend (if any), timeline.png, commit.json, timeline_final.png
   accepted/accepted_NN_<id>.blend
   reverted/reverted_<id>.blend   + exact-undo report
-  lineage/                       content-addressed read-only states, refs.json, log.jsonl, blends.json
+  lineage/                       content-addressed read-only states, refs.json (authority), log.jsonl, blends.json,
+                                 txn/<txn>.json journals + txn/<txn>.stage/ staging (never authority), txn.lock
+  quarantine/<txn>/              unpublished files moved (never deleted) by a rollback / recover
+  recovery/<id>.json             what each `recover` did
   review/<request_id>/           30 fps A/B video, stills, render logs
   fbx/<state>/                   exported .fbx, re-import readback, round-trip report
 ```
+
+## Transactions, interruption and recovery (Batch 125)
+
+Evidence: `docs/125_WORKLOG_CRASH_CONSISTENT_EDITABLE_ACTION_TRANSACTIONS.md`. Still EXPERIMENTAL and opt-in.
+
+**Authority.** `lineage/refs.json` is the only authority for the current head. Since W125 it is a sealed record
+(`schema: animcv_exp_refs_v2`) that binds, in one file, the head state id, a generation counter, and the head's `.blend`
+path + SHA-256 + readback report + SHA-256. A `.blend`, a `proposal.json`, a `candidate.blend` or a file in `accepted/`
+is **never** an accepted edit by its existence; only what `refs.json` names is.
+
+**What `commit --decision accept` and `revert` do, in order:**
+
+1. take a per-run OS lock (`lineage/txn.lock`; non-blocking: a second process stops with `BLOCKED_RUN_LOCKED` and never waits,
+   steals or expires it; the OS releases it if the holder dies);
+2. refuse to start if an earlier transaction is unfinished (`RECOVERY_REQUIRED`) or the head does not verify;
+3. write a sealed journal `lineage/txn/<txn>.json` (PREPARED) naming every file it will create;
+4. stage: the content-addressed state (atomic write), the `.blend` and a fresh-process Blender readback, all inside
+   `lineage/txn/<txn>.stage/`; verify them (accept: bit-identical to the gated candidate and the actual frame/bone
+   footprint equal to the proposal's; revert: exact undo at integer frames and subframes); only then give them their final
+   names in `accepted/` or `reverted/`;
+5. **publish**: compare the `refs.json` bytes with those read under the lock, then replace `refs.json` atomically
+   (temp file + fsync + rename). Before this point the old head is authoritative; after it the new head is;
+6. afterwards append the lineage log, update `lineage/blends.json`, write `commit.json` and `timeline_final.png`, and mark
+   the journal FINALIZED.
+
+`commit --decision reject` (and a gate-rejected or stale accept) never moves the head; its publication point is the atomic
+`commit.json`.
+
+**If a command fails or is killed:**
+
+| Where it stopped | What you see | What to do |
+|---|---|---|
+| exception before publication | `STOP TRANSACTION_ABORTED_ROLLED_BACK`; head unchanged; staged files moved to `quarantine/<txn>/` | retry the command |
+| killed before publication | `status` → `recovery_required: true`, pending txn `published: false` | `recover` (rolls back), then retry |
+| after publication (exception or kill) | `status` → pending txn `published: true` ("head ALREADY moved"); no success message may have been printed | `recover` (completes log, registry, `commit.json`, timeline) |
+| torn log line / stray temp file | `status` → `recovery_required: true` | `recover` (bytes kept in `quarantine/`) |
+| tampered `refs.json`, journal, head `.blend`, manifest or baseline | `STOP BLOCKED_REFS_TAMPERED` / `BLOCKED_JOURNAL_CORRUPT_OR_TAMPERED` / `BLOCKED_HEAD_UNVERIFIED` / `BLOCKED_IMMUTABLE_OUTPUT_CHANGED` | not repaired automatically: inspect by hand |
+
+`recover` never deletes a file (it moves unpublished ones to `quarantine/`), never marks an incomplete operation ACCEPTED,
+and STOPs instead of guessing when a journal and `refs.json` disagree. Other commands refuse to run while recovery is
+needed. Right after a hard kill on Windows the OS may take a moment to release the dead process's lock; `recover` then
+stops with `BLOCKED_RUN_LOCKED` and can simply be re-run.
+
+**W124 runs** (unversioned `refs.json`) stay readable (`status`, `review`, `fbx`). Editing commands stop with
+`BLOCKED_LEGACY_RUN_REQUIRES_ADOPT` until you run `adopt`, which verifies the run and writes v2 refs, keeping the original as
+`lineage/refs.legacy_w124.json`.
+
+**Example with a simulated interruption** (`ANIMCV_EXP_TXN_FAULT*` variables are for tests and evidence only):
+
+```bash
+export PYTHONPATH=src
+$PY -m app.cli experimental-video-action propose --run R --request hold.json
+ANIMCV_EXP_TXN_FAULT=after_publish ANIMCV_EXP_TXN_FAULT_MODE=exit   $PY -m app.cli experimental-video-action commit --run R --request-id hold_1 --decision accept   # exits 86, no message
+$PY -m app.cli experimental-video-action status  --run R   # head = the candidate; pending txn published: true; recovery_required
+$PY -m app.cli experimental-video-action recover --run R   # ROLLED_FORWARD; commit.json + timeline_final.png written
+$PY -m app.cli experimental-video-action status  --run R   # recovery_required: false; edits.hold_1.decision = ACCEPTED
+```
+
+**Durability scope.** Tested: Python exceptions, `os._exit`, and hard termination of the CLI process (including while its
+Blender child is running) on Windows 11 / local NTFS. Not tested and not claimed: power loss, OS crash, full disk,
+network or other filesystems. On Windows the directory entry of a rename is not fsynced (Python cannot do that), so a
+published head is durable against process death, not guaranteed against power loss.
 
 ## Known limitations (do not read the output as more than it is)
 

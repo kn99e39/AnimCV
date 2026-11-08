@@ -1,127 +1,117 @@
-# BATCH 124 — Opt-in Real-Video to Editable Blender Action with Reversible World Pin
+# BATCH 125 — Crash-Consistent Editable Blender Action Transactions and Recovery
 
 DIRECTION
 
-PRODUCTION-ORIENTED ITERATIVE DEVELOPMENT. Build one demonstrable, bounded, opt-in animation-authoring vertical slice from authentic video to an editable Blender Action and a user-authored WORLD_POSITION_PIN edit with truthful footprint and exact undo. This is an ENGINEERING INTEGRATION batch, not another pose-score/solver-threshold diagnostic. Preserve the default legacy CLI/GUI and historical experiments. A successful vertical slice is not a general-purpose Generator, universal retargeter, production-ready FBX interchange or a quality guarantee.
+PRODUCTION-ORIENTED ITERATIVE DEVELOPMENT. Complete the safety and durability of the existing opt-in real-video -> editable Blender Action -> user WORLD_POSITION_PIN workflow. This is a BOUNDED ENGINEERING INTEGRATION batch, not a new model, a new constraint type, a broad editor rewrite, or another pose/solver diagnostic. Work only on the existing branch arch/single_frame_first; never create, switch, delete, merge, rebase, reset, or force-push branches. Do not issue a future Batch.
 
 PURPOSE
 
-The current normal CLI/GUI still follows legacy MotionGraph -> RetargetSolver -> AnimationClip. Existing FramePose, Semantics, BaseRig retarget and Blender code are separate; W116–W122 demonstrated isolated World Pin, edit-state and real-rig experiments but did not deliver a coherent opt-in user workflow. W123's learned assessor showed in-domain triage value (official CASE B) but failed missing-input coverage (0.737) and independent-domain coverage (0.421); it is NOT safe to use as automatic edit authority. The product needs a usable, inspectable Action rather than another reliability or guide sweep.
+W124 produced the first opt-in user workflow and officially completed CASE B. Agent-run S1/S3 live-video -> frozen FramePose -> W105 BaseRig .blend -> nonzero left-wrist Hard Pin -> truthful footprint -> normal-case accept/reject/revert was demonstrated. FBX round-trip FAILED and real animation remains partial/GT-free. The next urgent product risk is that an accepted or reverted Action must remain coherent when the CLI or Blender fails midway, not merely when a happy-path test passes.
+
+Direct GitHub source review of W124 found a concrete transactional exposure: cmd_commit changes and saves the persistent head BEFORE copying/checking the accepted .blend, updating the blend registry, writing commit.json, and rendering the final timeline; cmd_revert changes and saves the head BEFORE building and independently reading back the reverted .blend. PersistentStore.save writes refs.json directly and appends log.jsonl separately. W116 Store.commit is atomic only as an in-memory head comparison. A process interruption or I/O/Blender failure can therefore leave the authoritative head, Action artifact, lineage log and user-visible status inconsistent. This is CODE-INSPECTED RISK, not an independently reproduced failure; W124's normal-case tests and official CASE B are not retroactively changed.
 
 CENTRAL INTENT
 
-Can a user, through ONE documented opt-in workflow on the existing known BaseRig, supply a real dynamic video and an optional explicitly authored Blender-scene-world left-wrist position pin, obtain a provenance-bound editable .blend Action, see precisely which frames and bones changed, and accept/reject/revert the edit without losing the original Action or silently violating hard constraints? What is actually usable at real-time playback, and what remains blocked at FBX continuous-time roundtrip?
+Can the already approved opt-in WORLD_POSITION_PIN authoring workflow guarantee that ACCEPT, REJECT and REVERT publish one coherent, recoverable user-visible Action/state transition under injected failures and competing CLI processes, with no accepted head pointing at a missing/unverified .blend and no ghost accepted timeline, while preserving exact Hard Pin, immutable source, actual changed-frame/Bone footprint, native 30fps Action, and the existing default CLI/GUI behavior?
 
 CURRENT ASSESSMENT / HUMAN ASSESSMENT
 
-- Official history is immutable: W113–W115 D, W116 B, W117 C, W118 D, W119 D, W120 B, W121 D, W122 B, W123 B. W123 has BATCH_NUMBER: 123 and AUTOMATION_BATCH_STATUS: COMPLETE at observed HEAD 1909613ff754a179bfe2393b612fdabdccc2d80a. Recheck remotely.
-- W121/W122 S1 kettlebell, S2 juggling and S3 bent-over row are authentic licensed, GT-FREE clips, NOT new independent sources relative to those Worklogs. S1/S3 are preferable single-performer engineering replays; S2 has subject-identity ambiguity and must not be quietly treated as clean.
-- The frozen W121 S0-only W105 FIXED-slot BaseRig adapter produced 30fps Actions and W116–W122 tested a left-wrist pin. It is an explicit PARTIAL rig: right arm may remain at rest, root translation/foot contact and general body quality are not established. Source steps may be artefacts (notably S1 f251).
-- W107–W112 found FBX interpolation/subframe/importer failures. A .blend file, a successfully exported .fbx, and a faithful reimport are DIFFERENT achievements.
-- The owner approved Semantic Constraint System, WORLD_POSITION_PIN in Blender scene-world metres, separate immutable source and versioned editable state, atomic accept/reject/revert, and bounded automatic out-of-pin editing ONLY with truthful frame/Bone disclosure. The owner did NOT approve new constraint types, universal elbow limits, production numerical tolerances, a trained Generator, a schema replacement, or unbounded auto-edit.
-- The owner subsequently approved production-oriented development: a narrow, safely reversible Production integration with explicit experimental gating is permitted; W123's batch-specific src/ prohibition is not permanent. Do not interpret this as permission to change the default pipeline or deploy W123 reliability as a trust policy.
+- Official W124 COMPLETE: docs/124_WORKLOG_OPT_IN_VIDEO_TO_EDITABLE_ACTION_WORLD_PIN.md, CASE B, observed reviewer HEAD 6d938ec57b5a7e392cb75c5afbc0c0aaecc8bc77. The final HEAD includes a concurrent automation-script merge; distinguish that history from W124's opt-in code. Never modify scripts/batch_automation.py or tests/test_batch_automation.py in this Batch and do not perform any merge.
+- W124 Agent-run: S1/S3 source-backed editable .blend and left-wrist pin/undo; actual changed frames/bones disclosed; 35 focused + 226 selected regression tests. No Reviewer-local Blender rerun. S1 left-arm source mismatch, S3 uninformative front close-up, right arm at rest, no root translation/contact; W124 FBX round-trip FAIL (integer drift 3.90/6.77 mm, subframe drift 0.69/0.21 m, CONSTANT -> LINEAR, scene range 250). Do not reinterpret a successful transaction as better motion quality or FBX portability.
+- User-approved policy: Semantic Constraint System, Blender scene-world WORLD_POSITION_PIN, immutable Source Evidence, versioned editable state, exact atomic accept/reject/revert, bounded disclosed edits. W124 uses zero out-of-pin budget; this Batch does not silently enable a transition solver. The 1 mm diagnostic is historical, not a permanent Production threshold.
+- W123 reliability CASE B remains scratch, not runtime authority. All W113–W124 Worklogs/CASEs are immutable. The W116–W120 audit is complete; W125 COMPLETE will trigger the mandatory W121–W125 cumulative audit BEFORE W126.
 
 HUMAN-READABLE SUMMARY
 
-Direction: First opt-in real-video -> known-rig editable Action + one semantic edit, using existing frozen components.
+Direction: harden the existing experimental animation-authoring vertical slice for interrupted/competing operations.
 
-Purpose: Close a real user capability and expose integration/quality defects at the final Blender/FBX boundary.
+Purpose: prevent loss, mispublication or misrepresentation of a user's accepted/reverted Blender Action.
 
-Central Intent: Does the integrated workflow preserve source/time/rig authority, apply a real user pin, disclose every actual edit and revert exactly, while leaving default behavior untouched?
+Central Intent: after any injected failure or restart, the visible head must resolve to exactly one fully validated .blend and lineage state, or the previous head must remain authoritative with an explicit recoverable STOP; a rejected edit never moves the head.
 
-DO: bounded opt-in command/entry point, actual source-to-rig execution, editable Action, user pin request, independent Blender evaluation, footprint/timeline and undo, real-time visual A/B, FBX export/readback characterization, focused regression, milestone-status documentation.
+DO: bounded transaction staging, durable publication/recovery, focused fault-injection and concurrency tests, actual BaseRig/real-video edit replay, timeline/undo verification, native-rate A/B, unchanged FBX limitation and default-path regressions.
 
-DO NOT: train/fine-tune FramePose, Reliability or Generator; implement Style/Completion, new constraint types, full UI, general arbitrary-rig mapping, default policy changes, broad MotionGraph/AnimationClip migration, solver threshold tuning, FBX patchwork repair, source resampling or fabricated missing pose. Agent has no next-Batch/Architecture decision authority.
+DO NOT: tune FramePose, W105 retarget, W116 pin solver, elbow thresholds, W118–W122 temporal guides, animation interpolation, model weights, perception, FBX exporter/importer, schema of MotionGraph/AnimationClip, new constraint types, trained Generator, broad GUI or default command behavior.
 
-Decision enabled: Is this bounded workflow actually useful as an EXPERIMENTAL authoring capability, which exact boundary fails, and can it remain opt-in without regressing existing product paths?
+Decision enabled: is the opt-in editing workflow safe enough to preserve user-authored animation across process failures, and what failure modes or platform limits still prevent relying on it?
 
-HISTORICAL BASELINE / PRE-FLIGHT
+HISTORICAL BASELINE / PREFLIGHT
 
-Repository kn99e39/AnimCV; sole authorized existing branch arch/single_frame_first. Never create, switch, delete, merge, rebase, reset or force-push branches. Fetch/compare current remote HEAD before any edit; stop on concurrent changes or an unresolved worker state. Read AGENTS.md, PRODUCT_VISION.md, Architecture_v3_FramePose.md, Architecture_v2.md, COORDINATE_CONVENTIONS.md, docs/00_마스터_플랜.md, docs/01_프레임워크_현황.md, docs/next_batch.md, docs/AUDIT_W116_W120_2026_11_06.md, W105, W107–W112, W116–W123 Worklogs as relevant. Preserve the W125 cumulative-audit checkpoint (W121–W125, before W126).
+Before changes, inspect remote HEAD, docs/next_batch.md, AGENTS.md, PRODUCT_VISION.md, Architecture_v3_FramePose.md, Architecture_v2.md, COORDINATE_CONVENTIONS.md, docs/AUDIT_W116_W120_2026_11_06.md, W121–W124 Worklogs and relevant W116/W118 scripts/tests. Inspect actual src/app/experimental_video_action.py (PersistentStore, cmd_commit, cmd_revert, load_run, blend_registry, timeline), src/blender/experimental_action_stage.py, src/app/cli.py, scripts/w116_semantic_pin_base.py Store, src/blender/executor.py and export.py, tests/test_experimental_video_action.py, W124 harness and the W124 usage doc. Record the current code paths, write order, failure windows, filesystem/OS assumptions and exact W124 normal-case control hashes BEFORE implementing.
 
-Inspect ACTUAL implementation, not only Worklogs: src/app/cli.py, src/framepose/model.py, contract.py, observations.py, src/motion/animation_semantics_v2_bridge.py, src/retarget/framepose_fk.py, framepose_two_bone_ik.py, framepose_object_owner.py, src/blender/executor.py, export.py, framepose_object_owner_adapter.py; scripts/w102_video_diagnostic.py, w105_rig_utility.py, w116_semantic_pin_base.py, w116_blender_stages.py, w118_transition_edit_base.py, w121_independent_transfer.py, w122_realtime_utility.py; relevant tests. Identify which boundaries are truly reusable versus research-specific and write an explicit dependency/authority map BEFORE implementing.
-
-Freeze before outcomes: exact original clip SHA-256/license/source URI, model/checkpoint/config digests, W105 rig FBX/rest/calibration/mapping identity, source frame indices/timestamps/cadence, baseline Action values, supported bone/joint subset, request semantics, permitted edit DOF, experimental acceptance tolerances (reuse W116's declared 1 mm ONLY as an experimental diagnostic, not a new Production default), and real-playback/FBX readback checks. No post-outcome gate changes.
+Freeze one transaction/recovery design, named failure points, comparison population, platform scope and acceptance gates BEFORE observing real S1/S3 outcomes. Preserve W124's source/rig/model/checkpoint identity, action frame mapping, known BaseRig, frozen algorithms, original user request and immutable baseline. The W121/W122 S1/S3 clips are engineering regression, NOT new independent sources. Do not use GT or W123 q90 to make edits.
 
 PRESERVE / CHANGE ONLY / DO NOT TUNE
 
 PRESERVE:
-- Existing src default CLI/GUI behavior, MotionGraph and AnimationClip schemas, all historical Worklogs/CASEs, original assets, model weights/checkpoints, source observations, frozen numerical and coordinate contracts.
-- GT-free inference; source, observation, pose hypothesis, user hard pin, and edited Action remain distinguishable. Never treat 2D score or W123 q90 as authorization.
-- Rig identity and Blender scene-world metres. Keep actual source timestamps, fps and explicit source-frame -> Action-frame mapping. Unknown/invalid is NOT zero, rest pose, interpolated truth or user intent.
-- Original Action/source files, editable keyframe curves, and failure provenance.
+- All original clips, frozen observation/model assets, BaseRig, baseline .blend, source provenance and frame/time/coordinate mapping; original and accepted Action content, W116 user Hard Pin and its independent Blender evaluation.
+- W124 existing command names and documented normal-case behavior, original no-overwrite output policy, source/rig digest guards, rejected/stale/unauthorized failure classes, and actual evaluator-derived footprint.
+- Default CLI/GUI and MotionGraph/AnimationClip paths, historical Worklogs and CASEs, W124 FBX baseline failures and known partial-rig/animation-quality limitations.
+- Content-addressed immutable state records and version lineage. Do not treat the existence of a candidate .blend as a committed edit.
 
-CHANGE ONLY (bounded, reviewable):
-- A small opt-in entry point in src/app/cli.py or an equivalent documented user-facing command, with minimal new src/app or src/blender integration modules as required; focused tests and a small launcher are allowed. Existing retarget/model/FBX implementations may be CALLED but not silently rewritten.
-- New per-run, outside-repository artifacts: immutable input manifest, baseline .blend, candidate .blend, accepted .blend (if accepted), reversible edit-state/lineage, actual footprint/timeline and A/B video/evaluation reports. Do not overwrite existing user outputs.
-- Docs for this opt-in EXPERIMENTAL capability, usage and limitations; W124 Worklog. If and only if a meaningful milestone is actually demonstrated, refresh living status in docs/00_마스터_플랜.md, docs/01_프레임워크_현황.md and docs/README.md with evidence-level labels; do not rewrite normative architecture or claim a Production default migration.
-- The Agent may choose minimal implementation factoring, but must not make stable Production code silently depend on an undocumented W12x scratch workspace or hardcoded C:\\Users paths. Reuse frozen algorithms through an explicit experimental adapter or small testable extraction with parity checks. No duplicate new framework.
+CHANGE ONLY:
+- Minimal opt-in transaction and recovery implementation in src/app/experimental_video_action.py and, if strictly needed, a small opt-in helper under src/app or src/blender; focused tests, a bounded W125 harness, usage documentation and W125 Worklog. A dated status update to docs/00_마스터_플랜.md, docs/01_프레임워크_현황.md and docs/README.md is allowed ONLY for an actually demonstrated milestone.
+- An experimental per-run transaction journal/manifest or versioned metadata may be added without changing Production MotionGraph/AnimationClip schemas. Existing W124 runs must remain readable or fail with an explicit non-destructive compatibility STOP; never silently rewrite them.
+- Agent may choose a small transaction mechanism, but must document authority, staging, expected-parent compare-and-swap, cross-process exclusion, durable publication point, crash recovery and rollback. Distinguish process-kill durability from untested OS/power-loss guarantees.
 
 DO NOT TUNE:
-- Frozen M1/RTMPose/S0 model, raw 2D validity/scores, crop, tracking, historical W105 adapter math, W116 pin semantics, W118–W122 guides/flex-floor/quality gates, root/timebase/coordinate conversions, default keyframe collapse, FBX exporter/importer policies.
-- No new elbow-flex floor, smoothing, source correction, trust threshold, guessed subject ID, heuristic retry, hidden pin relaxation or fallback to GT/oracle inputs.
+- No threshold sweeps, silent heuristic retries, new smoothing/temporal margins, hidden hard-pin relaxation, automatic edit beyond authorized frames, fake successful FBX roundtrip, source retiming, new subject identity, rig remapping or post-outcome gate changes.
+- No modifications to scripts/batch_automation.py, the default FBX exporter/importer, frozen W1xx algorithm files or any previous Worklog. No branch operations of any kind.
 
-REQUIRED EVIDENCE — A. AUTHENTIC END-TO-END INPUT
+REQUIRED EVIDENCE — A. TRANSACTION AUTHORITY AND FAILURE MODEL
 
-Use an already authenticated W121/W122 original S1 and/or S3 (prefer both when available) as engineering regression, not new-source generalization. If not locally available, legitimately reacquire the identical licensed original and verify hash; otherwise DATA BLOCKED. No download bypass or redistribution. Re-run the frozen M1 + S0 perception on source frames when the environment permits; no GT. Reuse stored arrays only as an EXPLICIT offline-replay fallback, labelled NOT live-video E2E. Compare the same-source prediction and rig Action with the frozen W121 baseline where available. No dependence on W123 assessor for a successful run.
+Document the current normal-case head/lineage/accepted .blend/timeline invariants. Implement a single well-defined publication point: before it, the old head remains authoritative; after it, the new head resolves to a fully staged, hash-verified and independently Blender-readback-verified Action, with coherent metadata and user-visible status. Stage the new .blend, lineage record, footprint/status and needed reports BEFORE publishing the head. Use atomic filesystem operations where supported, explicit flush/durability assumptions, and fail-closed concurrent operation protection or a genuine CAS. A partially written journal/refs/log must be detectable and recoverable without inventing accepted state.
 
-Require actual image/video identity, known source fps and presentation timestamp consistency. For this bounded slice accept the already validated 30fps cadence; other cadence, VFR, missing model, ambiguous mapping, missing target bone, untracked source identity or unsupported frame must cause a clear UNSUPPORTED/BLOCKED outcome rather than silently resampling, retiming or fabricating. Subject association may remain UNKNOWN, but disclose it and avoid verified-identity claims. Do not use the historical 50fps video as a 30fps real-time success.
+Cover ACCEPT, explicit REJECT, gate-rejected ACCEPT attempt, stale-parent ACCEPT, REVERT, and repeated/restarted invocations. A failed REVERT must leave the prior accepted head intact; a successful REVERT must have exact values and actual Blender integer/subframe equality to the restored Action. Rejected or infeasible requests must never publish a new head. Candidate staging must never mutate the original baseline or source.
 
-REQUIRED EVIDENCE — B. USER-FACING ACTION
+Define recovery of interrupted staging, incomplete publication and metadata/log divergence; expose a clear user-facing status/repair action if needed. Do not silently delete orphan user artifacts or silently mark an incomplete operation ACCEPTED. State what happens if a process is terminated after the durable publication point but before the success message.
 
-One documented command/workflow must create a new, separately named Blender .blend containing the imported authoritative BaseRig and an editable Action from the frozen source hypothesis. Do not present an arbitrary rig as supported. The output must preserve frame mapping and provenance in a machine-readable sidecar, state which body channels are actually driven (including the right-arm-rest limitation), and report unavailable frames/bones. Inspect Blender F-curves, interpolation, armature/object ownership, action duration, source-time mapping and pose readback at integer frames AND selected subframes. Do not silently use legacy mixed-unit MotionPoint.position_3d. The no-edit baseline must be reproducible and independently inspectable.
+REQUIRED EVIDENCE — B. PROSPECTIVE FAULT INJECTION / CONCURRENCY
 
-REQUIRED EVIDENCE — C. EXPLICIT SEMANTIC EDIT + UNDO
+Create deterministic fault injection at meaningful boundaries, at least: before staging; after state file write; after candidate .blend copy; before head publication; immediately after head publication but before ancillary log/status; during Blender generation/readback for REVERT; during final timeline/metadata output. Exercise failures as exceptions AND at least one separate-process forced termination where available. Reopen the run from a new process after each and independently verify head -> state -> .blend -> readback -> displayed footprint consistency, exact old/new head identity and absence of an incorrectly accepted candidate.
 
-Support one optional user-authored WORLD_POSITION_PIN request for the VERIFIED left_wrist binding on the known rig, with declared frame interval, Blender-scene-world target in metres and explicit authorized DOF. Use the existing W116 contract/solver as EXPERIMENTAL; the existing 1mm gate is a frozen diagnostic check, NOT a universal accuracy promise. Do not automatically switch to W120 world guide or flex-floor based on context-specific positive evidence. Out-of-pin transition edits are ALLOWED by the owner only if bounded, disclosed and reversible; they are NOT mandatory. If attempted, the actual edit domain must be derived from Blender-evaluated values, not the planned domain. Hard Pin never relaxes to make a candidate pass.
+Test two competing CLI operations against the same parent; at most one may publish, the other must fail stale/locked with no lost update. No lock stealing, hidden expiry, force overwrite or broad cleanup. Test a tampered staged .blend and a tampered manifest/ref/journal, and report which failures can be repaired safely versus must STOP. Freeze expected outcomes and do not relax them after a failed test.
 
-Create separate baseline/candidate/accepted/reverted states, content-addressed lineage and explicit ACCEPT/REJECT. A rejected, infeasible, unsupported, stale or failed candidate must not mutate the accepted Action or original source. Exact revert must reproduce baseline values and Blender-evaluated pose. Show an understandable timeline/HTML/PNG or equivalent view of requested hard-pin frames, permitted temporal domain, ACTUAL changed frames/Bones, unchanged frames and rejected edits. Do not implement a full UI. Include a genuinely nonzero feasible pin edit and an infeasible or wrong-binding negative control; no-op pin alone is insufficient.
+REQUIRED EVIDENCE — C. REAL VIDEO / REAL BLENDER USER PATH
 
-REQUIRED EVIDENCE — D. FINAL MEDIUM, REAL-TIME A/B, INTERCHANGE
+Use W124's authenticated S1 and preferably S3 original clips and known BaseRig, with source/Action digests checked against W124. A verified W124 saved .blend + source provenance may be reused as the real-video starting point; label this as a saved-artifact replay, NOT a fresh live-perception E2E. If live perception is rerun, report it separately. If the authoritative files are unavailable or hashes differ, STOP/DATA BLOCKED rather than substitute synthetic motion.
 
-For the real clip, generate a 30fps side-by-side video of ORIGINAL SOURCE, unedited Action, edited Action (if accepted) with frame/Bone footprint visible and truthful. Inspect at native playback speed, not only decoded stills. Evaluate source fidelity separately from user-pin compliance, transition continuity, elbow/straight-arm/flip costs, contact/root limitations and actual editability; report negatives. Do not claim improved quality solely because a wrist residual or source-relative jump decreased.
+On the real Action, perform a genuinely nonzero left-wrist Hard Pin proposal, ACCEPT, deliberate injected interrupted ACCEPT or REVERT, restart/recover, explicit REJECT, successful exact REVERT, and inspect the recovered Blender Action and actual frame/Bone footprint. Compare before/after world positions at integer frames and subframes, authorized channels, pin residual, source and action timestamps, and immutable baseline. Confirm no accepted state points to a missing or unverified .blend.
 
-Attempt FBX export from the opt-in .blend through the existing exporter and a clean Blender reimport, preserving original Action for comparison. Record integer-frame and selected subframe world positions/rotations, F-curve interpolation, duration/timebase and mismatches. Known W107–W112 issues are expected potential FAILS: do not fix by changing importer flags, key insertion, global defaults or exporter policy within W124. If .blend works but FBX fails, label Blender Action usable/FBX NOT VERIFIED or FAIL separately. An exported file existing on disk is not a roundtrip PASS.
+Generate or reuse a native 30fps original-source | baseline | edited A/B view with truthful timeline; separately disclose source-fidelity defects, transition jumps, elbow/flip costs, partial rig and visibility/occlusion. A correct transaction is NOT proof of animation quality. Recheck existing FBX export/readback as an unchanged external baseline; do not repair FBX in this Batch. If the external renderer or Blender cannot run, label NOT RUN, not PASS.
 
-REQUIRED EVIDENCE — E. SAFETY / REGRESSION / OBSERVABILITY
+REQUIRED EVIDENCE — D. OBSERVABILITY / USER UTILITY
 
-Test synthetic fixture and actual BaseRig with: correct source/rig/pose digest; stale manifest; changed source byte; wrong fps/timestamp; unknown joint; ambiguous binding; invalid numeric target; wrong coordinate frame; out-of-reach pin; unauthorized bone; stale parent; rejected candidate leaves accepted unchanged; exact undo; truthful footprint; absent Blender; missing checkpoint; missing GT-free observation; no-op vs nonzero edit; correct quaternion/time mapping. Test default CLI/GUI entry points are unchanged, no hidden new model dependencies and no historical Worklog changes. Focused tests first, then relevant existing regression tests (CLI, Blender, FK/IK, W105/W116/W118, canonical pose, MotionGraph/export) and a bounded real Blender replay. Do not report a test PASS unless actually run; distinguish mock, unit, Blender, real-video and FBX tests.
+A user must be able to determine the authoritative accepted/reverted .blend, current head and state lineage, whether a proposal is merely staged or actually accepted, what was changed by frame/Bone, and whether an interrupted operation needs recovery. The timeline and status must reflect the committed head, not an orphan candidate. Preserve exact undo semantics and an unmodified source. Document one reproducible CLI sequence including a simulated interruption and subsequent recovery/status inspection, with output hashes and expected visible result.
 
 SYNTHETIC + REAL REPLAY
 
-- Synthetic: identity/no-op, feasible nonzero left-wrist pin, unreachable pin, stale source, invalid binding, hard pin conflict, timebase mismatch, reject/undo and footprint tamper. No GT leakage or fallback.
-- Real: at least one authenticated S1 or S3 30fps clip, same frozen model/rig baseline, baseline Action, user nonzero pin edit, actual Blender evaluation and A/B native-rate playback. Prefer both S1/S3 for a second engineering replay; S2 is a deliberately disclosed identity-risk negative, not a clean success.
-- Do not relabel W121/W122 clips as new independent evidence, and do not claim 3D GT accuracy.
+Synthetic: identity/no-op, nonzero feasible pin, unreachable/wrong-binding, stale parent, rejected candidate, stage-file tamper, interrupted ACCEPT/REVERT, cross-process collision, interrupted log/refs publication, restart recovery, exact undo and footprint truth. Use mock FK only when explicitly labelled MOCK; include a real Blender BaseRig test.
+
+Real: S1 and preferably S3 30fps engineering replay on the same frozen rig/model/Action; unchanged original .blend and request; a recovered accepted/reverted .blend; Blender-evaluated pin, frame/Bone footprint, Action and native-rate review. No independent-source or general animation-quality claim from the same clips.
+
+TESTING
+
+Focused tests FIRST, including deterministic fault-injection and a real Blender BaseRig case; then relevant CLI, W116/W118, W124, FK/retarget, Blender/export and lineage regressions. Distinguish unit/mock, process-kill, actual Blender, authentic-video replay, and FBX. Run only bounded relevant regressions; do not misreport unrun full-suite tests. Freeze gates and report RUN/PASS/FAIL/NOT RUN separately. Compare default CLI parser/GUI isolation and no new heavy imports. Verify original assets, historical Worklogs, baseline .blend, existing accepted files and source are not overwritten.
 
 STOP CONDITIONS
 
-STOP and report precise BLOCKED/INVALID reason if essential licensed video, frozen checkpoint, authoritative rig, Blender or runtime dependencies are unavailable; if source/rig identity or cadence fails; if existing parity is lost; if a major Production schema/solver/quality policy decision is needed; if only unsafe source-fabrication or unauthorized hard-pin relaxation would complete the task; if scope expands to new constraint types/training/full UI/FBX patchwork; or if concurrent remote changes cannot be reconciled without prohibited branch operations. No fake PASS, fallback asset, silent default switch or post-hoc threshold sweep. An E2E output without a real clip is NOT a completed vertical slice.
+STOP with a precise BLOCKED/INVALID report if safe publication/recovery cannot be achieved without Production schema migration, default pipeline changes, unauthorized branch operations, changing frozen W116 hard-pin semantics, new numerical policy, overwriting historical outputs, or hiding a divergent state. STOP if remote changes or concurrent workers make publication unsafe. If an OS-specific durability guarantee cannot be established, explicitly scope the supported process-failure guarantee rather than claim power-loss safety. No post-hoc threshold or gate changes, no manufactured artifacts, no silent success after failure.
 
 FINAL REPORT
 
-Create docs/124_WORKLOG_OPT_IN_VIDEO_TO_EDITABLE_ACTION_WORLD_PIN.md with:
-1. exact HEAD, code changes, branch, frozen source/model/rig hashes, machine/environment and real versus mocked stages;
-2. one user-reproducible command/example, output directory structure, dependency boundaries, default-path isolation;
-3. provenance/timebase/binding/UNKNOWN and support accounting;
-4. real clip -> Blender Action evidence, editable F-curves and independent pose readback;
-5. user pin request, resolver result, hard-pin residual, authorized changed frames/Bones, visual timeline, exact undo;
-6. native-rate source vs baseline vs edited visual and numerical comparison, failure/side-effect examples, actual user/agent review attribution;
-7. separate .blend success, FBX export and reimport/subframe verdicts; explicit W107–W112 known failures;
-8. synthetic/focused/real Blender/FBX/regression tests: RUN/PASS/FAIL/NOT RUN; missing artifacts and reasons;
-9. safety, performance, maintenance and rollback risks; no generalization claims;
-10. official engineering CASE and completion marker. Do NOT propose W125 or ask for next work.
+Create docs/125_WORKLOG_CRASH_CONSISTENT_EDITABLE_ACTION_TRANSACTIONS.md with: starting/final commit and code diff; pre-outcome declaration, authority map and old failure windows; transaction design and durability limits; exact failure-point matrix, crash/restart and concurrency outcomes; original/accepted/reverted state and .blend hashes; independent Blender world-pin/footprint/undo evidence; S1/S3 real source and 30fps A/B with source-quality negatives; unchanged FBX baseline; focused/regression/real execution status; performance/maintenance/rollback and any unrecovered orphan; honest official engineering CASE and remaining blockers. Every numeric/visual result must be labelled Agent-run unless independently reproduced. Do not recommend or draft W126.
 
-Decision labels (do not conflate):
-- CASE A: authentic live-video E2E, editable Action, nonzero hard pin, truthful footprint/undo, independent Blender validation AND faithful tested FBX time/interpolation roundtrip, with no blocking validity defect.
-- CASE B: authentic live-video E2E plus usable editable .blend and safe pin/undo/footprint demonstrated, but FBX/animation fidelity/coverage is limited and explicitly reported.
-- CASE C: valid controls but core real-video-to-usable-Action or safe pin authoring capability not demonstrated.
-- CASE D: evidence invalidated by integrity/contract/gate contamination. DATA BLOCKED / NO CASE if essential authenticated assets/runtime are absent before evaluation.
-Historical CASEs are never modified. A synthetic PASS or an agent-rated render alone cannot establish A.
+CASE A: all declared transaction integrity and restart/concurrency gates pass, with actual real Blender source-bound accept/revert/footprint and default-path isolation; this is TRANSACTION CAPABILITY support only, NOT general Animation/FBX Production readiness.
+CASE B: meaningful real Blender transaction safety improvement, but a declared platform/failure class or user-visible recovery path remains limited and explicitly bounded.
+CASE C: valid experiment but crash-consistent real user workflow not demonstrated.
+CASE D: validity/contract contamination prevents trustworthy interpretation.
+DATA BLOCKED / NO CASE: essential real Action/Blender/runtime assets unavailable before real evaluation. Historical W124 CASE B is immutable.
 
 COMPLETION CONDITION
 
-The batch is COMPLETE only after a single documented opt-in user workflow is implemented or a precise STOP is recorded; declared controls, actual run status, user-visible edit footprint, Action/FBX readback and reversibility are honestly accounted for; all changed files/tests and output hashes are reported; and the Worklog ends with exactly:
+Batch 125 is COMPLETE only after an opt-in transactional accept/reject/revert implementation OR a precise STOP is documented, prospective fault injection and cross-process recovery are honestly evaluated, the user-visible head/Action/footprint and real Blender evidence are reported with hashes, unchanged baselines and regressions are accounted for, and the Worklog ends with exactly:
 AUTOMATION_BATCH_STATUS: COMPLETE
-BATCH_NUMBER: 124
+BATCH_NUMBER: 125
 
-Claude is Evidence Producer only. It must NOT decide or issue the next Batch, recommend Architecture policy, or modify docs/next_batch.md.
+W125 COMPLETE triggers a mandatory independent cumulative audit of W121–W125 BEFORE W126 publication. Claude is Evidence Producer only; no next-Batch or Architecture recommendation, no modification to docs/next_batch.md.

@@ -27,6 +27,15 @@ OS-level non-blocking run lock, writes a sealed journal BEFORE staging, stages t
 its fresh-process Blender readback, verifies them, and only then publishes by ONE atomic replace of lineage/refs.json
 (compare-and-swap on the bytes read under the lock).  refs.json binds the head state id to its .blend SHA-256 and readback.
 Log, registry, commit.json and the final timeline are written after publication and are re-derivable by ``recover``.
+W126 commit-time semantic authority (see docs/EXPERIMENTAL_VIDEO_ACTION_WORLD_PIN.md): ``proposal.json`` is NEVER the gate
+authority.  ``propose`` writes a versioned, sealed proposal (``animcv_exp_proposal_v2``) whose provenance block binds the request
+bytes, the parent head evidence, the binding record, the candidate state/.blend/readback and the gate record - a CONSISTENCY
+record only (an unkeyed SHA, not authentication).  ``commit --decision accept`` independently RE-DERIVES the frozen W116/W118
+decision from authoritative inputs (request bytes, bindings recomputed from the immutable baseline, the verified head and its
+readback, the frozen resolver/evaluator/footprint/display code) twice - on the hash-bound candidate readback before staging, and
+on a FRESH Blender readback of the staged accepted copy before publication - and publishes only if both are ACCEPT and identical
+to the sealed proposal.  Any divergence STOPs with ``REFUSED_SEMANTIC_AUTHORIZATION`` without moving the head; unsealed
+(W124/W125) proposals must be re-proposed before they can be accepted.
   review   30 fps side-by-side video: original source | baseline Action | accepted edited Action, footprint overlaid.
   fbx      export a state's .blend through the existing ``blender.export.export_fbx`` and re-import it with the existing
            default importer; integer-frame / subframe / interpolation / timebase readback is REPORTED, never repaired.
@@ -989,8 +998,211 @@ def cmd_propose(a):
         return _propose(a, run)
 
 
+# ------------------------------------------------------------------- W126 semantic gate (shared propose/commit) ---
+PROPOSAL_SCHEMA = "animcv_exp_proposal_v2"
+AUTH_REFUSED = "REFUSED_SEMANTIC_AUTHORIZATION"
+# Every field of the proposal that carries (or is derived from) the frozen W116/W118 gate.  ``quality_disclosure`` is a
+# never-gating disclosure and ``note`` is free text; neither is part of the gate record.
+GATE_KEYS = ("request_id", "parent_state_id", "slice", "automatic_out_of_pin_budget_frames", "mode", "constraint",
+             "validation_errors", "decision", "candidate", "status", "resolver", "evaluations", "footprint", "display",
+             "display_check", "pin_frames", "hard_pin_residual_max_m", "control_residual_max_m", "subframes")
+# Declared (pre-outcome) precedence of the W126 refusal reasons; the first present reason is the primary class.
+AUTH_REASON_ORDER = (
+    # stage PROVENANCE (hash-bound consistency; before any recomputation)
+    "PROPOSAL_SEAL_INVALID", "PROPOSAL_DECISION_STATUS_CONFLICT", "REQUEST_MISSING", "REQUEST_BYTES_CHANGED",
+    "BINDING_RECORD_CHANGED", "BINDING_PROVENANCE_MISMATCH", "PARENT_PROVENANCE_MISMATCH", "PARENT_EVIDENCE_CHANGED",
+    "CANDIDATE_PROVENANCE_MISMATCH", "CANDIDATE_STATE_CHANGED", "CANDIDATE_BLEND_CHANGED", "CANDIDATE_READBACK_MISSING",
+    "CANDIDATE_READBACK_CHANGED", "CANDIDATE_READBACK_NOT_OF_BLEND",
+    # stage PRE_STAGING (frozen gate re-derived from authoritative inputs on the hash-bound candidate readback)
+    "RECOMPUTED_GATE_REJECT", "CANDIDATE_NOT_REPRODUCED", "PROPOSAL_GATE_RECORD_DIVERGES",
+    # stage FRESH_READBACK (frozen gate re-derived on a fresh-process Blender readback of the staged accepted copy)
+    "FRESH_READBACK_GATE_REJECT", "FRESH_CANDIDATE_NOT_REPRODUCED", "FRESH_GATE_RECORD_DIVERGES",
+    # stage PRE_PUBLISH (inputs re-hashed immediately before the W125 publication point)
+    "INPUTS_CHANGED_DURING_TRANSACTION",
+)
+DECISION_STATUS = {"ACCEPT": ("PROPOSED_GATE_PASS",), "REJECT": ("GATE_REJECTED", "GATE_REJECTED_NO_CANDIDATE")}
+
+
+def _cj(obj) -> str:
+    """Canonical JSON text of a JSON-normalised object (NaN-safe string equality)."""
+    return json.dumps(_norm(obj), sort_keys=True, separators=(",", ":"))
+
+
+def gate_view(rec):
+    return {k: _norm(rec.get(k)) for k in GATE_KEYS}
+
+
+def gate_divergence(a, b):
+    """Gate-record keys whose canonical value differs between two proposal-like records."""
+    return [k for k in GATE_KEYS if _cj(a.get(k)) != _cj(b.get(k))]
+
+
+def _gate_record(run, R, refs, req, bnd, readback_for):
+    """THE frozen W116/W118 gate for one request against the CURRENT verified head (used by propose AND commit).
+
+    ``readback_for(candidate_state) -> raw Blender readback dict`` supplies the evaluated candidate (propose: build + fresh
+    readback; commit: the hash-bound stored readback, then a fresh readback of the staged accepted copy).  Returns
+    (record, candidate state or None, raw candidate readback or None, head state, head readback, sidecar)."""
+    S, C, XB, W121 = frozen_modules()
+    ps = PersistentStore(run)
+    head = ps.store.get(refs["head"])
+    sidecar = load(run_paths(run)["sidecar"])
+    head_rb = load(Path(run) / refs["head_blend"]["readback"])
+    head_eval = readback_by_source(head_rb, sidecar)
+    rig = C.rig_from(R["rest_json"], sidecar["rig_info"])
+    scale = sidecar["rig_info"]["scale"][0]
+    root_bones = [n for n in rig.bones if rig.is_root(n)]
+    got = {}
+
+    def keyer(cand):
+        rb = readback_for(cand)
+        got.update(cand=cand, rb=rb)
+        return readback_by_source(rb, sidecar)
+
+    rec, cand, X = propose_core(req, head, head_eval, rig, head_rb["rest"], scale, bnd["bound"], bnd["failed"], root_bones, keyer)
+    if cand is not None:
+        b = bnd["bound"][rec["constraint"]["binding_id"]]
+        sub = subframe_report(got["rb"], head_rb, sidecar, rec["constraint"], b)
+        rec["subframes"] = sub
+        if rec["decision"]["decision"] == "ACCEPT" and not sub["changed_intervals_within_pin_frames"]:
+            rec["decision"] = {"decision": "REJECT", "failure_class": "CONTRACT_VIOLATION", "reasons": ["SUBFRAME_CHANGE_OUTSIDE_PIN_FRAMES"]}
+            rec["status"] = "GATE_REJECTED"
+    return rec, cand, got.get("rb"), head, head_rb, sidecar
+
+
+def recompute_bindings(run, R):
+    """Re-derive the rig binding record from the IMMUTABLE baseline (state, .blend readback, sidecar, rig files) with the
+    frozen W116 ``verify_binding`` - the binding authority at commit time (``baseline/bindings.json`` is only compared)."""
+    S, C, XB, W121 = frozen_modules()
+    run = Path(run)
+    if sha256_file(R["rest_json"]) != RIG_FILES["rest"][1]:
+        raise SliceStop("BLOCKED_RIG_IDENTITY", f"rest snapshot {R['rest_json']} differs from the known BaseRig")
+    imm = {Path(k).as_posix(): v for k, v in R["immutable_files"].items()}
+    if imm.get("baseline/baseline.blend") is None:
+        raise SliceStop("BLOCKED_IMMUTABLE_OUTPUT_CHANGED", "run record does not guard baseline/baseline.blend")
+    rb = load(run / "baseline" / "baseline_readback.json")
+    if rb.get("blend_sha256") != imm["baseline/baseline.blend"]:
+        raise SliceStop("BLOCKED_IMMUTABLE_OUTPUT_CHANGED", "baseline readback is not the readback of the immutable baseline .blend")
+    sidecar = load(run_paths(run)["sidecar"])
+    v0 = PersistentStore(run).store.get(R["baseline_state_id"])
+    rig = C.rig_from(R["rest_json"], sidecar["rig_info"])
+    ev = readback_by_source(rb, sidecar)
+    evf = [ev[k] for k in v0["frames"]]
+    ok, failed = {}, {}
+    for j, cands in C.REAL_BINDING_CANDIDATES.items():
+        r = S.verify_binding(j, cands, "BaseRig", sidecar["rig_info"]["rest_snapshot_digest"], rb["rest"], evf, v0["channels"], rig)
+        (ok.__setitem__(r["binding_id"], r) if r["status"] == "BOUND" else failed.__setitem__(j, r))
+    return _norm({"bound": ok, "failed": failed})
+
+
+def _bindings_semantic(b):
+    return {"bound": b.get("bound"), "failed": b.get("failed")}
+
+
+def proposal_kind(prop):
+    return "V2" if isinstance(prop, dict) and prop.get("schema") == PROPOSAL_SCHEMA and "proposal_seal" in prop else "LEGACY_UNSEALED"
+
+
+def proposal_integrity(run, rid, prop, bindings_now=None, refs=None):
+    """Hash-bound CONSISTENCY checks of a v2 proposal against the files it names (NOT gate authority: a hostile actor able
+    to rewrite every file can also rewrite these hashes; the commit re-derives the gate independently).  -> ordered reasons."""
+    S, *_ = frozen_modules()
+    run, ed = Path(run), Path(run) / "edits" / rid
+    reasons = []
+    pv = prop.get("provenance") if isinstance(prop.get("provenance"), dict) else {}
+    if not _seal_ok(prop, "proposal_seal") or pv.get("gate_view_digest") != _digest(gate_view(prop)):
+        reasons.append("PROPOSAL_SEAL_INVALID")
+    dec = (prop.get("decision") or {}).get("decision")
+    if prop.get("status") not in DECISION_STATUS.get(dec, ()) or (dec == "ACCEPT") != (prop.get("candidate") is not None and
+                                                                                      prop.get("status") == "PROPOSED_GATE_PASS"):
+        reasons.append("PROPOSAL_DECISION_STATUS_CONFLICT")
+    rq = ed / "request.json"
+    if not rq.exists():
+        reasons.append("REQUEST_MISSING")
+    elif not (sha256_file(rq) == (pv.get("request") or {}).get("sha256") == prop.get("request_sha256")):
+        reasons.append("REQUEST_BYTES_CHANGED")
+    if bindings_now is not None:
+        bf = run_paths(run)["bindings"]
+        cur = load(bf) if bf.exists() else {}
+        if _cj(_bindings_semantic(cur)) != _cj(bindings_now):
+            reasons.append("BINDING_RECORD_CHANGED")
+        if (pv.get("bindings") or {}).get("semantic_digest") != _digest(bindings_now):
+            reasons.append("BINDING_PROVENANCE_MISMATCH")
+    par = pv.get("parent") or {}
+    if par.get("state_id") != prop.get("parent_state_id") or _cj(par.get("head_blend")) != _cj(prop.get("head_blend_at_proposal")):
+        reasons.append("PARENT_PROVENANCE_MISMATCH")
+    if refs is not None and refs.get("head") == par.get("state_id") and _cj(refs.get("head_blend")) != _cj(par.get("head_blend")):
+        reasons.append("PARENT_EVIDENCE_CHANGED")
+    c = pv.get("candidate")
+    if c is not None or prop.get("candidate") is not None:
+        c = c or {}
+        cb = prop.get("candidate_blend") or {}
+        if c.get("state_id") != prop.get("candidate") or c.get("blend_sha256") != cb.get("blend_sha256") \
+                or c.get("readback") != cb.get("readback") or c.get("blend") != cb.get("blend"):
+            reasons.append("CANDIDATE_PROVENANCE_MISMATCH")
+        sf = ed / "candidate_state.json"
+        try:
+            st = load(sf)
+            st_ok = S.verify_state(st) and st["state_id"] == c.get("state_id") and sha256_file(sf) == c.get("state_file_sha256")
+        except (OSError, ValueError, KeyError, TypeError):
+            st_ok = False
+        if not st_ok:
+            reasons.append("CANDIDATE_STATE_CHANGED")
+        bp = run / str(c.get("blend") or "\0missing")
+        if not c.get("blend") or not bp.exists() or sha256_file(bp) != c.get("blend_sha256"):
+            reasons.append("CANDIDATE_BLEND_CHANGED")
+        rp = run / str(c.get("readback") or "\0missing")
+        if not c.get("readback") or not rp.exists():
+            reasons.append("CANDIDATE_READBACK_MISSING")
+        else:
+            if sha256_file(rp) != c.get("readback_sha256"):
+                reasons.append("CANDIDATE_READBACK_CHANGED")
+            try:
+                if load(rp).get("blend_sha256") != c.get("blend_sha256"):
+                    reasons.append("CANDIDATE_READBACK_NOT_OF_BLEND")
+            except ValueError:
+                reasons.append("CANDIDATE_READBACK_CHANGED")
+    return [r for r in AUTH_REASON_ORDER if r in reasons]
+
+
+def _input_snapshot(run, rid, prop):
+    """SHA-256 of every input file the decision depends on (re-checked immediately before publication)."""
+    run, ed = Path(run), Path(run) / "edits" / rid
+    files = {"proposal": ed / "proposal.json", "request": ed / "request.json", "bindings": run_paths(run)["bindings"],
+             "candidate_state": ed / "candidate_state.json"}
+    cb = prop.get("candidate_blend") or {}
+    if cb.get("blend"):
+        files["candidate_blend"] = run / cb["blend"]
+    if cb.get("readback"):
+        files["candidate_readback"] = run / cb["readback"]
+    return {k: (sha256_file(p) if p.exists() else None) for k, p in files.items()}
+
+
+def _refuse(run, rid, stage, reasons, detail=None, txn_id=None):
+    """Record a refused semantic authorization (new file per attempt; never overwrites) and return the STOP to raise.
+    The head, the accepted Action and every input file are left exactly as they are (nothing is repaired)."""
+    import uuid
+    reasons = [r for r in AUTH_REASON_ORDER if r in reasons] + [r for r in reasons if r not in AUTH_REASON_ORDER]
+    rec = {"schema": "animcv_exp_authorization_refusal_v1", "request_id": rid, "at": now(), "stage": stage,
+           "primary": reasons[0] if reasons else None, "reasons": reasons, "detail": detail, "txn_id": txn_id,
+           "meaning": "commit-time semantic authorization FAILED: the proposal is NOT trusted and was NOT applied; the head "
+                      "is unchanged.  Re-propose the request (new request id) to obtain a trusted proposal."}
+    d = Path(run) / "edits" / rid / "authorization_refusals"
+    d.mkdir(parents=True, exist_ok=True)
+    TX.atomic_dump(d / f"{datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%S')}_{uuid.uuid4().hex[:8]}.json",
+                   rec, default=_jdefault)
+    return SliceStop(AUTH_REFUSED, f"{stage}: {reasons[0] if reasons else '?'} {reasons}; head unchanged; nothing published")
+
+
+def _summ(rec):
+    return {"decision": rec.get("decision"), "status": rec.get("status"), "candidate": rec.get("candidate"),
+            "hard_pin_residual_max_m": rec.get("hard_pin_residual_max_m"),
+            "changed_frames": (rec.get("footprint") or {}).get("frames_changed"),
+            "changed_bones": sorted((rec.get("footprint") or {}).get("channel_frames", {})),
+            "resolver_statuses": sorted({v["status"] for v in (rec.get("resolver") or {}).values()})}
+
+
 def _propose(a, run):
-    import numpy as np
     S, C, XB, W121 = frozen_modules()
     R, man = load_run(run)
     require_frozen_code()
@@ -1003,41 +1215,43 @@ def _propose(a, run):
         raise SliceStop("INVALID_REQUEST_ID", repr(rid))
     ed = new_dir(run / "edits" / rid)
     (ed / "request.json").write_bytes(req_bytes)
-    ps = PersistentStore(run)
-    head_id = refs["head"]
-    head = ps.store.get(head_id)
-    sidecar = load(run_paths(run)["sidecar"])
-    head_rb = load(run / refs["head_blend"]["readback"])
-    head_eval = readback_by_source(head_rb, sidecar)
     bnd = load(run_paths(run)["bindings"])
-    rig = C.rig_from(R["rest_json"], sidecar["rig_info"])
-    scale = sidecar["rig_info"]["scale"][0]
-    root_bones = [n for n in rig.bones if rig.is_root(n)]
     blender = R["blender"]
     store_rb = {}
 
-    def keyer(cand):
+    def build_and_read_back(cand):
         prov = {"slice": SLICE_ID, "status": "EXPERIMENTAL", "input_manifest_sha256": R["input_manifest_sha256"], "state_id": cand["state_id"],
                 "parent_state_id": cand["parent_id"], "role": f"candidate for request {rid} (PROPOSED; not committed)",
                 "request_sha256": hashlib.sha256(req_bytes).hexdigest(), "frame_rule": "Blender frame = source frame - first + 1"}
         rec, b, rb = build_state_blend(run, blender, cand, "candidate", f"edits/{rid}", prov, R["rest_json"], R["rig_fbx"])
-        store_rb.update(rec=rec, rb=rb)
-        return readback_by_source(rb, sidecar)
+        store_rb.update(rec=rec)
+        return rb
 
-    rec, cand, X = propose_core(req, head, head_eval, rig, head_rb["rest"], scale, bnd["bound"], bnd["failed"], root_bones, keyer)
+    rec, cand, _rb, head, head_rb, sidecar = _gate_record(run, R, refs, req, bnd, build_and_read_back)
     rec["request_sha256"] = hashlib.sha256(req_bytes).hexdigest()
     rec["input_manifest_sha256"] = R["input_manifest_sha256"]
+    cprov = None
     if cand is not None:
-        dump(ed / "candidate_state.json", cand)
+        cs_sha = dump(ed / "candidate_state.json", cand)
         rec["candidate_blend"] = store_rb["rec"]
-        b = bnd["bound"][rec["constraint"]["binding_id"]]
-        sub = subframe_report(store_rb["rb"], head_rb, sidecar, rec["constraint"], b)
-        rec["subframes"] = sub
-        if rec["decision"]["decision"] == "ACCEPT" and not sub["changed_intervals_within_pin_frames"]:
-            rec["decision"] = {"decision": "REJECT", "failure_class": "CONTRACT_VIOLATION", "reasons": ["SUBFRAME_CHANGE_OUTSIDE_PIN_FRAMES"]}
-            rec["status"] = "GATE_REJECTED"
+        cb = store_rb["rec"]
+        cprov = {"state_id": cand["state_id"], "state_file_sha256": cs_sha, "blend": cb["blend"], "blend_sha256": cb["blend_sha256"],
+                 "readback": cb["readback"], "readback_sha256": sha256_file(run / cb["readback"]), "value_digest": cb["value_digest"]}
     rec["head_blend_at_proposal"] = refs["head_blend"]
     rec["note"] = "PROPOSED only: a proposal (and its candidate.blend) is NEVER an accepted edit; only refs.json is authority"
+    rec["schema"] = PROPOSAL_SCHEMA
+    rec["provenance"] = {
+        "request": {"path": f"edits/{rid}/request.json", "sha256": rec["request_sha256"], "identity": "exact bytes"},
+        "parent": {"state_id": head["state_id"], "generation": refs["generation"], "refs_txn_id": refs.get("txn_id"),
+                   "head_blend": refs["head_blend"]},
+        "bindings": {"file_sha256": sha256_file(run_paths(run)["bindings"]), "semantic_digest": _digest(_norm(_bindings_semantic(bnd))),
+                     "identity": "semantic (bound/failed records); re-derived from the immutable baseline at commit"},
+        "candidate": cprov, "input_manifest_sha256": R["input_manifest_sha256"],
+        "frozen_code_sha256_lf": {k: v["sha256_lf"] for k, v in frozen_code_report().items()},
+        "slice_code_sha256_lf": sha256_code(__file__), "gate_view_digest": _digest(gate_view(rec)),
+        "authority": "CONSISTENCY RECORD ONLY (unkeyed SHA-256 seal; not authentication).  `commit --decision accept` re-derives "
+                     "the frozen W116/W118 gate from authoritative inputs and never trusts this file's decision."}
+    rec = _sealed(rec, "proposal_seal")
     TX.atomic_dump(ed / "proposal.json", rec, default=_jdefault)   # written last: an interrupted propose has no proposal.json
     draw_timeline(ed / "timeline.png", rec, sidecar, head["frames"])
     print(json.dumps({"request_id": rid, "status": rec["status"], "decision": rec["decision"], "candidate": rec.get("candidate"),
@@ -1058,8 +1272,14 @@ def draw_timeline(path, rec, sidecar, frames):
     if not pin and rec.get("constraint"):
         pin = set(rec["constraint"]["frames"])
     fp = rec.get("footprint") or {"frames_changed": [], "channel_frames": {}, "per_frame": {}}
-    rejected = rec["decision"]["decision"] != "ACCEPT"
-    status = rec.get("final_status") or rec["status"]
+    untrusted = rec.get("untrusted") or []
+    rejected = (rec.get("decision") or {}).get("decision") != "ACCEPT" or bool(untrusted)
+    status = rec.get("final_status") or rec.get("status")
+    if untrusted:          # W126: an unverified proposal's gate/footprint fields are never shown as authoritative
+        status = f"{status} | UNTRUSTED PROPOSAL ({untrusted[0]}): gate/footprint below NOT authoritative"
+        rec = dict(rec, decision={"decision": "UNVERIFIED", "reasons": list(untrusted)})
+        fp = {"frames_changed": [], "channel_frames": {}, "per_frame": {}}
+        pin = {k for k in pin if isinstance(k, int) and k in set(frames)}
     rows = ["requested hard pin", "permitted domain (budget 0)", "ACTUAL changed (any)"] + [f"  bone {c}" for c in sorted(fp["channel_frames"])] \
         + ["unchanged"]
     fig, axes = plt.subplots(2, 1, figsize=(14, 2.4 + 0.84 * len(rows)))
@@ -1210,13 +1430,18 @@ def _finish(run, j, recovered_by=None):
         register_blend(run, j["registry_state"], j["registry_record"])
     if op in ("ACCEPT", "DECISION"):
         ed = run / "edits" / j["request_id"]
+        cr = j["commit_result"]
+        if op == "ACCEPT" and "semantic_authorization" not in cr:      # a pre-W126 transaction: never reclassified, never invented
+            cr = dict(cr, semantic_authorization={"authorized": None, "note": "NOT ESTABLISHED: published by a pre-W126 "
+                                                                              "transaction (no commit-time semantic revalidation)"})
         if not (ed / "commit.json").exists():
-            TX.atomic_dump(ed / "commit.json", dict(j["commit_result"], **({"completed_by_recovery": recovered_by} if recovered_by else {})))
+            TX.atomic_dump(ed / "commit.json", dict(cr, **({"completed_by_recovery": recovered_by} if recovered_by else {})))
         TX.fault("before_timeline_final")
         if not (ed / "timeline_final.png").exists():
             prop = load(ed / "proposal.json")
             sidecar = load(run_paths(run)["sidecar"])
-            draw_timeline(ed / "timeline_final.png", dict(prop, final_status=j["commit_result"]["final_status"]), sidecar,
+            untrusted = (cr.get("proposal_integrity") or {}).get("reasons") or []
+            draw_timeline(ed / "timeline_final.png", dict(prop, final_status=cr["final_status"], untrusted=untrusted), sidecar,
                           [r["source_frame"] for r in sidecar["frame_mapping"]])
     TX.fault("before_finalize")
     sd = run / j["stage_dir"] if j.get("stage_dir") else None
@@ -1239,6 +1464,9 @@ def _staging_failed(run, j, e):
     pub = _is_published(run, j)
     if pub is False:
         moved, _ = _abort(run, j, f"{type(e).__name__}: {e}")
+        if isinstance(e, SliceStop) and e.code == AUTH_REFUSED:     # W126: keep the semantic refusal class visible
+            return SliceStop(AUTH_REFUSED, f"{e.detail}; txn {j['txn_id']} rolled back, head unchanged = {j['expected_head']}; "
+                             f"{len(moved)} staged file(s) moved to quarantine/{j['txn_id']}/")
         return SliceStop("TRANSACTION_ABORTED_ROLLED_BACK", f"txn {j['txn_id']} failed before publication ({type(e).__name__}: {e}); "
                          f"head unchanged = {j['expected_head']}; {len(moved)} staged file(s) moved to quarantine/{j['txn_id']}/")
     return SliceStop("RECOVERY_REQUIRED", f"txn {j['txn_id']} failed ({type(e).__name__}: {e}); publication state "
@@ -1256,45 +1484,96 @@ def cmd_commit(a):
 def _commit(a, run):
     S, C, XB, W121 = frozen_modules()
     R, man = load_run(run)
+    require_frozen_code()            # W126: the commit re-derives the gate, so the frozen algorithms must be unchanged
     require_no_pending(run)
     refs, raw = require_v2_head(run)
     ed = run / "edits" / a.request_id
     if not (ed / "proposal.json").exists():
         raise SliceStop("PROPOSAL_MISSING_OR_INCOMPLETE", f"{a.request_id}: no proposal.json (absent or an interrupted propose); "
                         "nothing to decide")
-    prop = load(ed / "proposal.json")
+    try:
+        prop = load(ed / "proposal.json")
+    except ValueError:
+        raise SliceStop(AUTH_REFUSED if a.decision == "accept" else "PROPOSAL_UNREADABLE", "proposal.json does not parse") from None
     if (ed / "commit.json").exists():
         raise SliceStop("REFUSED_ALREADY_DECIDED", a.request_id)
+    kind = proposal_kind(prop)
+    if a.decision == "accept" and kind != "V2":
+        raise SliceStop("BLOCKED_LEGACY_PROPOSAL_REQUIRES_REPROPOSE",
+                        f"{a.request_id}: this proposal was written before W126 (unsealed, no provenance); its gate decision cannot be "
+                        "re-established and is never grandfathered.  Nothing was changed.  Re-propose the same request under a new "
+                        "request id (`experimental-video-action propose`), or `commit --decision reject` it.")
     cand = load(ed / "candidate_state.json") if (ed / "candidate_state.json").exists() else None
     if cand is not None and (not S.verify_state(cand) or cand["state_id"] != prop.get("candidate")):
         raise SliceStop("INVALID_CANDIDATE_TAMPERED", "candidate state id does not bind its content or is not the proposal's candidate")
     ps = PersistentStore(run)
     head_before = refs["head"]
     guard = {k: sha256_file(run / k) for k in R["immutable_files"]}
-    if a.decision == "accept" and (prop["decision"]["decision"] != "ACCEPT" or cand is None):
+    if a.decision == "reject":
+        integ = {"kind": kind, "reasons": proposal_integrity(run, a.request_id, prop, refs=refs) if kind == "V2" else ["LEGACY_UNSEALED_PROPOSAL"]}
+        out = ps.store.commit("head", prop["parent_state_id"], cand, {"decision": "REJECT", "reasons": ["USER_REJECTED"]})
+        if out["head_after"] != head_before:
+            raise SliceStop("INTERNAL_INVARIANT", "a non-accept decision moved the in-memory head")
+        return _record_decision(a, run, R, prop, refs, out, guard, integ)
+    # ---- accept of a v2 proposal: declared precedence (W126 declaration) --------------------------------------------
+    pd = (prop.get("decision") or {}).get("decision")
+    if pd == "ACCEPT" and cand is not None and (prop.get("candidate_blend") or {}).get("blend") and \
+            (not (run / prop["candidate_blend"]["blend"]).exists()
+             or sha256_file(run / prop["candidate_blend"]["blend"]) != prop["candidate_blend"]["blend_sha256"]):
+        raise SliceStop("INVALID_CANDIDATE_BLEND_TAMPERED", "staged candidate.blend differs from the gated candidate; "
+                        "nothing decided, head unchanged")
+    bind_auth = recompute_bindings(run, R)
+    reasons = proposal_integrity(run, a.request_id, prop, bindings_now=bind_auth, refs=refs)
+    if reasons:
+        raise _refuse(run, a.request_id, "PROVENANCE", reasons)
+    integ = {"kind": kind, "reasons": []}
+    if pd != "ACCEPT" or cand is None:
         out = {"op": "commit", "decision": "REJECT", "reasons": ["GATE_REJECTED_CANNOT_ACCEPT"] + prop["decision"].get("reasons", []),
                "head_before": head_before, "head_after": head_before}
-    elif a.decision == "accept":
-        if sha256_file(run / prop["candidate_blend"]["blend"]) != prop["candidate_blend"]["blend_sha256"]:
-            raise SliceStop("INVALID_CANDIDATE_BLEND_TAMPERED", "staged candidate.blend differs from the gated candidate; "
-                            "nothing decided, head unchanged")
-        if prop["parent_state_id"] == head_before and cand["parent_id"] == head_before:
-            return _accept(a, run, R, prop, cand, refs, raw, ps, guard)
-        out = ps.store.commit("head", prop["parent_state_id"], cand, prop["decision"])   # STALE_PARENT / PARENT_MISMATCH record
+    elif prop["parent_state_id"] == head_before and cand["parent_id"] == head_before:
+        return _accept(a, run, R, prop, cand, refs, raw, ps, guard, bind_auth)
     else:
-        out = ps.store.commit("head", prop["parent_state_id"], cand, {"decision": "REJECT", "reasons": ["USER_REJECTED"]})
+        out = ps.store.commit("head", prop["parent_state_id"], cand, prop["decision"])   # STALE_PARENT / PARENT_MISMATCH record
     if out["head_after"] != head_before:
         raise SliceStop("INTERNAL_INVARIANT", "a non-accept decision moved the in-memory head")
-    return _record_decision(a, run, R, prop, refs, out, guard)
+    return _record_decision(a, run, R, prop, refs, out, guard, integ)
 
 
-def _record_decision(a, run, R, prop, refs, out, guard):
+def _authorize(run, R, refs, rid, prop, cand, bind_auth, readback, stage):
+    """Re-derive the frozen gate for the ORIGINAL request bytes against the verified head, with bindings re-derived from the
+    immutable baseline, evaluating ``readback`` (stored hash-bound candidate readback, or a fresh readback of the staged copy).
+    Returns (ok, reasons, recomputed record).  Never consults the proposal's decision."""
+    req = json.loads((Path(run) / "edits" / rid / "request.json").read_bytes())
+    rec, rcand, _rb, *_ = _gate_record(run, R, refs, req, bind_auth, lambda c: readback)
+    pre = "" if stage == "PRE_STAGING" else "FRESH_"
+    reasons = []
+    if rec["decision"]["decision"] != "ACCEPT":
+        reasons.append("RECOMPUTED_GATE_REJECT" if stage == "PRE_STAGING" else "FRESH_READBACK_GATE_REJECT")
+    if rcand is None or rcand["state_id"] != cand["state_id"] or S_canon(rcand) != S_canon(cand):
+        reasons.append(pre + "CANDIDATE_NOT_REPRODUCED")
+    div = gate_divergence(rec, prop)
+    if div:
+        reasons.append(pre + "PROPOSAL_GATE_RECORD_DIVERGES" if stage == "PRE_STAGING" else "FRESH_GATE_RECORD_DIVERGES")
+    return not reasons, reasons, rec, div
+
+
+def S_canon(st):
+    S, *_ = frozen_modules()
+    return S.canon(st)
+
+
+def _record_decision(a, run, R, prop, refs, out, guard, integ=None):
     """REJECT / gate-rejected / stale: the head NEVER moves.  Publication point of the decision = atomic commit.json."""
     ed = run / "edits" / a.request_id
     res = {"request_id": a.request_id, "user_decision": a.decision.upper(), "store_record": out, "final_status": "REJECTED",
            "head_before": refs["head"], "head_after": refs["head"], "generation": refs["generation"],
-           "immutable_files_unchanged": guard == {k: sha256_file(run / k) for k in R["immutable_files"]}}
-    res.update(_display_final(run, prop, "REJECTED"))
+           "immutable_files_unchanged": guard == {k: sha256_file(run / k) for k in R["immutable_files"]},
+           "proposal_integrity": integ}
+    if integ and integ.get("reasons"):
+        res.update(display_final=None, display_final_check={"ok": None, "skipped": "UNTRUSTED proposal: its display/gate fields are "
+                                                                                 f"not authoritative ({integ['reasons']})"})
+    else:
+        res.update(_display_final(run, prop, "REJECTED"))
     j = new_txn(run, "DECISION", refs, request_id=a.request_id, user_decision=a.decision.upper(), store_record=out)
     res["txn_id"] = j["txn_id"]
     j["commit_result"] = _norm(res)
@@ -1314,7 +1593,29 @@ def _record_decision(a, run, R, prop, refs, out, guard):
     return 0
 
 
-def _accept(a, run, R, prop, cand, refs, raw, ps, guard):
+RECOMPUTED_AT_COMMIT = [
+    "request validation (frozen slice precheck + W116 validate_request) from the ORIGINAL request bytes",
+    "pin target re-captured from the verified head readback (W116 captured_target)",
+    "rig bindings re-derived from the immutable baseline (W116 verify_binding)",
+    "W116 analytic resolver statuses and patched candidate state (content id must equal the proposal's candidate)",
+    "W116 evaluate_candidate (hard pin <= TOL_M, scope, locality, lengths, root, joint limit), W118 derive_footprint, display_spec, "
+    "check_display, decide_x and the slice subframe rule - once on the hash-bound candidate readback, once on a FRESH Blender "
+    "readback of the staged accepted copy"]
+HASH_BOUND_AT_COMMIT = [
+    "proposal seal + gate-view digest (consistency)", "request.json exact bytes", "bindings.json semantic content (vs re-derived)",
+    "parent head state/.blend/readback (sealed refs.json, W125 verify_head)", "candidate state file, candidate .blend and its readback",
+    "immutable baseline/manifest/sidecar/source clip (load_run)", "frozen algorithm sources (frozen_code_sha256.json)",
+    "all decision inputs re-hashed immediately before the publication point"]
+
+
+def _accept(a, run, R, prop, cand, refs, raw, ps, guard, bind_auth):
+    rid = a.request_id
+    ok, reasons, rec_pre, div = _authorize(run, R, refs, rid, prop, cand, bind_auth, load(run / prop["candidate_blend"]["readback"]),
+                                           "PRE_STAGING")
+    if not ok:
+        raise _refuse(run, rid, "PRE_STAGING", reasons, detail={"recomputed": _summ(rec_pre), "proposal_claims": _summ(prop),
+                                                                 "diverging_gate_keys": div})
+    snap = _input_snapshot(run, rid, prop)
     acc = run / "accepted"
     n_prev = len(list(acc.glob("*.blend"))) if acc.exists() else 0
     name = f"accepted_{n_prev + 1:02d}_{cand['state_id'][:12]}"
@@ -1348,6 +1649,13 @@ def _accept(a, run, R, prop, cand, refs, raw, ps, guard):
         run_blender(R["blender"], "readback", stage / "accepted_readback.log", blend=sb, report=stage / "accepted_readback.json",
                     subframes=",".join(str(s) for s in SUBFRAMES))
         rb_acc = load(stage / "accepted_readback.json")
+        if rb_acc.get("blend_sha256") != dst_sha:
+            raise _refuse(run, rid, "FRESH_READBACK", ["FRESH_READBACK_GATE_REJECT"], detail="fresh readback is not of the staged copy",
+                          txn_id=j["txn_id"])
+        ok, reasons, rec_fresh, div = _authorize(run, R, refs, rid, prop, cand, bind_auth, rb_acc, "FRESH_READBACK")
+        if not ok:
+            raise _refuse(run, rid, "FRESH_READBACK", reasons, detail={"recomputed": _summ(rec_fresh), "proposal_claims": _summ(prop),
+                                                                       "diverging_gate_keys": div}, txn_id=j["txn_id"])
         checks = _publication_checks(run, R, prop, rb_acc, load(run / prop["candidate_blend"]["readback"]), _parent_readback(run, prop), dst_sha)
         if not checks["ok"]:
             raise SliceStop("BLOCKED_PUBLICATION_CHECK_FAILED", json.dumps(checks["checks"]))
@@ -1359,7 +1667,18 @@ def _accept(a, run, R, prop, cand, refs, raw, ps, guard):
         res = {"request_id": a.request_id, "user_decision": "ACCEPT", "store_record": out, "final_status": "ACCEPTED",
                "head_before": refs["head"], "head_after": cand["state_id"], "generation": refs["generation"] + 1,
                "immutable_files_unchanged": guard == {k: sha256_file(run / k) for k in R["immutable_files"]},
-               "accepted_blend": rel(dst), "accepted_readback": rel(rbp), "publication_checks": checks, "txn_id": j["txn_id"]}
+               "accepted_blend": rel(dst), "accepted_readback": rel(rbp), "publication_checks": checks, "txn_id": j["txn_id"],
+               "semantic_authorization": {
+                   "schema": "animcv_exp_semantic_authorization_v1", "authorized": True, "proposal_kind": "V2",
+                   "provenance_reasons": [], "pre_staging_gate": _summ(rec_pre), "fresh_readback_gate": _summ(rec_fresh),
+                   "fresh_readback": rel(rbp), "fresh_readback_value_digest": rb_acc["value_digest"],
+                   "hard_pin_residual_max_m_fresh_readback": rec_fresh["hard_pin_residual_max_m"],
+                   "hard_pin_tolerance_m": rec_fresh["constraint"]["tolerance_m"],
+                   "recomputed": RECOMPUTED_AT_COMMIT, "hash_bound": HASH_BOUND_AT_COMMIT,
+                   "bindings_file_bytes_equal_proposal": snap["bindings"] == prop["provenance"]["bindings"]["file_sha256"],
+                   "input_snapshot": snap,
+                   "note": "the proposal's own decision field was never used as authority; seals are consistency checks, "
+                           "not authentication"}}
         res.update(_display_final(run, prop, "ACCEPTED"))
         hb = dict(_head_blend(run, rb_acc, cand["state_id"], "accepted", blend=rel(dst), readback=rel(rbp)), request_id=a.request_id)
         new_refs = make_refs(cand["state_id"], refs["generation"] + 1, hb, j["txn_id"], refs["head"], "ACCEPT")
@@ -1368,6 +1687,10 @@ def _accept(a, run, R, prop, cand, refs, raw, ps, guard):
                                                 txn_id=j["txn_id"])}))
         j = write_journal(run, j, "STAGED")
         TX.fault("before_publish")
+        now_snap = _input_snapshot(run, rid, prop)       # W126: no edit between authorization and publication (TOCTOU)
+        if now_snap != snap:
+            raise _refuse(run, rid, "PRE_PUBLISH", ["INPUTS_CHANGED_DURING_TRANSACTION"],
+                          detail={"changed": sorted(k for k in snap if snap[k] != now_snap.get(k))}, txn_id=j["txn_id"])
         _publish(run, raw, new_refs)
     except BaseException as e:
         raise _staging_failed(run, j, e) from e
@@ -1469,6 +1792,10 @@ def _recover_one(run, j, rid):
     if kind == "V2" and refs.get("txn_id") == j["txn_id"]:
         if j.get("state") not in ("STAGED", "PUBLISHED") or refs != j.get("new_refs"):
             raise SliceStop("BLOCKED_DIVERGENT_JOURNAL", f"{j['txn_id']}: refs name this transaction but differ from its staged refs")
+        sa = (j.get("commit_result") or {}).get("semantic_authorization")
+        if j["op"] == "ACCEPT" and sa is not None and sa.get("authorized") is not True:
+            raise SliceStop("BLOCKED_DIVERGENT_JOURNAL", f"{j['txn_id']}: published ACCEPT whose journal records no semantic "
+                            "authorization; recovery never invents one (inspect manually)")
         v = verify_head(run, refs)
         if not v["ok"]:
             raise SliceStop("BLOCKED_HEAD_UNVERIFIED", f"published head of {j['txn_id']} does not verify: {v['problems']}")
@@ -1595,18 +1922,54 @@ def cmd_status(a):
                      "NOT published: head unchanged; staged files are NOT accepted",
                      "staged_files_present": [f for f in j.get("planned_outputs", []) if (run / f).exists()]})
     edits = {}
+    bind_now = None
     if (run / "edits").exists():
         for ed in sorted(p for p in (run / "edits").iterdir() if p.is_dir()):
             if not (ed / "proposal.json").exists():
                 edits[ed.name] = {"state": "INCOMPLETE_PROPOSAL (interrupted propose; not decidable)"}
                 continue
-            pr = load(ed / "proposal.json")
+            try:
+                pr = load(ed / "proposal.json")
+            except ValueError:
+                edits[ed.name] = {"state": "UNREADABLE_PROPOSAL (not decidable; never accepted)", "gate": "UNTRUSTED"}
+                continue
             cm = load(ed / "commit.json") if (ed / "commit.json").exists() else None
-            edits[ed.name] = {"gate": pr["decision"]["decision"], "candidate": pr.get("candidate"),
+            # W126: the displayed gate is the proposal's only if its hash-bound provenance verifies (consistency check; the
+            # commit-time authority is the independent recomputation recorded in commit.json / authorization_refusals/).
+            pkind = proposal_kind(pr)
+            if pkind == "V2":
+                if bind_now is None:
+                    try:
+                        bind_now = recompute_bindings(run, R)
+                    except SliceStop as e:
+                        bind_now = {"error": e.code}
+                integ = proposal_integrity(run, ed.name, pr, bindings_now=bind_now if "error" not in bind_now else None,
+                                           refs=refs if kind == "V2" else None)
+            else:
+                integ = ["LEGACY_UNSEALED_PROPOSAL"]
+            gd = (pr.get("decision") or {}).get("decision")
+            refusals = sorted((ed / "authorization_refusals").glob("*.json")) if (ed / "authorization_refusals").exists() else []
+            if pkind != "V2":
+                gate = f"LEGACY_UNVERIFIED:{gd} (pre-W126 proposal; cannot be accepted - re-propose)"
+            elif integ:
+                gate = f"UNTRUSTED ({integ[0]}): proposal differs from its sealed provenance; cannot be accepted"
+            elif refusals:
+                gate = f"REFUSED_AT_COMMIT ({load(refusals[-1]).get('primary')}): authoritative revalidation failed"
+            else:
+                gate = gd
+            sa = (cm or {}).get("semantic_authorization")
+            edits[ed.name] = {"gate": gate, "proposal_kind": pkind, "proposal_integrity": integ or "OK",
+                              "candidate": pr.get("candidate"),
                               "decision": cm["final_status"] if cm else "UNDECIDED (proposal only; NOT applied)",
+                              "semantic_authorization": (("AUTHORIZED_AT_COMMIT (W126 independent revalidation)" if sa.get("authorized")
+                                                          else "NOT_ESTABLISHED (" + str(sa.get("note")) + ")") if sa else
+                                                         ("NOT_ESTABLISHED (accepted before W126; historical, not reclassified)"
+                                                          if cm and cm.get("final_status") == "ACCEPTED" else None)),
+                              "authorization_refusals": [str(p.relative_to(run)) for p in refusals],
                               "in_current_head_lineage": pr.get("candidate") in chain if pr.get("candidate") else False,
-                              "changed_frames": (pr.get("footprint") or {}).get("frames_changed"),
-                              "changed_bones": sorted((pr.get("footprint") or {}).get("channel_frames", {}))}
+                              "changed_frames": (pr.get("footprint") or {}).get("frames_changed") if not integ or pkind != "V2" else "NOT SHOWN (unverified)",
+                              "changed_bones": sorted((pr.get("footprint") or {}).get("channel_frames", {})) if not integ or pkind != "V2"
+                              else "NOT SHOWN (unverified)"}
     reg = blend_registry(run)
     all_states = {p.stem for p in (run / "lineage" / "states").glob("*.json")}
     reachable = set(chain)

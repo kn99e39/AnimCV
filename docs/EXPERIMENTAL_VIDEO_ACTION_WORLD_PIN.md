@@ -155,7 +155,7 @@ $PY -m app.cli experimental-video-action recover --run R   # ROLLED_FORWARD; com
 $PY -m app.cli experimental-video-action status  --run R   # recovery_required: false; edits.hold_1.decision = ACCEPTED
 ```
 
-**Not protected (W125 finding).** `edits/<id>/proposal.json` is not sealed. `commit` re-verifies that the accepted `.blend`
+**Not protected (W125 finding; superseded by Batch 126 — see the next section).** At W125, `edits/<id>/proposal.json` was not sealed. `commit` re-verifies that the accepted `.blend`
 is bit-identical to the candidate and that its actual footprint equals the proposal's, but it reads the **gate decision**
 from `proposal.json`. A hand-edited proposal that flips a gate REJECT to ACCEPT is therefore published (shown on a synthetic
 fixture: an UNREACHABLE candidate with a 136 mm pin residual). The statement "a gate-rejected candidate can never be
@@ -165,6 +165,71 @@ accepted" holds only if `proposal.json` is not tampered with. The W124 code had 
 Blender child is running) on Windows 11 / local NTFS. Not tested and not claimed: power loss, OS crash, full disk,
 network or other filesystems. On Windows the directory entry of a rename is not fsynced (Python cannot do that), so a
 published head is durable against process death, not guaranteed against power loss.
+
+## Commit-time semantic authority (Batch 126)
+
+Since Batch 126 (evidence: `docs/126_WORKLOG_COMMIT_TIME_WORLD_PIN_GATE_INTEGRITY.md`, Agent-run) **`proposal.json` is never the
+gate authority.** `commit --decision accept` re-derives the frozen W116/W118 decision itself and publishes only if it agrees.
+
+**What `propose` now writes.** A versioned proposal (`"schema": "animcv_exp_proposal_v2"`) with a `provenance` block and a
+`proposal_seal`. The provenance binds the exact request bytes, the parent head (state id, `.blend` and readback hashes from
+`refs.json`), the binding record, the candidate state file, `.blend` and readback, and a digest of every gate field. The seal
+is an unkeyed SHA-256: a **consistency check**, not authentication. Somebody able to rewrite every file can recompute it.
+
+**What `commit --decision accept` does before the W125 transaction may publish:**
+
+1. Refuses a pre-W126 (unsealed) proposal: `BLOCKED_LEGACY_PROPOSAL_REQUIRES_REPROPOSE`. Its gate cannot be re-established
+   and is never grandfathered. Re-propose the request under a new request id, or `commit --decision reject` it.
+2. Checks the hash-bound evidence (seal, decision/status consistency, request bytes, binding record, parent, candidate state,
+   `.blend` and readback). The binding record is **re-derived from the immutable baseline** with the frozen `verify_binding`
+   and compared with `baseline/bindings.json`.
+3. A sealed gate REJECT is recorded as REJECTED (`GATE_REJECTED_CANNOT_ACCEPT`), and a stale parent as `STALE_PARENT`, as
+   before; the head never moves.
+4. **Re-derives the gate** from the original request bytes, the verified head and its readback, and the re-derived bindings,
+   with the unchanged frozen validator, resolver, evaluator, footprint, display check and subframe rule. The recomputed
+   candidate must be the proposal's candidate (same content id), the decision must be ACCEPT, and every gate field must equal
+   the sealed proposal.
+5. Inside the W125 transaction, after staging the accepted copy, a **fresh Blender process** reads it back and step 4 is
+   repeated on that readback.
+6. Right before the publication point, every decision input is re-hashed (an edit while the lock is held is caught).
+
+Any failure stops with `REFUSED_SEMANTIC_AUTHORIZATION` (exit 2). The head, the accepted Action and every input file are left
+exactly as they are; nothing is repaired. A refusal inside the transaction is rolled back like any other pre-publication
+failure. Each refusal is recorded as a new file `edits/<id>/authorization_refusals/<time>_<id>.json` (`stage`, `primary`,
+`reasons`). The reason order (first present = primary) is: provenance reasons (`PROPOSAL_SEAL_INVALID`,
+`PROPOSAL_DECISION_STATUS_CONFLICT`, `REQUEST_MISSING`, `REQUEST_BYTES_CHANGED`, `BINDING_RECORD_CHANGED`, …,
+`CANDIDATE_READBACK_NOT_OF_BLEND`), then `RECOMPUTED_GATE_REJECT`, `CANDIDATE_NOT_REPRODUCED`, `PROPOSAL_GATE_RECORD_DIVERGES`,
+then the `FRESH_…` equivalents, then `INPUTS_CHANGED_DURING_TRANSACTION`. Earlier, pre-existing checks keep their W125 codes
+(`INVALID_CANDIDATE_TAMPERED`, `INVALID_CANDIDATE_BLEND_TAMPERED`, `BLOCKED_HEAD_UNVERIFIED`).
+
+**Identity policy.** `request.json` is bound by **exact bytes**: even a reformat is refused (`REQUEST_BYTES_CHANGED`) — re-propose.
+`proposal.json` and `bindings.json` are bound by **content**: a re-indent or key reorder is accepted.
+
+**What `status` shows.** `gate` is the proposal's decision only if its provenance verifies. Otherwise it reads
+`UNTRUSTED (<reason>)`, `REFUSED_AT_COMMIT (<primary>)` or `LEGACY_UNVERIFIED:<decision>`. `semantic_authorization` is
+`AUTHORIZED_AT_COMMIT` for W126 acceptances and `NOT_ESTABLISHED (…)` for acceptances made before W126. Those historical
+edits are not reclassified and their files are not rewritten. An explicit REJECT of an unverified proposal is recorded with
+`proposal_integrity` and its final timeline is titled `UNTRUSTED PROPOSAL`.
+
+**Recovery.** `recover` never creates an authorization. A published W126 ACCEPT whose journal does not record
+`authorized: true` stops with `BLOCKED_DIVERGENT_JOURNAL`. A published pre-W126 journal is rolled forward and marked
+`NOT_ESTABLISHED`.
+
+**Example (end user):**
+
+```bash
+export PYTHONPATH=src
+$PY -m app.cli experimental-video-action propose --run R --request reach_1m.json   # gate REJECT (UNREACHABLE)
+# hand-edit edits/reach_1m/proposal.json: "decision": {"decision": "ACCEPT", ...}
+$PY -m app.cli experimental-video-action commit --run R --request-id reach_1m --decision accept
+#   STOP REFUSED_SEMANTIC_AUTHORIZATION: PROVENANCE: PROPOSAL_SEAL_INVALID ...; head unchanged   (exit 2)
+$PY -m app.cli experimental-video-action propose --run R --request hold.json       # gate ACCEPT
+$PY -m app.cli experimental-video-action commit --run R --request-id hold_1 --decision accept   # ACCEPTED (authorized)
+$PY -m app.cli experimental-video-action revert --run R                            # exact undo
+```
+
+**Not covered:** an actor who rewrites the run consistently (including `run.json`, the immutable-file record, sealed
+`refs.json`, the frozen code or this module); cryptographic user authentication; power loss / OS crash (W125 limits).
 
 ## Known limitations (do not read the output as more than it is)
 

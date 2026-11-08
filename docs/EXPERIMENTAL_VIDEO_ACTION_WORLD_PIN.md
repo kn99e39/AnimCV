@@ -231,6 +231,92 @@ $PY -m app.cli experimental-video-action revert --run R                         
 **Not covered:** an actor who rewrites the run consistently (including `run.json`, the immutable-file record, sealed
 `refs.json`, the frozen code or this module); cryptographic user authentication; power loss / OS crash (W125 limits).
 
+## Opt-in FBX continuous-time interchange (Batch 127)
+
+Evidence: `docs/127_WORKLOG_OPT_IN_FBX_CONTINUOUS_TIME_INTERCHANGE.md` (Agent-run, not independently re-executed). Still
+EXPERIMENTAL and opt-in. The `fbx` command above is **unchanged** and still reports the stock exporter/importer FAIL; the
+default exporter `src/blender/export.py` and Blender's importer are not changed or patched.
+
+Three separate commands with separate inputs:
+
+| Command | Role | Reads | Writes |
+|---|---|---|---|
+| `fbx-interchange --run R [--state head\|baseline\|<id>] --out NEW` | producer | the run (read-only) and ONE verified published state's `.blend` | a NEW directory: `package/` + `producer/` evidence + `STATUS.json` |
+| `fbx-consume --package NEW/package --out NEW2 [--mode adapter\|raw]` | consumer | **only** `package/package_manifest.json` and `package/animation.fbx` (every Python-level file open is audited) | a NEW `recovered.blend` (or `raw_import.blend`) + `consume_report.json` |
+| `fbx-verify --run R --consumed NEW2 --out NEW3` | evaluator | the original `.blend` and the consumed `.blend`, each re-opened in a fresh Blender process | `fbx_verify_report.json` |
+
+**What the package contains.**
+
+- `animation.fbx`: a standard binary FBX. It is exported with:
+  - no key simplification (a key at every frame);
+  - exactly one take, for the selected Action;
+  - the BaseRig skinned mesh, so the file carries a BindPose and the bone rest survives;
+  - no `_end` leaf bones.
+
+  Curves whose driving source property is uniformly CONSTANT carry the FBX CONSTANT interpolation flag (`KeyAttrFlags`
+  `0x6002`). All other curves keep the exporter's LINEAR flag.
+- `package_manifest.json`: a sealed record of take, timebase (fps, frame range), rig topology, per-property interpolation
+  directives and source provenance. The seal is an unkeyed SHA-256: a consistency check, not authentication. The manifest
+  is written last, so a directory without it is never a package.
+
+**Dependency (do not read more into it).** The package FBX imports into any FBX consumer as a file. Lossless recovery of
+held motion and of the scene frame range **requires both the manifest and the Blender 5.1 consumer adapter**.
+
+The package FBX imported alone with Blender's stock importer (`--mode raw`) keeps integer frames, but it:
+- interpolates every held key between frames (S1: up to 0.90 m at subframes);
+- loses the scene range.
+
+Unity, Unreal and other FBX consumers were **not tested**.
+
+**Supported (anything else STOPs with a code, and nothing is written as a package):**
+- the known W105 BaseRig;
+- one armature, plus meshes bound to it;
+- one assigned Action, with no NLA, drivers or constraints;
+- per object/bone transform property, keys either all CONSTANT or all LINEAR;
+- integer key times, with keys spanning scene frames 1..N.
+
+Refused with a STOP code:
+- mixed interpolation inside a property, per key or per axis: `UNSUPPORTED_INTERPOLATION_MIXTURE`;
+- BEZIER interpolation: `UNSUPPORTED_INTERPOLATION_BEZIER`;
+- another rig: `UNSUPPORTED_RIG`.
+
+Other Actions in the file are excluded from the take and listed in the manifest.
+
+**Consumer refusals** (exit 2; no `.blend` written; package files never repaired):
+
+| Code | Cause |
+|---|---|
+| `PACKAGE_INCOMPLETE` | no manifest (e.g. a killed export) |
+| `MANIFEST_SEAL_INVALID` | the manifest was edited without resealing |
+| `FBX_HASH_MISMATCH` | the FBX is not the one the manifest names (including a stale FBX from another package) |
+| `FBX_PARSE_ERROR` | the FBX is truncated |
+| `TAKE_NOT_UNIQUE` / `TAKE_MISMATCH` | the FBX has more than one take, or a take other than the declared one |
+| `TIMEBASE_MISMATCH` | the frame rate differs |
+| `UNSUPPORTED_RIG` / `RIG_MISMATCH` | the manifest declares an unknown rig, or the imported rig is not the declared one |
+| `METADATA_FBX_DISAGREE` | the FBX flags and the manifest directives disagree |
+| `UNSUPPORTED_*_VERSION` | the Blender or importer version is not 5.1 |
+
+**One complete user path** (Git Bash, repository root):
+
+```bash
+export PYTHONPATH=src ANIMCV_BLENDER="C:/Program Files/Blender Foundation/Blender 5.1/blender.exe"
+PY=python   # the project environment
+$PY -m app.cli experimental-video-action status          --run R                      # note head / generation
+$PY -m app.cli experimental-video-action fbx-interchange --run R --state head --out out/pkg_head
+$PY -m app.cli experimental-video-action fbx-consume     --package out/pkg_head/package --out out/consumed_head
+$PY -m app.cli experimental-video-action fbx-verify      --run R --consumed out/consumed_head --out out/verify_head
+#   -> "interchange_verdict": "INTERCHANGE_PASS" | "FAIL" and "mismatches"; details in out/verify_head/fbx_verify_report.json
+$PY -m app.cli experimental-video-action fbx             --run R --state head         # stock path, still FAIL (unchanged)
+$PY -m app.cli experimental-video-action revert          --run R                      # undo the head's edit (unaffected by export)
+```
+
+Open `out/consumed_head/recovered.blend` in Blender 5.1 to use the recovered Action (`root|root|AnimCV_EXP_<id>`). An export
+never changes the run, the head, the generation, the journals or the source `.blend`. A package stays bound to the state it
+was made from: after a later commit or revert, `fbx-verify --state head` refuses it (`PACKAGE_NOT_OF_THIS_STATE`).
+
+**Cost (S1, 240 frames).** The package FBX is 1.15 MB, against 0.37 MB for the stock export (3.1×). It holds 468 curves
+and 112,320 keys. Export, consume and verify take about 1 s, 1 s and 2.5 s.
+
 ## Known limitations (do not read the output as more than it is)
 
 - **Partial rig.** Driven: Armature Object rotation, `spine_01`, `thigh_l/r`, `calf_l/r`, `upperarm_l`, `lowerarm_l`.
@@ -241,5 +327,7 @@ $PY -m app.cli experimental-video-action revert --run R                         
   transition edit in this slice); they are disclosed in `proposal.json` (`quality_disclosure`).
 - **The 1 mm pin check is an experimental diagnostic**, not a Production tolerance.
 - **FBX:** the existing exporter/importer are used unchanged; integer-frame drift, CONSTANT→LINEAR interpolation and scene
-  range loss are expected (W107–W112) and reported, not fixed.
+  range loss are expected (W107–W112) and reported, not fixed. Since W127, the opt-in `fbx-interchange` / `fbx-consume`
+  path recovers the Action in a Blender 5.1 consumer, but only with its package manifest and adapter. Raw FBX alone is
+  still not lossless, and no game-engine import was tested.
 - Only the BaseRig is supported. Any other rig, cadence, joint or edit type is out of scope.

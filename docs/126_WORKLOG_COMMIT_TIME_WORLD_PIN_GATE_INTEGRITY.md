@@ -524,3 +524,6 @@ $PY -m app.cli experimental-video-action revert --run runs/S1_replay            
   - `src/app/experimental_action_txn.py`, `src/app/cli.py`, the GUI and the Blender stage;
   - the frozen W1xx scripts and algorithms, the FBX exporter and importer, models and the rig;
   - the normative architecture documents, `scripts/batch_automation.py`, and the W124/W125 test files.
+
+AUTOMATION_BATCH_STATUS: COMPLETE
+BATCH_NUMBER: 126

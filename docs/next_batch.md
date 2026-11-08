@@ -1,555 +1,591 @@
-# BATCH 122 — Real-Time Animation Utility of Frozen World-Pin Guidance on Independent-Video Motion
+# BATCH 123 — Reliability-Aware Animation Base: Learned 3D Pose Error Estimation and Decision Utility
 
 DIRECTION
 
-Continue the approved AnimCV Video-to-Animation Generator/Editor architecture:
-immutable source evidence, editable rig state, semantic WORLD_POSITION_PIN,
-bounded visible automatic transition edits, independent Blender evaluation,
-and exact accept/reject/revert.
+Continue AnimCV toward a Reference-Guided, Reliability-Aware
+Video-to-Animation Generator and user-controllable Semantic Constraint Editor.
 
-This is a bounded, evidence-only test of ANIMATION UTILITY, not a solver
-improvement or another attempt to retroactively repair a historical CASE.
+USER-APPROVED ARCHITECTURE DIRECTION:
+Introduce an explicit, learned per-frame/per-joint 3D reconstruction
+uncertainty or expected-error signal to inform how strongly a future
+Generator should trust a reconstructed reference motion.
 
-Use the three authenticated dynamic source videos and frozen source-to-rig
-pipeline from W121, with newly predeclared held-out WITHIN-SOURCE windows.
-The sources are independent of W102/W105, but NOT new independent sources
-relative to W121. State this distinction everywhere.
+The user approved removing the W123 HOLD and proceeding with this
+bounded uncertainty hypothesis. This approval DOES NOT authorize
+a trained Motion Generator, Production schema changes, unbounded
+training, modifying FramePose weights or relaxing Hard Constraints.
+
+For W123, build an isolated, calibrated Reliability Assessor/Head
+candidate around a frozen existing 3D FramePose model and measure
+whether that signal genuinely predicts error and improves a bounded,
+GT-free-at-decision-time review/selection task.
+
+Prioritize evidence about useful estimation-error uncertainty,
+not a decorative confidence output.
 
 PURPOSE
 
-W121 completed three-source acquisition and matched factor evaluation but
-its official CASE D — INVALID is immutable: V10 compared nondeterministic
-wall_s in repeat builds, and V12/DG5 applied a REJECT->ACCEPT display
-corruption to an already ACCEPTed candidate. W121's post-hoc mechanical B
-is NOT an official verdict and must never be adopted.
+W122 official CASE B (limited/context-specific) had only one
+held-out release window with agent-rated visual benefit, and its
+S1_NH event involved a ~400 mm/frame one-frame change in the
+self-occluded far-arm reconstruction. Following an erroneous
+source hypothesis can improve a source-relative comparison while
+making the animation less faithful to the performer.
 
-The W121 exploratory pattern is nevertheless decision-relevant:
-- Four numeric guide improvements were clustered into two windows:
-  S1_MID_RBneg and S2_LOW_{none,RBpos,RBneg}.
-- There was no meaningful guide improvement in S3.
-- In some cases a smaller SOURCE-RELATIVE compensation peak corresponded
-  to a LARGER raw wrist step, because the guide returned toward fast,
-  discontinuous unedited source motion.
-- The agent's frame-crop review saw differences for 1–3 frames, but did
-  NOT establish improved continuity; real-time playback was NOT reviewed.
-- S1/S2/S3 source parents have reported raw wrist jumps of 0.877/0.628/
-  0.228 m per frame, respectively. S2 is a crowded two-juggler source,
-  and subject association remains UNKNOWN.
-- Ten of 27 original evaluation requests were infeasible, especially
-  every HIGH travel window. A source-relative metric alone does not
-  establish useful animation or practical user intent satisfaction.
+The fundamental issue is distinct from the World Pin contract:
+how should the eventual Generator differentiate well-supported
+reference motion from possibly incorrect reconstruction?
 
-The next meaningful uncertainty is not whether the W121 timing and
-display-control mistakes can be cosmetically corrected. It is whether
-the frozen guide actually improves VIEWED REAL-TIME rig animation on
-new, prospectively selected edits, rather than merely moving error
-from edit-induced compensation back into source motion.
+Existing RTMPose scores describe 2D detector outputs. W113
+established that they are not bounded calibrated probabilities:
+actual scores can exceed 1 and '1 - confidence' can go negative.
+These are not valid calibrated 3D uncertainty estimates.
+
+Architecture_v2's Keyframe Importance and Confidence history is
+not equivalent to a model that predicts 3D reconstruction error.
+Architecture_v3 currently specifies FramePoseEstimator output as
+(B,17,3), without a learned calibrated 3D uncertainty head.
+No existing result establishes that a trained uncertainty head
+will be useful, calibrated or generalizable.
+
+W123 tests this missing reliability-information layer before
+the additional cost and entanglement of a Motion Generator.
 
 CENTRAL INTENT
 
-On source-authenticated real motion, with frozen source-to-rig inference
-and W120 factor solvers, does world-space wrist guidance yield a
-reproducible, visually legible improvement in the real-time playback of
-user-pinned Blender animation, WITHOUT increasing raw discontinuity,
-articulation damage, hidden edits or hard-pin failure?
+Can a separate learned assessor, using only authentic runtime-
+available observations and the frozen model's own predictions
+or representations, predict frame/joint-specific 3D pose error
+with calibration and transfer value beyond raw detector scores
+and simple unlearned baselines?
 
-Disentangle:
-(A) unedited source/Animation Base discontinuity,
-(B) user-edit and pin-induced compensation,
-(C) transition mechanism contribution, and
-(D) subjective agent-visible animation quality.
+Does that information improve a PREDECLARED, label-free-at-decision
+review/retention/alternative-selection task on unseen examples,
+rather than merely correlating with GT in a diagnostic probe?
 
-The central question is about REAL-TIME ANIMATION UTILITY and
-architecture ownership of source-vs-edit error, not the ability to
-tune a wrist guide or relabel W121's CASE.
+What failures occur on occluded, mislocalized, high-velocity,
+out-of-distribution and high-confidence-wrong predictions?
 
-HUMAN ASSESSMENT / CURRENT ASSESSMENT
+Do not treat probe recoverability, correlation or low training
+loss as proof that a future Generator will use uncertainty
+correctly or produce better animation.
 
-Established:
-- User approved WORLD_POSITION_PIN, strict hard pins, separated source
-  and editable states, bounded visible out-of-pin automatic editing,
-  and atomic accept/reject/revert.
-- W116 B established bounded pin feasibility; W117 C failed temporal
-  utility; W118 D and W119 D had invalid instruments; W120 B isolated
-  context-specific guide benefit in one historical clip.
-- W121 D is complete. Three newly sourced, licensed dynamic videos
-  and a frozen W102 M1/S0 -> W105 rig adapter were reported usable by
-  the Agent, with byte-exact historical reproduction.
-- W121's invalidity is explained by two identifiable predeclared
-  instrument errors; its positive numeric patterns remain exploratory.
-- W116–W120 cumulative audit was completed at 60f32c7.
+CURRENT ASSESSMENT
 
-Not established:
-- Independent reviewer re-execution of W121's local Blender or video
-  artifacts; source-to-performer 3D fidelity; verified S2 subject track;
-  visually improved real-time animation; transfer beyond these three
-  videos; a Production-safe quality threshold; Generator training.
+Historical official cases remain unchanged:
+W113 D, W114 D, W115 D, W116 B, W117 C,
+W118 D, W119 D, W120 B, W121 D, W122 B.
 
-Why another Batch matters:
-- W121's numeric guide gains are not sufficient evidence of improved
-  animation. A prospective held-out-episode real-time evaluation can
-  discriminate editor usefulness from source-noise-limited results.
-- The two W121 validity failures are preflight defects to avoid in the
-  NEW experiment, not reasons to change W121 history.
+W113: unbounded RTMPose scores and unjustified 3D uncertainty
+proxy; do not equate detector raw score with calibrated 3D trust.
+
+W103: failure depends on 2D observation, missingness and frozen
+model behavior, but its GT-only analysis cannot be promoted to
+an inference-time error predictor.
+
+W116–W122: scratch world-pin and authorized visible edit
+contracts have useful limited evidence; temporal guide quality
+is context-specific and may follow erroneous source jumps.
+
+W121 acquired three genuinely independent dynamic GT-free clips:
+S1 kettlebell, S2 juggling, S3 bent-over row. W122 reused them
+for held-out WITHIN-SOURCE windows, did not establish independent
+real-time viewer utility, and did not establish 3D Ground Truth.
+Do NOT label these real clips as GT-scored.
+
+There has been an official W116–W120 cumulative repository audit.
+The W125 audit boundary is unchanged.
 
 HUMAN-READABLE SUMMARY
 
 Direction:
-Evaluate real-time, user-visible animation utility of frozen world-pin
-transition guidance on existing independent-video sources.
+Test a frozen-model, sidecar learned joint-level 3D error assessor.
 
 Purpose:
-Determine whether improvements in source-relative transition metrics
-translate to visually better pinned animation when raw source jumps,
-subject identity and articulation are accounted for.
+Establish whether a future Generator can distinguish trusted
+motion references from uncertain reconstruction hypotheses.
 
 Central Intent:
-Do frozen G1-vs-G0 world-space guide contrasts produce real-time motion
-quality improvements on newly selected within-source hold episodes,
-with strict pin, authorization, visible footprint and undo guarantees?
+Is the model's predicted uncertainty actually calibrated and
+decision-useful, rather than a proxy that follows 2D visibility
+or merely identifies obvious high-error examples?
 
 Do:
-- Verify W121 originals, source identities and frozen pipeline hashes.
-- Correct the two known W121 measurement-spec defects prospectively
-  in a NEW W122-only instrument before any candidate outcomes.
-- Predeclare new disjoint held-out episodes using U and frozen
-  feasibility information only; account for all eligible/failed cases.
-- Run matched frozen controls and actual Blender world evaluation.
-- Render 30 fps real-time side-by-side motion with anonymized variants.
-- Measure raw motion, source-relative compensation and articulation
-  separately, with full negative results and uncertainty.
-- Include existing synthetic cases as causal sanity controls.
+- Audit frozen FramePose model, inference inputs and available GT.
+- Design a causal/leakage-safe separation of training,
+  calibration and held-out evaluation at video/subject level.
+- Compare a small learned assessor against fixed/unlearned
+  confidence, visibility and geometry baselines.
+- Evaluate error prediction, calibration, coverage, high-
+  confidence failures and domain transfer.
+- Test prospective utility of a GT-free-at-decision-time
+  triage/selection/retention decision, if controlled candidates
+  are available.
+- Preserve GT-free real-video outputs and all historical records.
 
 Do NOT:
-- Reassign W121 D to B or patch W121/W120 source.
-- Modify frozen model, rig, timebase, solver, margins, flex floor,
-  objective, acceptance thresholds, authorization or Production code.
-- Choose episodes after seeing factor or playback outcomes.
-- Claim source 3D GT, tracked-subject identity or animator validation
-  without actual evidence.
-- Train a Generator, build Production UI, add constraint types or
-  select permanent joint-quality limits.
+- Modify or fine-tune existing FramePose/RTMPose models.
+- Train Motion Generator/Diffusion or new pose backbone.
+- Write uncertainty into existing Production MotionGraph,
+  AnimationClip, Blender/FBX or keyframe output schemas.
+- Choose a permanent Generator trust-weighting policy.
+- Suppress source motion, overwrite estimates or treat
+  high uncertainty as permission to violate hard constraints.
+- Request or decide the next Batch.
 
 Decision enabled:
-Whether the world-space guide has bounded, reproducible, visually
-meaningful real-time editing utility on the existing source set, is
-limited to a source-relative numerical effect, or remains untestable
-because of source/perception/measurement validity.
+Whether the proposed Reliability layer is sufficiently
+valid and useful to remain a candidate input to a future
+Generator/Editor, or remains unsubstantiated.
 
 HISTORICAL BASELINE
 
 Repository: kn99e39/AnimCV
-Existing branch ONLY: arch/single_frame_first
-Observed W121 COMPLETE HEAD: 3fc090817575a4cd134fb6af323d8512f955533b.
-W121 Worklog: docs/121_WORKLOG_INDEPENDENT_REAL_VIDEO_WORLD_PIN_TRANSFER.md
-W121 Worklog blob: f1a8c305b7c12052f839543da1a473d2c6c7effa
-Current instruction before issue: W121 blob
-1d9f48f88b12b348b80ebb1b4a5ff15dfa403dfa.
-
-Before doing anything, fetch the remote and check HEAD, this new W122
-instruction blob, current Worklog sequence, AGENTS.md and normative
-architecture. Never overwrite newer concurrent work.
+Existing branch ONLY: arch/single_frame_first.
+Last observed pre-issue HEAD: 08d6851e8bcc220ed07e130cf279f01d3b720587.
+Verify current remote/local HEAD and instruction blob before work.
 
 Read:
-- AGENTS.md, PRODUCT_VISION.md,
-  Architecture_v3_FramePose.md, Architecture_v2.md (precedence)
+- AGENTS.md, PRODUCT_VISION.md
+- Architecture_v3_FramePose.md and Architecture_v2.md
+- docs/103, 102, 105 and 113 Worklogs
+- docs/121 and 122 Worklogs and their separate real-video limits
 - docs/AUDIT_W116_W120_2026_11_06.md
-- docs/116–121 Worklogs, especially W120 and W121 official verdicts
-- scripts/w116_semantic_pin*, scripts/w116_blender_stages.py
-- scripts/w118_transition_edit*, scripts/w119_endpoint_transition*
-- scripts/w120_factor_attribution*, scripts/w121_independent_transfer*
-- scripts/w121_posthoc_checks.py (READ-ONLY HISTORICAL DIAGNOSTIC)
-- tests/test_w120_factor_attribution.py,
-  tests/test_w121_independent_transfer.py
-- W121 acquisition/inspection/perception/prepare/declaration/decision
-  manifests and locally stored originals, if actually present.
+- existing FramePose/Core, frozen W102/S0 evaluation contracts,
+  3DPW/raw-reference validity and sample identity code
+- current docs/next_batch.md
 
-Preserve historical official CASEs exactly:
-W113 D, W114 D, W115 D, W116 B, W117 C, W118 D, W119 D,
-W120 B, W121 D.
+Preserve all previous checkpoints, model weights, datasets,
+splits, manifests, source video, rig, Blender Actions, scripts,
+Worklogs and CASE decisions.
 
-W121's post-hoc "would be B" is explanatory only and is NOT
-an authorized result, a valid new baseline or a source of new gates.
+No branch create/switch/delete/merge/rebase/reset or force-push.
+Do not change any existing Production src/ module or model.
+No Production inference contract or keyframe-collapse behavior
+may be altered in W123.
+
+INFORMATION OWNERSHIP AND SEMANTICS
+
+Distinguish:
+1. Immutable original RGB and timestamp/source identity.
+2. Raw 2D detector observation: xy, score, validity and provenance.
+3. Frozen reconstructed 3D pose hypotheses and optional frozen
+   intermediate representations.
+4. Learned assessor estimate of 3D error or uncertainty.
+5. Calibration and probe recoverability.
+6. A proposed runtime decision that uses the estimate.
+7. A future Generator's actual behavior (NOT implemented here).
+8. Final edited Blender Action and animator utility (NOT proven here).
+
+The 3D uncertainty signal concerns expected error of a SPECIFIC
+frozen model prediction, joint, frame, coordinate frame,
+normalization, regime and model/checkpoint. It is not:
+- detector probability;
+- absolute ground-truth confidence;
+- epistemic-versus-aleatoric decomposition without evidence;
+- a hard user constraint;
+- a statement about whether visible movement is artistically good.
+
+Use uncertainty at source-frame/joint resolution initially.
+A Blender keyframe is a later sampling/optimization artifact.
+Do not lose uncertainty at frames removed by keyframe collapse.
+
+Hard user-authored WORLD_POSITION_PIN constraints remain binding
+regardless of predicted uncertainty. Only reference-trust
+SOFT weighting or candidate review priority may respond to it.
 
 PRESERVE / CHANGE ONLY / DO NOT TUNE
 
 PRESERVE:
-- All original W102/W105 and W116–W121 assets, Worklogs and verdicts.
-- W121 three original video bytes and verified licence/provenance,
-  hashes, decoded frame/time mapping, model/checkpoint identity,
-  frozen W102 M1/S0 inference and W105 FIXED-slot adapter.
-- W116 scene-world metre pin semantics and scratch 1 mm diagnostic
-  (NOT a Production tolerance).
-- W118 automatic bounded transition scope and truthful actual footprint.
-- W119 clean per-request U_r/F_r/X_r isolation and frozen comparator.
-- W120 four variants G0F0/G0F1/G1F0/G1F1 and identical solver,
-  pole, guide, floor, budgets, margins, source/rig/DOF and gates.
-- Original 30 fps source/Action timing for S1/S2/S3; no frame
-  re-timing, resampling or interpolation to hide discontinuities.
-- Frozen real-video and synthetic negatives, source guard, exact undo.
-- W121 original declaration, results, evidence manifest and failed V10
-  and V12 controls. They are immutable historical evidence.
+- Frozen FramePose checkpoint and inference implementation.
+- RTMPose raw scores, source validity and original observations.
+- W102/W103/W113 sample identity, raw-reference/eval-only GT rules.
+- Historical 3DPW VAL/TEST and derived candidate comparisons.
+- W121/W122 source images, clips, rig outputs and W122 CASE.
+- Existing Real AnimCV (GT-free) runtime semantics.
+- All existing source/manifests, branch and Worklogs.
 
 CHANGE ONLY:
-- New W122-only scratch code, tests, outputs and numbered Worklog.
-- New predeclared held-out windows/requests derived from existing
-  frozen source states, before new solver outcomes.
-- NEW W122 instrument validity rules and controls that explicitly
-  correct W121's known mistakes BEFORE any new candidate execution.
-- Blender scratch Action evaluation, real-time comparison renders,
-  non-Production annotated timelines and visual review artifacts.
-- Small attributable visual previews in the repository only when
-  licence and repository size permit; original videos remain outside.
-- Deterministic synthetic copies for causal probes; never overwrite
-  historical synthetic states.
+- Isolated W123 assessor/uncertainty research code and tests.
+- Scratch training/calibration artifacts and metadata outside
+  existing model/checkpoint locations.
+- Scratch identity-bound reliability sidecar outputs.
+- W123 prospective declaration, evidence and Worklog.
+- Small diagnostic-only error-ranking/decision replay, if valid.
 
 DO NOT TUNE:
-- Any model weight, 2D threshold, source association algorithm,
-  frame-to-rig mapping, rig rest geometry, or Animation Base values.
-- W116–W120 solver, hard-pin or source-preserving contracts.
-- W119/W120 numerical quality comparator or thresholds.
-- W121 source selection after seeing solver results.
-- New visual-rating rubric or CASE gates after seeing W122 outcomes.
-- User-edit amplitudes, clip FPS, temporal margins, budget, DOF,
-  flex floor, guide weight or Blender playback rate.
-- No Production src/, UI, schema, retargeter, FBX, trained Generator.
+- Frozen FramePose/RTMPose checkpoint, crop, threshold, masks,
+  2D observations, source timing, source-to-rig conversion.
+- W116–W122 world-pin thresholds, solver, candidate interpolation,
+  guide, flex-floor, or animation-quality criteria.
+- Existing historical evaluation-gate decisions.
+- Test thresholds, sample selection, baselines or source splits
+  after seeing held-out outputs.
 
-REQUIRED EVIDENCE — PART 1: DATA AND REPRODUCTION PREFLIGHT
+Small assessor training is permitted ONLY within this diagnostic
+scope. Architecture of assessor, feature representation, loss
+and bounded optimization choices are Agent-selectable, provided
+they are declared before final held-out assessment.
 
-Authenticate S1/S2/S3 from W121's declared Commons originals:
-- S1: Double Kettlebell Strict Press (side view).webm,
-  original SHA-256 prefix de8feb9d515daa2b.
-- S2: Firejuggling 2009 ubt.ogv, prefix 68301b0c35c98448.
-- S3: Bent-over row - exercise demonstration video.webm,
-  prefix f6b90f2f72e9020d.
+REQUIRED EVIDENCE — 1
+DATA AND SPLIT VALIDITY
 
-Verify full hashes against W121's original acquisition manifest, exact
-decoded frame fingerprints, licences, source time, checkpoint identity,
-and the W121 parent state hashes and rig bindings.
+Identify exact frozen predictor, dataset(s), GT coordinate frames,
+raw 3DPW reference alignment, validity masks, actor associations,
+frame rate, observation regime and model training-data exposure.
 
-These are three sources independent from the historical W102 clip.
-They are NOT a new source-acquisition population in W122. Do not
-download substitutes, circumvent HTTP 429, or use re-encoded W102.
+IMPORTANT: W102/W103/W105 3DPW VAL/TEST has repeatedly informed
+design and is NOT a fresh untouched model-system holdout.
+Do not call this clean independent generalization simply because
+an assessor is trained on other samples.
 
-For S2, inspect source frames and frozen detection boxes/landmarks
-BEFORE solver outcome inspection. Record identity continuity as
-VERIFIED only if there is affirmative source-backed evidence for
-the same person across the relevant interval. Otherwise UNKNOWN;
-do not assume the frozen tracker proves identity. Track-switch
-ambiguity may exclude a request from strong source-fidelity claims
-but MUST remain in coverage and negative-result accounting.
+Build disjoint assessor TRAIN / CALIBRATION / FINAL EVALUATION
+populations by original source video/actor identity, and keep
+correlated frames, multiple people/crops of the same image,
+near-duplicate scenes and derivative observations from crossing
+partitions. Where possible, obtain an independent GT-supported
+evaluation dataset compatible with the frozen predictor; retain
+distinct source regimes and camera calibration.
 
-Verify historical W102 reproduction and W105 rig adapter fidelity
-from the frozen artifacts, or rerun the frozen path if needed.
-Distinguish agent-stored hashes from independently re-executed checks.
-If original video or rig identity is missing or invalid, report
-SOURCE/PERCEPTION/RIG BLOCKED, not a successful transfer.
+Record whether the original frozen FramePose checkpoint may
+have been trained on each dataset. If historical exposure
+cannot be proved absent, disclose it as a limitation.
 
-REQUIRED EVIDENCE — PART 2: PROSPECTIVE INSTRUMENT REPAIR
+Confirm target 3D joint errors are physically meaningful:
+- same identity, joints, units, root-relative vs global alignment;
+- correct coordinate and camera transforms;
+- raw GT validity independent of detector visibility;
+- no invalid targets silently treated as zero;
+- no GT in runtime features, candidate selection or the assessor
+  evaluation decision.
 
-Build a NEW W122 validity instrument. Never patch W121 or reinterpret
-its official verdict. Before building or viewing ANY W122 factor outcome:
+Describe missing/out-of-support joints explicitly.
+Group statistics by source video, actor and observation regime.
+Do not pool oracle geometry and actual detector observations
+without retaining separate metrics and source identities.
 
-V10 repair:
-- Repeatability compares deterministic states, exact Blender
-  evaluations, and semantic solver records AFTER excluding ONLY
-  explicitly enumerated nondeterministic timing/telemetry fields.
-- Start with the known W121 wall_s issue; enumerate every excluded
-  field in the pre-outcome declaration. Do not drop solver statuses,
-  planned/changed frames, residuals, source IDs, state IDs, margins,
-  budgets, branch flags or quality outputs.
-- Negative control: alter a semantic solver field in the second run;
-  repeatability MUST fail. Merely stripping all records is invalid.
+If no sufficiently independent, authenticated and well-aligned
+GT supervision/evaluation population can be established,
+STOP with DATA BLOCKED / NO ARCHITECTURE CASE.
+Do not train on W122 GT-free footage as if labels existed.
 
-V12 / display repair:
-- The REJECT->ACCEPT label-corruption test MUST use a prospectively
-  selected genuinely REJECTed variant; assert the precondition
-  decision == REJECT before injecting the display corruption.
-- Require that the corruption changes the displayed status and that
-  the independent truth check detects it.
-- Keep controls for missing changed frame/bone, wrong pin domain,
-  collapsed disjoint runs, hidden change, false ACCEPT, stale parent,
-  inexact revert, wrong source/model/FPS, baseline contamination,
-  hard-pin violation and error-class precedence.
-- If no eligible REJECT exists, predeclare a controlled infeasible
-  request and verify it, not an after-the-fact substitute.
+REQUIRED EVIDENCE — 2
+PROSPECTIVE RELIABILITY TARGET AND BASELINES
 
-Run independent fixture and negative-control preflight before outcome
-inspection. Freeze a W122 declaration with code blobs, input hashes,
-source windows, request IDs, negative expectations, numerical and
-visual metrics, review order, validity gates and CASE rule.
-If either corrected gate cannot be made non-vacuous prospectively,
-STOP as INSTRUMENT BLOCKED. Do not run candidates then repair gates.
+Declare one PRIMARY uncertainty target and output semantics
+BEFORE looking at final evaluation errors, for example:
+a positive predicted per-joint 3D absolute error scale in
+metres, or an explicitly calibrated probability of exceeding
+a predefined per-joint error level.
 
-REQUIRED EVIDENCE — PART 3: NEW WITHIN-SOURCE USER EDITS
+A score ordering without stable scale is a RISK SCORE,
+not a calibrated probability.
 
-Use the existing W121 S1/S2/S3 30fps parent Actions, no new source.
-Construct a NEW prospective hold population distinct from W121's
-LOW/MID/HIGH windows.
+Baseline comparators must include:
+A. constant/per-joint and/or dataset-prior error estimates;
+B. raw 2D detector score plus missing/validity status,
+   with its ACTUAL measured non-[0,1] domain preserved;
+C. an unlearned runtime-available geometry/temporal-consistency
+   heuristic where supported (may report UNAVAILABLE).
 
-- 9-frame WORLD_POSITION_PIN at the captured left wrist scene-world
-  position; existing W121 user edits none, spine_01 +5° and −5°.
-- Same authorized {upperarm_l, lowerarm_l}, frozen W118 m_max = 8,
-  per-request isolated U/F/X and matched W120 factor mechanisms.
-- Enumerate candidate windows entirely from unedited Blender U and
-  frozen W116 F feasibility, not from factor outcomes.
-- Exclude overlap with W121 pin windows AND their ±8-frame transition
-  budgets; remain within one authenticated shot/track.
-- Select at most two feasible NEW windows per source, one lower-travel
-  and one higher-travel, by a deterministic rank rule declared before
-  any factor run. Preserve the full candidate list and tie rules.
-- Do not force selection of a high-travel feasible episode if none
-  exists. Report how many windows were feasible/infeasible and why.
-- Evaluate all three edit variants on selected windows; keep every
-  rejection in the declared denominator.
-- Also evaluate W121's predeclared original windows as a SEPARATE
-  labelled REPLICATION/ANCHOR population, never as new held-out
-  episodes. Do not combine them to inflate independent evidence.
-- Include at least one frozen infeasible and one zero-budget control
-  per processable source. Do not exclude them post-hoc.
+The learned assessor candidate may use legitimate runtime-
+available features, such as frozen 2D xy/score/validity,
+frozen 3D pose, joint geometry and optional frozen feature
+tokens, but MUST NOT use hidden GT, future edited output,
+benchmark stratification labels, actor GT ID or a privileged
+oracle available only in evaluations.
 
-The previous W121 guide-positive S1_MID and S2_LOW are KNOWN from
-history, not held-out discoveries. They may inform a hypothesis but
-must never count as independent W122 holdout wins.
+If temporal context is used, declare online/offline scope and
+actual source time, identity continuity and future-frame access.
+Unverified identity must not be silently treated as known.
+Do not require production changes to fetch hidden-state tokens.
 
-REQUIRED EVIDENCE — PART 4: MATCHED FROZEN BLENDER EVALUATION
+Predeclare feature allowlist, normalization, training strategy,
+loss, training/calibration splits, seeds, model-selection rules,
+and the final-evaluation frozen metrics. Use only development
+data to choose hyperparameters and calibrate reliability.
+No post-hoc hyperparameter or threshold sweep.
 
-For every predeclared request use:
-U_r — unpinned user edit,
-F_r — isolated W116 framewise pin,
-X_r — W118 transition baseline,
-G0F0/G0F1/G1F0/G1F1 — frozen W120 matched factors.
+REQUIRED EVIDENCE — 3
+LEARNED ERROR ESTIMATION AND CALIBRATION
 
-Primary GUIDE contrast G1F0 vs G0F0; conditional GUIDE G1F1 vs G0F1.
-Primary FLOOR contrast G0F1 vs G0F0; conditional FLOOR G1F1 vs G1F0.
-Keep all contrasts, interactions, and X_r vs G0F0 differences labelled.
+Train a small candidate Reliability Assessor/Head around the
+FROZEN pose model; the original model predictions must remain
+byte-identical wherever deterministic baseline comparison is
+defined.
 
-Enforce:
-- same source, parent, rig, pin, user edit, auth, budget and margins;
-- source video and checkpoint immutability;
-- independent Blender world-pin evaluation, not just Python FK;
-- no new infeasible acceptance or feasible nonconvergence masked;
-- changed frame/bone footprint subset of authorised temporal domain;
-- user-edit spine and object/root preserved as specified;
-- preview/result status matches true commit and actual Blender state;
-- exact revert and inexact rollback detection;
-- valid zero-budget and negative error precedence.
+Before testing the candidate:
+- confirm feature/GT access separation;
+- verify output finite, nonnegative and unit-consistent;
+- verify missingness has explicit supported/unsupported status;
+- verify checkpoint provenance, seed and exact code identity;
+- declare numerical and calibration reporting criteria.
 
-Do not treat the G0F0 wrist matching X_r as full joint-pose parity.
-Do not tune any method to improve W122 quality.
+On final evaluation, report at minimum:
+- per-joint and per-frame target support/coverage;
+- actual 3D error distributions and prediction distributions;
+- ranking discrimination (e.g. Spearman/PR-AUC for materially
+  wrong predictions) with valid denominators;
+- calibration error by predicted-error bin, quantile coverage,
+  error-conditioned coverage/rejection or equivalent appropriate
+  metric for chosen prediction semantics;
+- mean/median/p90 error within predicted reliability strata;
+- false-reassuring high-confidence / high-error counts;
+- missingness, occlusion, detector score >1, near-straight,
+  high-motion and camera/viewpoint strata where supported;
+- video-cluster uncertainty/intervals and small-sample limits;
+- calibration on training-domain vs independently sourced
+  evaluation domain, explicitly separated.
 
-REQUIRED EVIDENCE — PART 5: SOURCE VS EDIT ERROR ATTRIBUTION
+A low average regression loss is not enough.
+Report every baseline and learned candidate under paired,
+identical observations and target support.
+Explain how a model could look calibrated marginally while
+failing badly on the occluded arm or on a new motion domain.
 
-On actual Blender-evaluated animation, in metres and real seconds,
-report per request and contrast:
+Do not assume numeric scores can be interpreted as per-keyframe
+likelihood of correctness until calibrated to a declared event.
 
-1. U raw wrist/elbow step, peak angular step, discontinuity timing.
-2. F_r/X_r/G0/G1 raw wrist and elbow steps in pin/entry/release
-   and adjacent unpinned frames, not only compensation residual.
-3. Source-relative edit-induced compensation and release errors,
-   explicitly distinguished from raw motion.
-4. Changes in speed/acceleration at the 30 fps real-time rate,
-   source-relative and absolute; identify source-dominated spikes.
-5. Elbow flex, near-straight frames, bend-plane flips, arm rotation,
-   user-edit preservation, pin reachability, solver failure and
-   collateral change.
-6. Exact actual changed frame/channel footprint and the timeline
-   disclosure, including rejected candidates and reversibility.
-7. Source and subject-association confidence; no video 3D GT claim.
+REQUIRED EVIDENCE — 4
+REAL VIDEO GT-FREE APPLICATION
 
-Predeclare a source-dominated vs edit-induced diagnostic partition
-from U's raw steps BEFORE looking at factor outcomes. Treat it as
-experimental stratification, not a permanent source-quality threshold.
-Report both aggregate and per-source/per-window results; do not
-treat edit variants of the same window as independent episodes.
+Replay assessor inference on the W121/W122 independently
+sourced clips S1 kettlebell, S2 juggling and S3 bent-over row,
+using frozen source inputs/checkpoints, with separate identity
+and time evidence. Do not treat W122 as a fresh new source
+relative to W121.
 
-An improvement in compensation peak that restores a large raw U
-jump is NOT automatically an animation-quality improvement.
+Inspect representative W122 S1_NH event around f251 and any
+other predeclared unstable observations.
 
-REQUIRED EVIDENCE — PART 6: REAL-TIME PLAYBACK UTILITY
+Report:
+- detector score and validity;
+- predicted uncertainty for relevant arm joints;
+- source/FramePose trajectory changes;
+- supported/unsupported/unknown source identity and binding;
+- whether obvious instability is flagged and whether normal
+  motion is also flagged as uncertain;
+- examples of false reassurance or indiscriminate rejection.
 
-This is the essential NEW evidence missing from W121.
+These are qualitative/sanity and domain-shift stress tests.
+The ground truth 3D error on S1/S2/S3 is UNKNOWN.
+A high estimated uncertainty for the 400 mm event does NOT
+prove the assessor correctly identified the actual 3D error.
+A low uncertainty is a failure warning, not proof that the
+motion is correct.
 
-Render consecutive full-motion segments at EXACTLY 30 fps in the
-unchanged Blender rig, with no extra temporal filtering, frame
-interpolation, motion smoothing, motion-blur masking or retiming.
-Include full entry/hold/release and sufficient adjacent context.
+No production rendering/export or Motion Generator change
+is allowed in this Batch.
 
-- Source frames, U, F_r, X_r and G0/G1 variants must be synchronised
-  on an explicit source-time axis; no silent camera or scale changes.
-- Show world wrist pin target, relevant elbow/wrist paths and the
-  actual planned vs changed timeline. Keep a clean playback view too.
-- Use front and side views; distinguish world-axis views from
-  character-relative views. Show both real-time and optionally
-  slowed diagnostic playback, clearly labelled.
-- At least the complete new held-out population, the W121 known
-  positives, S3 negative/neutral, and all hard-pin failures must
-  receive predeclared visual coverage. If full coverage is infeasible,
-  declare the fixed sample and excluded population BEFORE review.
-- Randomize/anonymize paired G0F0/G1F0 labels by a fixed predeclared
-  seed, retain sealed mapping until ratings are recorded.
-- Before unblinding, record for each pair:
-  visibly better G0 / visibly better G1 / tie / unjudgeable;
-  whether raw motion continuity, elbow plausibility, pin behavior,
-  temporal transition, source fidelity and user intent improve,
-  worsen or cannot be judged, with specific frame/time evidence.
-- Inspect full-motion playback rather than stills alone. If playback
-  cannot be generated/inspected, do NOT claim a positive visual result.
-- The Agent is not an independent animator. Label all such judgments
-  AGENT REVIEW, not professional user validation.
-- Publish compact representative attributable evidence if rights and
-  size permit; otherwise report exact local paths and hashes.
-  No unauthorized original-video redistribution.
+REQUIRED EVIDENCE — 5
+GT-FREE-AT-DECISION UTILITY
 
-Do not change ratings or the visual rubric after label reveal.
-A small visible difference is not synonymous with useful improvement.
+Assess whether the reliability signal has actual decision
+utility beyond ranking correlation.
 
-SYNTHETIC + REAL REPLAY
+Choose and DECLARE one minimal decision task using only
+runtime-available features, for example:
+- prioritizing a bounded number of suspect frame/joints
+  for human review;
+- selective acceptance/abstention of the frozen 3D reference;
+- conditional selection between TWO pre-existing frozen
+  candidates with identical source support and no GT inputs.
 
-Real:
-- Three W121 sources, with new held-out within-source windows plus
-  separately labelled W121 historical replication windows.
-- Explicit source-quality/identity limitations; retain negatives.
+Evaluate policy usefulness on held-out GT-supported data
+AFTER decisions are frozen:
+- error coverage and false-negative rate for a fixed review
+  budget or abstention rate;
+- relative value compared with constant, raw-detector and
+  geometry baselines;
+- failure concentration on high-confidence erroneous joints;
+- per-video/actor generalization;
+- impact on valid high-motion observations vs obvious artifacts.
 
-Synthetic:
-- Reuse frozen W120 H_G held-out and H_C near-singular controls,
-  with original states unchanged.
-- Optionally create ONE prospectively fixed deterministic scratch
-  jitter perturbation of a copy of a synthetic parent, e.g. ±2°
-  alternating upperarm_l rotation; declare exact frames, amplitude,
-  seed and expected raw/source-relative effect before running.
-  This is a controlled rig-input perturbation, NOT simulated
-  real-video perception evidence.
-- Test hard pin, no hidden edit, negative control, rollback, and
-  whether source discontinuity can dominate a compensation metric.
-- Keep synthetic conclusions out of real-video utility denominators.
+If comparing an alternative candidate, both alternatives must
+be independently available in the same output coordinate
+system and identical input regime; do not introduce a GT-derived
+candidate, retrain a Generator or select the better candidate
+with GT at inference time.
 
-DECISION GATES — PREDECLARE BEFORE CANDIDATE OUTCOMES
+A synthetic oracle-policy UPPER BOUND may be reported only as
+evaluation-only and never counted as deployable performance.
 
-DATA BLOCKED / NO CASE:
-No authenticated W121 original video plus frozen usable rig input
-can be recovered; report exactly what is missing. Do not substitute
-W102 or invent a new source.
+If only error detection but no actual paired editing alternative
+can be tested, label evidence as TRIAGE UTILITY, not Generator
+decision utility or final Animation improvement.
 
-CASE D — INVALID:
-Any material predeclared source identity, timebase, subject-binding,
-reproducibility, factor fairness, independent evaluator, population
-selection, negative control or review-blinding validity gate fails.
-W121's V10/V12 errors must NOT recur. A source with unverified
-person continuity is labelled UNKNOWN, not silently VERIFIED.
+Do not claim the future Generator causally uses reliability;
+Generator behavior is out of scope.
+
+REQUIRED EVIDENCE — 6
+RELIABILITY-AWARE BASE CONTRACT (SCRATCH ONLY)
+
+Create a minimal source-bound SIDECAR representation if needed:
+- source frame and timestamp;
+- semantic joint and coordinate frame;
+- model/checkpoint and observation provenance;
+- frozen pose hypothesis identity;
+- reliability output type, units, calibration identity;
+- supported/missing/unknown flags;
+- original raw 2D score retained distinctly;
+- diagnostic error and evaluation GT kept in a separate,
+  evaluation-only artifact never read at runtime.
+
+Do not overwrite confidence fields in Production MotionGraph
+or AnimationClip. Do not rename detector score into calibrated
+3D confidence. Do not collapse frame-level uncertainty to a
+sparse list of stored Blender keyframe indices.
+
+Show how a FUTURE Generator could consume a soft reference
+weight while a user-authored Hard Pin remains independent,
+without implementing this Generator or choosing permanent
+weight mapping.
+
+Synthetic contracts should prove provenance preservation,
+no GT leakage, invalid/missing handling, score>1 handling,
+time/joint indexing, reordering rejection, stale checkpoint
+rejection and separation of soft trust vs hard locks.
+
+QUANTITATIVE AND QUALITATIVE ACCOUNTING
+
+Provide actual numerators, denominators, uncertainty intervals
+and source IDs for all decision metrics. Separate:
+1. Assessor implementation and provenance correctness;
+2. Synthetic sidecar/GT-isolation contract correctness;
+3. Held-out GT error prediction and calibration;
+4. GT-free decision/triage utility;
+5. Real-video stress-test observations without GT;
+6. Future Generator Architecture viability (UNPROVEN).
+
+Review representative:
+- well-observed correct pose;
+- high-confidence wrong pose;
+- missing or occluded joint;
+- fast but valid motion;
+- visible detector score >1;
+- W122 S1_NH suspicious wrist event;
+- genuine false positive/false negative;
+- domain-transfer failure.
+
+Label reference-supported facts vs agent inference. Preserve
+negative examples, data gaps, prior Worklogs and failed baselines.
+
+DECISION CONTRACT
+
+Freeze precise gates before final held-out results.
+
+CASE A — BOUNDED SUPPORT:
+The assessor is demonstrably calibrated or has valid stated
+uncertainty semantics on authenticated held-out GT data,
+beats meaningful baselines on required ranking/calibration
+and decision-utility endpoints, preserves all source/GT
+separation contracts, and has no material hidden high-
+confidence error failure on the declared critical cases.
+Only supports a bounded future soft-reference input.
+
+CASE B — PARTIAL SUPPORT:
+Valid measurement supports some error prediction, calibration
+or triage utility, but generalization, decision utility or
+critical false-reassurance behavior is mixed/unresolved.
 
 CASE C — NOT SUPPORTED:
-Valid tests show no meaningful real-time guide utility on the
-prospective held-out episodes, or a material pin/authorization/
-reversibility/quality-safety failure. Separate mechanism failure
-from source-input limitation; never claim a better Animation Base.
+Valid controlled comparison shows the learned reliability
+mechanism is not meaningfully calibrated/decision-useful
+relative to simpler baselines under the tested conditions,
+or reliably fails a required minimum guarantee.
 
-CASE B — PARTIAL / CONTEXT-SPECIFIC:
-Valid tests show limited or mixed real-time utility, numerical-only
-guide benefits without convincing playback improvement, or benefits
-restricted to individual windows/sources, with clear limitations.
+CASE D — INVALID:
+GT alignment, source/model identity, train/eval leakage,
+target support, score semantics, assessor/evaluator separation
+or prospective controls are invalid.
 
-CASE A — BOUNDED WITHIN-SOURCE UTILITY SUPPORT:
-All validity and hard-contract gates pass; the prospective held-out
-episodes show reproducible meaningful guide benefits by the frozen
-numeric comparator AND blinded real-time AGENT REVIEW, on at least
-two distinct held-out windows from at least two source-verified
-clips, without new material raw-motion/articulation/collateral harm.
-This is NOT new-source generalization, independent animator
-validation or Production approval. If fewer than two verified
-sources have valid eligible episodes, A is unavailable.
+DATA BLOCKED — NO ARCHITECTURE CASE:
+No valid GT-supported independent training/evaluation basis
+or necessary frozen features can be obtained without an
+unapproved model/Production change.
 
-Require explicit numerical and visual agreement; a source-relative
-improvement alone can yield at most B. Predeclare how to handle
-ties, unjudgeable video, conflicting raw/relative evidence and
-infeasible episodes. Never change gates after outcomes.
+D supersedes A/B/C when a test occurred with invalid controls.
+Never reinterpret old historical CASEs based on this Batch.
+
+STOP CONDITIONS
+
+STOP and preserve evidence if:
+- authentic aligned GT cannot be safely used without leakage;
+- model exposure/splits cannot be made distinguishable and
+  inference claims would require treating reused TEST as unseen;
+- any GT or privileged annotation enters learned inference;
+- frozen FramePose output must change or require fine-tuning;
+- an already-used historical source is falsely called unseen;
+- raw detector score is silently clipped/interpreted as prob;
+- soft reliability overrides explicit Hard Pin;
+- training requires unapproved full-model/Generator changes;
+- a valid decision test requires changing W116–W122 solvers;
+- tests need post-outcome labels, thresholds or clip selection;
+- independent predictive calibration cannot be evaluated;
+- repository histories, source artifacts or branches would move.
+
+Preserve valid partial diagnostics. Do not keep training or
+sweep a failed hypothesis until an arbitrary positive appears.
 
 TESTING
 
 Run focused tests for:
-- source identity, video/frame/cadence and checkpoint provenance;
-- W121 frozen artifact reproduction and W122 new window exclusion;
-- non-vacuous V10 repeatability excluding ONLY declared telemetry,
-  with semantic-field corruption detected;
-- V12 REJECT->ACCEPT display corruption with verified precondition;
-- independent error-class precedence, budget zero and isolation;
-- matched factor fairness and no hidden tuning;
-- hard-pin world residual, actual changed frame/channel footprint,
-  rejected candidate status and exact/inexact rollback;
-- time-axis and 30 fps real-time render identity;
-- randomized blind label mapping and fixed visual rating records;
-- separate historical, new-held-out and synthetic denominators.
+- data/source/split and actor/video identity;
+- 3D target coordinate, metric and GT alignment;
+- inference feature allowlist and no-GT dependency;
+- source/model/assessor/calibration identity and replay;
+- detector raw scores above 1, missingness and provenance;
+- bounded assessor repeatability and model-weights immutability;
+- quantile calibration/ranking metric correctness;
+- decision/task controls including negative and no-op cases;
+- explicit hard constraint independence and sidecar integrity.
 
-Report exact commands and PASSED/FAILED/NOT RUN. Run relevant
-focused regressions; do not waste time on unrelated full suite
-for diagnostic-only changes. Do not report local Blender runs
-as Reviewer independently executed.
-
-STOP CONDITIONS
-
-Stop and report the specific blocker without changing Production if:
-- source/video/rig/checkpoint/parent identity cannot be verified;
-- historical W121 files/results must be rewritten;
-- prospectively valid source/track/time mapping is unavailable;
-- corrected V10/V12 negative controls are vacuous or failing;
-- new held-out window selection requires seeing factor outcomes;
-- frozen W120 solver requires unapproved code/parameter changes;
-- the matched budget, source, user edit, rig or authorized DOF differs;
-- any source guard, pin evaluator, hidden-edit or rollback gate fails;
-- 30 fps real-time playback cannot be made or inspected (then do
-  not claim visual support; report the bounded evidence limitation);
-- user policy on new constraint types, training, Production schema/UI
-  or permanent joint-quality thresholds becomes necessary.
-
-Do not fix a failed result by swapping clips, widening budgets,
-changing tolerances, filtering raw animation, hiding negative cases
-or rewriting historical CASEs.
+Use relevant focused frozen-model regressions, not reflexive
+full Pytest. Report exact commands and NOT RUN tests.
+Agent-run GPU/Blender numbers are NOT reviewer-reexecuted.
 
 FINAL REPORT
 
-Create docs/122_WORKLOG_<descriptive_name>.md containing:
-1. Official W122 CASE or DATA BLOCKED and its exact scope;
-2. Frozen W121 D, W120 B and all earlier historical verdicts;
-3. Source, license, exact video/frame/model/rig hashes and continuity;
-4. Prospective instrument declaration and non-vacuous V10/V12 repairs;
-5. New held-out window candidate/selection/coverage accounting;
-6. Original W121 replication separately from held-out episodes;
-7. Synthetic controls separately from real-source results;
-8. Matched factor/zero-budget/negative and pin safety results;
-9. Raw vs source-relative motion and per-source quality attribution;
-10. Actual Blender changed frame/bone scope, timeline and reversal;
-11. Full real-time visual method, blind mapping, ratings, evidence;
-12. What was visible vs what was only a numerical improvement;
-13. Every failure, rejected/unreachable edit and alternative explanation;
-14. Files changed, exact commands, tests, environment, artifacts/hashes;
-15. Explicit non-claims about user/animator validation, GT fidelity,
-    new-source generalization, Production quality or Generator training.
+Produce W123 Worklog with:
+1. Official CASE or DATA BLOCKED and exact Central Intent;
+2. Source/GT alignment, provenance and actual model exposure;
+3. Original and assessor split/sample IDs and identities;
+4. Declared target, baseline, features, training/calibration
+   strategy and gates, with pre-outcome fingerprints;
+5. Training and calibration numerical results;
+6. Paired held-out baseline/learned comparisons by regime;
+7. High-confidence wrong, occlusion and domain-shift failures;
+8. Decision/triage utility separate from score correlation;
+9. GT-free W121/W122 real clip stress test and non-claims;
+10. Scratch sidecar/GT-isolation and hard-lock invariants;
+11. Negative controls, alternatives and failure mechanisms;
+12. Source preservation, exact changed files, tests and
+    reproducibility;
+13. Unresolved uncertainty and Architecture hypothesis status.
 
-All local visual judgments and Blender runs must be marked AGENT-RUN
-or AGENT REVIEW. Do not claim independent Reviewer reproduction.
+Do NOT claim Architecture success automatically.
+Report negative results honestly.
 
-Do NOT provide:
-Next Work Recommendation, Next Architecture Decision,
-Recommended Next Experiment, Proposed Next Batch,
-Next Implementation Plan.
-
-Do not begin W123, train models, or modify Production code.
+No Next Work Recommendation, Next Architecture Decision,
+Recommended Next Experiment, Proposed Next Batch or
+Next Implementation Plan. Do not start W124.
 
 COMPLETION CONDITION
 
-W122 is complete only if the Reviewer can distinguish:
-1. Whether W121's known instrument defects were prospectively avoided
-   in a new, non-vacuous, validity-controlled experiment;
-2. Whether new within-source held-out pin episodes were selected
-   without seeing candidate outcomes, with all failures accounted;
-3. Whether frozen guide/floor effects improve ACTUAL real-time
-   Blender animation rather than only source-relative metrics;
-4. Whether source/perception discontinuity and track uncertainty
-   explain or limit the apparent guide benefit;
-5. Whether strict hard pins, bounded visible edits, source identity,
-   user intent, exact rollback and negative controls remain valid;
-6. Whether the evidence supports bounded within-source utility,
-   context-specific benefit, no support, invalidity, or data blockage.
+W123 is COMPLETE when controlled evidence enables the
+independent Reviewer to judge:
+- Whether an actual model-specific joint/frame 3D error
+  signal can be learned without GT/inference contamination;
+- Whether it is calibrated and useful beyond a raw 2D score
+  on clearly defined GT-supported held-out populations;
+- Whether it can improve a real GT-free-at-decision task,
+  or only an offline probe/error ranking;
+- Whether the W122 problematic observations illustrate a
+  meaningful stress test without fictional 3D ground truth;
+- Whether the reliability sidecar is an architecturally
+  defensible candidate for future soft reference weighting,
+  while Hard Pins and original evidence remain independent.
 
-A negative result is valid evidence. W121's official CASE D remains
-unchanged under every outcome. No automatic W123 execution.
+A negative or blocked result is valid. Report exactly what
+cannot be judged. Never automatically implement a Generator,
+Production schema changes or W124.

@@ -12,6 +12,10 @@ Commands:
   selftest-claude verify the headless Claude entry point from the current (e.g. scheduler) context
   hook-pre-commit / hook-pre-push   git hooks installed in the dedicated clone
 
+The remote branch may advance while a Batch runs (ChatGPT committing central-document updates agreed with the user):
+the running Batch keeps the documents of its starting commit, the updates apply from the next Batch, and the finished
+Batch is published with one clean merge commit; a conflicting merge is aborted and left for human review.
+
 The worker never writes `docs/next_batch.md`, never creates/switches/deletes branches, never force-pushes, never resets,
 and never steals or expires a lock. Only standard library is used so polling stays cheap.
 """
@@ -315,13 +319,18 @@ Permanent rules (they override any conflicting habit):
   skipped/failed, CASE/verdict, negative findings, unresolved uncertainties, reproduction, changed files, resource and
   environment constraints. Do not copy the full Batch prompt into it. Do NOT write Next Work Recommendation, Next
   Architecture Decision, Recommended Next Experiment, Proposed Next Batch or Next Implementation Plan.
+- This Batch runs entirely against the documents of its starting commit {start}. The remote branch may advance while
+  you work (e.g. ChatGPT committing central-document updates agreed with the user); those updates apply from the NEXT
+  Batch. Never pull, merge or rebase them into this checkout, and do not re-read or follow them.
 - Only as the very last change, when all artifacts and the Worklog are final, add these two lines at the end of the
   Worklog, commit, fetch, and push (fast-forward only):
     AUTOMATION_BATCH_STATUS: COMPLETE
     BATCH_NUMBER: {batch}
   A negative result, CASE D or a valid stop-condition outcome is still COMPLETE. If you are interrupted or cannot
   finish, do NOT write the marker; leave evidence of the partial state.
-- If publication is unsafe (remote diverged in a way that needs merge/rebase/force), stop and report instead.
+- If any push is rejected only because the remote branch advanced, do not merge, rebase or force: keep committing
+  locally, finish the Batch normally (including the marker) and exit. After you exit the worker publishes your local
+  commits with one clean merge commit, or stops for human review if that merge would conflict.
 """
 
 
@@ -369,7 +378,8 @@ def post_verify(cfg, batch, blob, start):
         problems.append("dedicated clone has uncommitted changes")
     if git(repo, "rev-list", f"{ref}..HEAD"):
         problems.append("local commits not published")
-    for sha in git(repo, "rev-list", f"{start}..{ref}").splitlines():
+    # merge commits only join remote updates (publish_pending); the Batch's own changes are in its non-merge commits
+    for sha in git(repo, "rev-list", "--no-merges", f"{start}..{ref}").splitlines():
         msg = git(repo, "show", "-s", "--format=%B", sha)
         if re.search(rf"^{TRAILER}:\s*{batch}\s*$", msg, re.M):
             touched = git(repo, "show", "--name-only", "--format=", sha).splitlines()
@@ -383,6 +393,49 @@ def post_verify(cfg, batch, blob, start):
         if not marker or marker["status"] != "COMPLETE" or marker["number"] != batch:
             problems.append(f"Worklog {names[0]} lacks the final COMPLETE marker for BATCH {batch}: {marker}")
     return (not problems), problems, view.head
+
+
+def publish_pending(cfg, batch, start, attempts=3):
+    """Publish a finished Batch whose push was refused because the remote advanced meanwhile.
+
+    The remote advancing during a Batch is expected (ChatGPT commits central-document updates agreed with the user);
+    the running Batch keeps its starting documents and the updates apply from the next Batch. Acts only when the local
+    commits carry this Batch's final COMPLETE Worklog and both sides still descend from the starting commit; joins the
+    two histories with one ordinary merge commit (no rebase, reset or force) and pushes fast-forward. A conflicting
+    merge is aborted and left for human review. -> dict with "result" in nothing/pushed/merged/refused.
+    """
+    repo, ref = cfg["repo"], f"{cfg['remote']}/{cfg['branch']}"
+    for _ in range(attempts):
+        git(repo, "fetch", "--quiet", cfg["remote"], f"+refs/heads/{cfg['branch']}:refs/remotes/{ref}")
+        if not git(repo, "rev-list", f"{ref}..HEAD"):
+            return {"result": "nothing"}
+        if git(repo, "rev-parse", "--abbrev-ref", "HEAD") != cfg["branch"]:
+            return {"result": "refused", "reason": "dedicated clone is not on the authorized branch"}
+        if git(repo, "status", "--porcelain", "--untracked-files=no"):
+            return {"result": "refused", "reason": "dedicated clone has uncommitted tracked changes"}
+        for side in ("HEAD", ref):
+            if git(repo, "merge-base", "--is-ancestor", start, side, check=False).returncode:
+                return {"result": "refused", "reason": f"{side} no longer descends from the starting commit"}
+        local = worklog_numbers(git(repo, "ls-tree", "--name-only", "HEAD", "docs/").splitlines()).get(batch, [])
+        marker = worklog_marker(git(repo, "show", f"HEAD:docs/{local[0]}")) if len(local) == 1 else None
+        if not marker or marker["status"] != "COMPLETE" or marker["number"] != batch:
+            return {"result": "refused", "reason": f"local Worklog {batch} is not final (no COMPLETE marker); not publishing"}
+        incoming = git(repo, "rev-list", "--reverse", f"HEAD..{ref}").splitlines()
+        if incoming:
+            msg = (f"Merge remote {cfg['branch']} updates into Batch {batch} publication\n\n"
+                   f"The remote advanced by {len(incoming)} commit(s) while Batch {batch} ran; the Batch used the documents\n"
+                   f"of its starting commit {start[:10]} and the remote updates apply from the next Batch.\n"
+                   f"Clean merge by the automation worker (no rebase, reset or force).\n\n{TRAILER}: {batch}")
+            r = git(repo, "merge", "--no-ff", "--no-edit", "-m", msg, ref, check=False)
+            if r.returncode:
+                git(repo, "merge", "--abort", check=False)
+                return {"result": "refused", "reason": "merging the remote updates conflicts; aborted, nothing published",
+                        "incoming": incoming}
+        r = git(repo, "push", "--quiet", cfg["remote"], f"HEAD:refs/heads/{cfg['branch']}", check=False)
+        if r.returncode == 0:
+            return {"result": "merged" if incoming else "pushed", "incoming": incoming, "head": git(repo, "rev-parse", "HEAD")}
+        # the remote moved again between fetch and push: the merge commit stays local and the next attempt builds on it
+    return {"result": "refused", "reason": f"push still rejected after {attempts} attempts: {r.stderr.strip()[-200:]}"}
 
 
 def sync_checkout(cfg, path):
@@ -444,6 +497,9 @@ def poll(cfg, executor=run_claude):
                  "CLAIMED": lambda: process_alive(lock.get("poller_pid"))}.get(lock.get("state"), lambda: False)()
         if alive:
             return record_status(cfg, "noop", f"BATCH {lock.get('batch')} {lock.get('state')} by {lock.get('worker')}", lock.get("batch"))
+        retried = retry_publication(cfg, lock)
+        if retried is not None:
+            return retried
         return record_status(cfg, "stop", f"ambiguous lock for BATCH {lock.get('batch')} in state {lock.get('state')}; "
                              "preserved for human review", lock.get("batch"), notify_key=f"lock_{lock.get('batch')}_{lock.get('state')}")
     # Steps 2-7
@@ -497,18 +553,54 @@ def poll(cfg, executor=run_claude):
     code = executor(cfg, batch, view.blob, start, worker)
     if code is None:
         return record_status(cfg, "stop", f"BATCH {batch} exceeded {cfg['timeout_hours']} h; lock preserved", batch, notify_key=f"timeout_{batch}")
-    ok, problems, final = post_verify(cfg, batch, view.blob, start)
+    return conclude(cfg, worker, batch, view.blob, start, code)
+
+
+def conclude(cfg, worker, batch, blob, start, code):
+    """Step 12-13: join remote updates made during the Batch (e.g. ChatGPT central docs), verify, journal, release."""
+    paths = state_paths(cfg)
+    published = publish_pending(cfg, batch, start) if code == 0 else None
+    if published and published["result"] != "nothing":
+        update_lock(cfg, expect_worker=worker, publication=published)
+    ok, problems, final = post_verify(cfg, batch, blob, start)
     if code != 0:
         ok, problems = False, problems + [f"executor exit code {code}"]
+    if published and published["result"] == "refused":
+        ok, problems = False, problems + [f"publication: {published['reason']}"]
     if not ok:
         update_lock(cfg, expect_worker=worker, state="NEEDS_REVIEW", problems=problems, ended_at=now())
         return record_status(cfg, "stop", f"BATCH {batch} not verified complete: {problems}", batch, notify_key=f"review_{batch}")
     update_lock(cfg, expect_worker=worker, state="COMPLETE", final_commit=final, ended_at=now())
     journal = read_json(paths["journal"], [])
-    journal.append({"batch": batch, "instruction_blob": view.blob, "start_commit": start, "final_commit": final, "completed_at": now()})
+    entry = {"batch": batch, "instruction_blob": blob, "start_commit": start, "final_commit": final, "completed_at": now()}
+    if published and published["result"] == "merged":
+        entry["merged_remote_updates"] = published["incoming"]
+    journal.append(entry)
     write_json(paths["journal"], journal)
     release_lock(cfg, worker, ("COMPLETE",))
     return record_status(cfg, "complete", f"BATCH {batch} complete at {final[:10]}", batch, notify_key=f"done_{batch}")
+
+
+# Problems a pre-merge-step worker recorded when the only issue was a remote that advanced during the Batch.
+PUBLICATION_ONLY = ("local commits not published", "expected exactly one Worklog {batch}, found []")
+
+
+def retry_publication(cfg, lock):
+    """A NEEDS_REVIEW lock whose sole problems are 'not published because the remote advanced' (written by a worker
+    that predates the merge step) is concluded once more with the merge step; anything else stays for human review."""
+    batch, start = lock.get("batch"), lock.get("start_commit")
+    allowed = {p.format(batch=batch) for p in PUBLICATION_ONLY}
+    problems = lock.get("problems") or []
+    if (lock.get("state") != "NEEDS_REVIEW" or not start or not lock.get("instruction_blob") or not problems
+            or not set(problems) <= allowed or process_alive(lock.get("executor_pid"), "claude")):
+        return None
+    worker = lock["worker"]
+    update_lock(cfg, expect_worker=worker, state="RUNNING", retried_publication_at=now(), problems=[])
+    status = conclude(cfg, worker, batch, lock["instruction_blob"], start, 0)
+    if status["outcome"] != "complete":
+        # record the attempt so the same lock is never retried again
+        update_lock(cfg, expect_worker=worker, problems=read_json(state_paths(cfg)["lock"])["problems"] + ["publication retry failed"])
+    return status
 
 
 # ------------------------------------------------------------------ git hooks (dedicated clone only)

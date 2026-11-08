@@ -227,3 +227,6 @@ partial Unity project stubs, 77 KB in total.
 **Resources.** Each Unity probe took under 3 s, except the GUI probe (killed at 150 s). No GPU was used.
 
 **Rollback:** delete the script and `C:/Users/dna10/animcv-w128/`. No AnimCV run or W127 artifact was written.
+
+AUTOMATION_BATCH_STATUS: COMPLETE
+BATCH_NUMBER: 128

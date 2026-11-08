@@ -17,6 +17,15 @@ Modes
   fbx_readback  clean factory scene, import an FBX with the existing ``BlenderExecutor.import_rig`` (default importer
                 flags) and report the same readback as ``readback``.
   render        open a saved .blend and render declared Action frames (Workbench) for visual review only.
+
+Batch 127 opt-in FBX interchange modes (helper: ``blender/experimental_fbx_interchange.py``; the default exporter
+``blender/export.py`` and the stock importer are NOT changed):
+  interchange_export   producer: open a verified state's .blend (never saved), export ONE global take without key
+                       simplification, rewrite only CONSTANT-driven KeyAttrFlags, verify, report.
+  interchange_consume  consumer: fresh factory scene; reads ONLY the package manifest + FBX (every Python-level open is
+                       audited), stock import, then (mode adapter) per-group interpolation + scene range recovery; saves a
+                       NEW .blend.  ``--mode raw`` saves the stock import only (labelled, for the A/B).
+  fbx_import_save      evaluator/visual helper: stock import of any FBX (default flags) saved as a NEW .blend.
 """
 from __future__ import annotations
 
@@ -178,7 +187,8 @@ def readback(o):
     rep = _report_readback(arm, act, [float(x) for x in o.subframes.split(",") if x], "blend",
                            {"provenance_object": json.loads(prov) if prov else None,
                             "provenance_action": json.loads(act.get(PROP_KEY)) if act.get(PROP_KEY) else None,
-                            "blend_sha256": hashlib.sha256(Path(o.blend).read_bytes()).hexdigest()})
+                            "blend_sha256": hashlib.sha256(Path(o.blend).read_bytes()).hexdigest()},
+                           frozen=o.frozen_audit != "0")
     Path(o.report).write_text(json.dumps(rep))
     return 0
 
@@ -235,13 +245,15 @@ def render(o):
         centre = Vector(view["centre"])
         _aim(cam, centre + Vector(view["offset"]), centre, Vector((0, 0, 1)))
         for job in jobs["frames"]:
-            scene.frame_set(int(job["blender_frame"]))
+            sub = float(job.get("subframe", 0.0))
+            scene.frame_set(int(job["blender_frame"]), subframe=sub)
             bpy.context.view_layer.update()
             for m in markers:
                 bpy.data.objects.remove(m, do_unlink=True)
             markers = [_sphere(bpy, mk["name"], tuple(mk["position"]), tuple(mk["color"]), mk.get("radius", 0.015))
                        for mk in job.get("markers", [])]
-            scene.render.filepath = str(out / f"{view['name']}_f{int(job['blender_frame']):04d}.png")
+            tag = f"{int(job['blender_frame']):04d}" if sub == 0.0 else f"{int(job['blender_frame']):04d}s{int(round(sub * 100)):02d}"
+            scene.render.filepath = str(out / f"{view['name']}_f{tag}.png")
             bpy.ops.render.render(write_still=True)
             done.append(scene.render.filepath)
     (out / "render_report.json").write_text(json.dumps({"schema": "animcv_exp_render_v1", "blender_version": bpy.app.version_string,
@@ -249,19 +261,85 @@ def render(o):
     return 0
 
 
+def interchange_export(o):
+    import blender.experimental_fbx_interchange as X
+    try:
+        X.produce(o.blend, o.raw_fbx, o.fbx, o.take, o.report)       # --take: the in-memory Action name of the take
+    except X.InterchangeStop as e:
+        Path(o.stop_report).write_text(json.dumps({"status": "STOP", "code": e.code, "detail": e.detail}))
+        sys.exit(3)
+    return 0
+
+
+def interchange_consume(o):
+    """The audit hook is installed FIRST, before the helper module or the package is touched."""
+    import os
+    audit = None
+    if o.audit != "0":
+        import blender.experimental_fbx_interchange as X0
+        audit = X0.Audit()
+        sys.addaudithook(audit)
+    import bpy
+    import blender.experimental_fbx_interchange as X
+    out_paths = [o.out_blend, o.report, o.stop_report]
+    code_roots = [str(ROOT / "src")]
+    install = [os.path.dirname(bpy.app.binary_path), sys.prefix, sys.base_prefix]
+    user = [bpy.utils.resource_path("USER")]
+    try:
+        rep = X.consume(o.package, o.out_blend, mode=o.mode)
+        status = 0
+    except X.InterchangeStop as e:
+        rep = {"status": "STOP", "code": e.code, "detail": e.detail}
+        status = 3
+    if audit is not None:
+        ev = list(audit.events)
+        rep["file_access_audit"] = {"events": len(ev), "classified": X.classify_access(ev, o.package, out_paths, code_roots, install, user),
+                                    "note": "Python-level opens only (sys.addaudithook); Blender C-level reads are not visible"}
+    Path(o.stop_report if status else o.report).write_text(json.dumps(rep, sort_keys=True))
+    if status:
+        sys.exit(status)
+    return 0
+
+
+def fbx_import_save(o):
+    import bpy
+    if Path(o.out_blend).exists():
+        raise RuntimeError(f"refusing to overwrite {o.out_blend}")
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    res = bpy.ops.import_scene.fbx(filepath=str(o.fbx))
+    if "FINISHED" not in res:
+        raise RuntimeError(f"import failed {res}")
+    bpy.ops.wm.save_as_mainfile(filepath=str(o.out_blend))
+    Path(o.report).write_text(json.dumps({"schema": "animcv_exp_fbx_import_save_v1", "fbx": str(o.fbx),
+                                          "fbx_sha256": hashlib.sha256(Path(o.fbx).read_bytes()).hexdigest(),
+                                          "importer": "bpy.ops.import_scene.fbx (default flags, unchanged)",
+                                          "blend_sha256": hashlib.sha256(Path(o.out_blend).read_bytes()).hexdigest()}))
+    return 0
+
+
 def main():
     argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else sys.argv[1:]
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("mode", choices=("build_blend", "readback", "export_fbx", "fbx_readback", "render"))
+    ap.add_argument("mode", choices=("build_blend", "readback", "export_fbx", "fbx_readback", "render", "interchange_export",
+                                     "interchange_consume", "fbx_import_save"))
     for name in ("rig", "rest", "states", "state_name", "action_name", "out_blend", "provenance", "report", "blend", "fbx", "jobs",
-                 "out_dir"):
+                 "out_dir", "raw_fbx", "take", "stop_report", "package"):
         ap.add_argument("--" + name.replace("_", "-"))
     ap.add_argument("--fps", type=float, default=30.0)
     ap.add_argument("--subframes", default="0.25,0.5,0.75")
+    ap.add_argument("--frozen-audit", default="1")
+    ap.add_argument("--mode", dest="mode_", default="adapter", choices=("adapter", "raw"))
+    ap.add_argument("--audit", default="1")
     o = ap.parse_args(argv)
+    o.mode_name, o.mode = o.mode, o.mode
+    if o.mode_name == "interchange_consume":
+        o.mode = o.mode_
     try:
         return {"build_blend": build_blend, "readback": readback, "export_fbx": export_fbx, "fbx_readback": fbx_readback,
-                "render": render}[o.mode](o)
+                "render": render, "interchange_export": interchange_export, "interchange_consume": interchange_consume,
+                "fbx_import_save": fbx_import_save}[o.mode_name](o)
+    except SystemExit:
+        raise
     except Exception:  # Blender may otherwise exit 0 after a Python exception
         import traceback
         traceback.print_exc()

@@ -39,6 +39,11 @@ to the sealed proposal.  Any divergence STOPs with ``REFUSED_SEMANTIC_AUTHORIZAT
   review   30 fps side-by-side video: original source | baseline Action | accepted edited Action, footprint overlaid.
   fbx      export a state's .blend through the existing ``blender.export.export_fbx`` and re-import it with the existing
            default importer; integer-frame / subframe / interpolation / timebase readback is REPORTED, never repaired.
+  fbx-interchange / fbx-consume / fbx-verify   (Batch 127, opt-in) explicit FBX continuous-time interchange of ONE verified
+           published state: a NEW package (FBX without key simplification, one global take, CONSTANT-driven curves flagged
+           CONSTANT in KeyAttrFlags, sealed manifest with take/timebase/rig identity), a source-free Blender consumer that
+           reads ONLY the package, and a separate evaluator that re-opens original and recovered .blend in fresh processes.
+           ``fbx`` (stock) is unchanged; raw FBX alone is NOT lossless (see docs/EXPERIMENTAL_VIDEO_ACTION_WORLD_PIN.md).
 
 Unknown / invalid is never zero, rest pose, interpolation or user intent: an unsupported frame, cadence, binding or asset
 stops the command with a precise BLOCKED / UNSUPPORTED code instead of fabricating data.
@@ -2222,6 +2227,420 @@ def cmd_fbx(a):
     return 0
 
 
+# ----------------------------------------------------------------- E. opt-in FBX continuous-time interchange (W127) ---
+# EXPERIMENTAL, opt-in (Batch 127).  ``fbx`` above is unchanged and keeps reporting the stock exporter/importer honestly.
+# Three separate roles with separate inputs:
+#   fbx-interchange  PRODUCER  (run + verified state -> NEW package directory; reads the run, never writes it)
+#   fbx-consume      CONSUMER  (package directory ONLY -> NEW recovered .blend; never reads a run, .blend or report)
+#   fbx-verify       EVALUATOR (run + verified state + consumer output -> fresh-process readbacks of BOTH .blends + report)
+FBXI_SUBFRAMES = (0.25, 0.5, 0.75, 0.99)   # evaluator grid: quarter frames + near-boundary +0.99
+FBXI_OBJECT_TOL = 1e-5                     # object matrix element tolerance (EXPERIMENTAL comparison diagnostic)
+FBXI_REST_TOL_M = 1e-5                     # bone rest head/tail tolerance in metres (EXPERIMENTAL comparison diagnostic)
+FBXI_FAULT_ENV = "ANIMCV_EXP_FBXI_FAULT"   # tests / evidence only (see blender/experimental_fbx_interchange.py)
+FBXI_HELPER = PROJECT_ROOT / "src" / "blender" / "experimental_fbx_interchange.py"
+
+
+def _fbxi():
+    if str(PROJECT_ROOT / "src") not in sys.path:
+        sys.path.insert(0, str(PROJECT_ROOT / "src"))
+    import blender.experimental_fbx_interchange as X
+    return X
+
+
+def _fresh_dir(path):
+    """Create a NEW directory atomically (a concurrent invocation on the same path gets REFUSED_EXISTING_OUTPUT)."""
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        p.mkdir()
+    except FileExistsError:
+        raise SliceStop("REFUSED_EXISTING_OUTPUT", f"{p} already exists; outputs are never overwritten") from None
+    return p
+
+
+def _stage(blender, stage_mode, log, **kw):
+    """Run one Blender stage; returns the exit code (3 = a declared STOP written to ``stop_report``)."""
+    args = [blender, "-b", "-t", "2", "--python-exit-code", "1", "-P", str(STAGE), "--", stage_mode]
+    for k, v in kw.items():
+        args += ["--" + k.replace("_", "-"), str(v)]
+    r = subprocess.run(args, cwd=PROJECT_ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    Path(log).write_text(" ".join(args) + "\n" + r.stdout + "\n" + r.stderr, encoding="utf-8")
+    return r.returncode
+
+
+def state_semantics(run, sid, reg):
+    """Role and semantic-authorization label of a published state (read-only; never reclassifies anything)."""
+    rec = reg[sid]
+    role = rec.get("role")
+    label = {"baseline": "NOT_APPLICABLE (unedited baseline Action)",
+             "reverted": "NOT_APPLICABLE (exact revert: restores the parent's values; not a semantic edit)"}.get(role)
+    commit = None
+    if (run / "edits").exists():
+        for cj in sorted((run / "edits").glob("*/commit.json")):
+            c = load(cj)
+            if c.get("final_status") == "ACCEPTED" and c.get("head_after") == sid:
+                commit = (cj.parent.name, c)
+    if role == "accepted":
+        sa = (commit[1].get("semantic_authorization") if commit else None) or {}
+        label = ("AUTHORIZED_AT_COMMIT (W126 independent revalidation)" if sa.get("authorized") else
+                 "NOT_ESTABLISHED (accepted before W126; historical, not reclassified)")
+    return {"role": role, "semantic_authorization": label, "accepted_request_id": commit[0] if commit else None}
+
+
+def verify_state_blend(run, sid, refs, kind):
+    """A published state of this run -> its verified .blend: content-addressed state, registry record, .blend SHA-256 and an
+    independent readback bound to that .blend.  The head additionally verifies through sealed refs (W125)."""
+    S, *_ = frozen_modules()
+    ps = PersistentStore(run)
+    chain = [x["state_id"] for x in ps.store.lineage(refs["head"])]
+    if sid not in chain:
+        raise SliceStop("NOT_A_PUBLISHED_STATE", f"{sid} is not in the published lineage of the current head")
+    sp = run / "lineage" / "states" / f"{sid}.json"
+    if not sp.exists() or not S.verify_state(json.loads(sp.read_text())):
+        raise SliceStop("STATE_UNVERIFIED", sid)
+    reg = blend_registry(run)
+    if sid not in reg:
+        raise SliceStop("UNKNOWN_STATE", sid)
+    rec = reg[sid]
+    blend, rbp = run / rec["blend"], run / rec["readback"]
+    if not blend.exists() or sha256_file(blend) != rec["blend_sha256"]:
+        raise SliceStop("STATE_BLEND_UNVERIFIED", rec["blend"])
+    if not rbp.exists():
+        raise SliceStop("STATE_READBACK_MISSING", rec["readback"])
+    rb = load(rbp)
+    if rb.get("blend_sha256") != rec["blend_sha256"] or rb.get("value_digest") != rec["value_digest"]:
+        raise SliceStop("STATE_READBACK_NOT_OF_BLEND", rec["readback"])
+    if sid == refs["head"] and kind == "V2":
+        v = verify_head(run, refs)
+        if not v["ok"]:
+            raise SliceStop("BLOCKED_HEAD_UNVERIFIED", str(v["problems"]))
+    return dict(rec, **state_semantics(run, sid, reg)), rb
+
+
+def authority_snapshot(run):
+    """Hashes of every authoritative / lineage file of the run (refs, log, registry, journals, states, baseline, accepted,
+    reverted, edits).  An export must leave it identical."""
+    out = {}
+    for d in ("lineage", "baseline", "accepted", "reverted", "edits", "manifest"):
+        base = run / d
+        if base.exists():
+            for p in sorted(base.rglob("*")):
+                if p.is_file() and p.name not in ("txn.lock",):
+                    out[str(p.relative_to(run))] = sha256_file(p)
+    out["run.json"] = sha256_file(run / "run.json")
+    return out
+
+
+def _fbxi_fault(point):
+    if os.environ.get(FBXI_FAULT_ENV) == point:
+        os._exit(86)            # simulated kill: no cleanup, no status record
+
+
+def produce_package(blender, blend, blend_sha256, out, take_action, source, guard=None):
+    """The packaging core shared by ``fbx-interchange`` (a verified run state) and the focused tests (scratch control
+    .blend files, labelled as such in ``source``).  ``out`` must not exist.  The sealed manifest is written LAST (atomic):
+    a directory without it is never a package.  ``guard()`` (run commands) re-checks the run after the export."""
+    X = _fbxi()
+    out = _fresh_dir(out)
+    (out / "producer").mkdir()
+    (out / "package").mkdir()
+    dump(out / "STATUS.json", {"status": "IN_PROGRESS (never a package: no sealed manifest yet)", "started": now(),
+                               "state_id": source.get("state_id")})
+    pr, stop = out / "producer" / "producer_report.json", out / "producer" / "producer_stop.json"
+    t0 = datetime.datetime.now()
+
+    def fail(code, detail):
+        dump(out / "STATUS.json", {"status": "FAILED", "code": code, "detail": detail, "at": now(), "state_id": source.get("state_id"),
+                                   "note": "no sealed manifest was written: this directory is NOT a package"})
+        raise SliceStop(code, detail)
+    rc = _stage(blender, "interchange_export", out / "producer" / "export.log", blend=blend, raw_fbx=out / "producer" / "raw_export.fbx",
+                fbx=out / "package" / X.PACKAGE_FBX, take=take_action, report=pr, stop_report=stop)
+    if rc == 3:
+        s_ = load(stop)
+        fail(s_["code"], s_["detail"])
+    if rc != 0 or not pr.exists():
+        fail("PRODUCER_STAGE_FAILED", f"Blender exited {rc}; see {out / 'producer' / 'export.log'}")
+    prod = load(pr)
+    if guard is not None:
+        g = guard()
+        if g:
+            fail(*g)
+    if sha256_file(blend) != blend_sha256 or prod["source_blend_sha256_before"] != blend_sha256 or             prod["fbx_sha256"] != sha256_file(out / "package" / X.PACKAGE_FBX):
+        fail("PRODUCER_REPORT_INCONSISTENT", "source/package hashes")
+    src = dict(source, action_name=prod["source_action"])
+    mf = X.build_manifest(prod, src, now(), sha256_code(FBXI_HELPER), sha256_code(STAGE))
+    _fbxi_fault("before_manifest")
+    TX.atomic_write_bytes(out / "package" / X.PACKAGE_MANIFEST, json.dumps(mf, indent=1, sort_keys=True).encode("utf-8"))
+    summ = {"status": "COMPLETE", "package": str(out / "package"), "state_id": source.get("state_id"),
+            "state_role": source.get("state_role"), "semantic_authorization": source.get("semantic_authorization"),
+            "take": prod["take"]["name"], "fbx_sha256": prod["fbx_sha256"], "fbx_bytes": prod["fbx_bytes"],
+            "raw_exporter_output_bytes": prod["raw_fbx_bytes"], "fbx_curves": prod["fbx_curves"], "fbx_keys_total": prod["fbx_keys_total"],
+            "patched_constant_curves": prod["patched_curves"], "manifest_digest": mf["manifest_digest"], "source_blend_unchanged": True,
+            "other_actions_in_source_not_exported": prod["other_actions_in_file_not_exported"],
+            "seconds": (datetime.datetime.now() - t0).total_seconds(),
+            "next": f"experimental-video-action fbx-consume --package {out / 'package'} --out <new dir>"}
+    dump(out / "STATUS.json", summ)
+    return summ
+
+
+def cmd_fbx_interchange(a):
+    run = Path(a.run).resolve()
+    R, man = load_run(run)
+    require_no_pending(run)
+    refs, raw, kind = read_refs(run)
+    sid = refs["head"] if a.state == "head" else R["baseline_state_id"] if a.state == "baseline" else a.state
+    rec, rb = verify_state_blend(run, sid, refs, kind)
+    before = authority_snapshot(run)
+
+    def guard():
+        after = authority_snapshot(run)
+        if after != before:
+            return "RUN_CHANGED_DURING_EXPORT", json.dumps(sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))[:20])
+        if a.state == "head" and read_refs(run)[0]["head"] != sid:
+            return "HEAD_MOVED_DURING_EXPORT", sid
+        return None
+    source = {"kind": "RUN_STATE", "slice": SLICE_ID, "run_id": run.name, "state_id": sid, "state_role": rec["role"],
+              "semantic_authorization": rec["semantic_authorization"], "accepted_request_id": rec["accepted_request_id"],
+              "is_current_head_at_export": sid == refs["head"], "generation_at_export": refs.get("generation"),
+              "blend_rel": rec["blend"], "blend_sha256": rec["blend_sha256"], "value_digest": rec["value_digest"],
+              "readback_sha256": sha256_file(run / rec["readback"]), "source_clip_sha256": man["intake"]["clip_sha256"],
+              "action_timebase_note": "30 fps source-to-Action mapping of the slice (frozen W124): Action frame f = first "
+                                      "segment source frame + f - 1",
+              "note": "identity/provenance only: the consumer never opens anything named here"}
+    summ = produce_package(R["blender"], run / rec["blend"], rec["blend_sha256"], a.out, f"AnimCV_EXP_{sid[:12]}", source, guard)
+    summ["run_authority_files_unchanged"] = True
+    print(json.dumps(summ, indent=1))
+    return 0
+
+
+def cmd_fbx_consume(a):
+    """CONSUMER: only the package directory is an input.  Nothing of a run is read (the run is not even an argument)."""
+    X = _fbxi()
+    blender = find_blender(a.blender)
+    out = _fresh_dir(a.out)
+    blend = out / ("recovered.blend" if a.mode == "adapter" else "raw_import.blend")
+    rep, stop = out / "consume_report.json", out / "consume_stop.json"
+    t0 = datetime.datetime.now()
+    rc = _stage(blender, "interchange_consume", out / "consume.log", package=Path(a.package).resolve(), out_blend=blend, report=rep,
+                stop_report=stop, mode=a.mode)
+    secs = (datetime.datetime.now() - t0).total_seconds()
+    if rc == 3:
+        s = load(stop)
+        raise SliceStop(s["code"], s.get("detail", ""))
+    if rc != 0 or not rep.exists():
+        raise SliceStop("CONSUMER_STAGE_FAILED", f"Blender exited {rc}; see {out / 'consume.log'}")
+    r = load(rep)
+    und = r.get("file_access_audit", {}).get("classified", {}).get("UNDECLARED", [])
+    r["seconds"] = secs
+    r["verdict"] = "RECOVERED" if a.mode == "adapter" else "RAW_IMPORT_ONLY"
+    if und:
+        r["verdict"] = "INVALID_UNDECLARED_INPUT_READ"
+    dump(rep, r)
+    print(json.dumps({k: r.get(k) for k in ("verdict", "label", "action", "take", "recovered_interpolation_census",
+                                            "scene_range_restored_from_manifest", "recovered_blend_sha256", "seconds")}, indent=1))
+    if und:
+        raise SliceStop("INVALID_UNDECLARED_INPUT_READ", json.dumps(und[:10]))
+    return 0
+
+
+def pin_context(run, sid):
+    """For an accepted WORLD_POSITION_PIN state: pin source frames -> Action frames, the target and the bound point."""
+    sem = state_semantics(run, sid, blend_registry(run))
+    if not sem["accepted_request_id"]:
+        return None
+    prop = load(run / "edits" / sem["accepted_request_id"] / "proposal.json")
+    bnd = load(run_paths(run)["bindings"])["bound"][prop["constraint"]["binding_id"]]
+    m = {r["source_frame"]: r["action_frame"] for r in load(run_paths(run)["sidecar"])["frame_mapping"]}
+    return {"request_id": sem["accepted_request_id"], "source_frames": prop["pin_frames"],
+            "action_frames": [m[k] for k in prop["pin_frames"]], "target": prop["constraint"]["target"],
+            "bone": bnd["bone"], "point": bnd["point"], "semantic_joint": bnd["semantic_joint"]}
+
+
+def _pt(fr, bone, point):
+    return fr["world"][bone][point]
+
+
+def compare_interchange(orig, rec, pin=None, tol=FBX_DIAGNOSTIC_TOL_M):
+    """EVALUATOR comparison of two fresh-process readbacks (original .blend vs imported .blend) on one frozen grid."""
+    import numpy as np
+    X = _fbxi()
+    mism, rep = [], {"diagnostic_tolerance_m": tol, "object_tolerance": FBXI_OBJECT_TOL, "rest_tolerance_m": FBXI_REST_TOL_M}
+    bones = orig["bones"]
+    if set(rec["bones"]) != set(bones):
+        mism.append("BONE_SET_DIFFERS")
+        rep["bone_set"] = {"missing": sorted(set(bones) - set(rec["bones"])), "extra": sorted(set(rec["bones"]) - set(bones))}
+    common = [b for b in bones if b in rec["bones"]]
+
+    def err(x, y):
+        a = np.array([[x["world"][b][p] for p in ("head", "tail")] for b in common])
+        c = np.array([[y["world"][b][p] for p in ("head", "tail")] for b in common])
+        d = np.linalg.norm(a - c, axis=-1)
+        return d.max(axis=1), float(np.abs(np.array(x["matrix_world"]) - np.array(y["matrix_world"])).max())
+    fo = {f["blender_frame"]: f for f in orig["frames"]}
+    fr = {f["blender_frame"]: f for f in rec["frames"]}
+    if set(fo) != set(fr):
+        mism.append("FRAME_SET_DIFFERS")
+    ints = sorted(set(fo) & set(fr))
+    per_frame, per_bone_i, mw = [], np.zeros(len(common)), 0.0
+    worst_i = (0.0, None)
+    for f in ints:
+        d, m = err(fo[f], fr[f])
+        per_bone_i = np.maximum(per_bone_i, d)
+        per_frame.append(float(d.max()))
+        mw = max(mw, m)
+        if d.max() > worst_i[0]:
+            worst_i = (float(d.max()), [f, 0.0, common[int(d.argmax())]])
+    so = {(s["blender_frame"], s["subframe"]): s for s in orig["subframes"]}
+    sr = {(s["blender_frame"], s["subframe"]): s for s in rec["subframes"]}
+    subs = sorted(set(so) & set(sr))
+    if set(so) != set(sr):
+        mism.append("SUBFRAME_SET_DIFFERS")
+    by_off, per_bone_s, worst_s, over_s = {}, np.zeros(len(common)), (0.0, None), []
+    for k in subs:
+        d, m = err(so[k], sr[k])
+        per_bone_s = np.maximum(per_bone_s, d)
+        mw = max(mw, m)
+        by_off.setdefault(k[1], []).append(float(d.max()))
+        if d.max() > worst_s[0]:
+            worst_s = (float(d.max()), [k[0], k[1], common[int(d.argmax())]])
+        if d.max() > tol:
+            over_s.append([k[0], k[1]])
+    pf = np.array(per_frame) if per_frame else np.zeros(1)
+    rep["integer"] = {"frames_compared": len(ints), "max_m": float(pf.max()), "median_m": float(np.median(pf)), "worst_at": worst_i[1],
+                      "frames_over_tol": [f for f, v in zip(ints, per_frame) if v > tol]}
+    rep["subframe"] = {"samples_compared": len(subs), "max_m": worst_s[0], "worst_at": worst_s[1],
+                       "median_m": float(np.median([v for vs in by_off.values() for v in vs])) if by_off else None,
+                       "by_offset_max_m": {str(o): max(v) for o, v in sorted(by_off.items())},
+                       "samples_over_tol": len(over_s), "frames_with_subframe_over_tol": sorted({f for f, _ in over_s})}
+    rep["per_bone_max_m"] = {"integer": {b: float(v) for b, v in zip(common, per_bone_i)},
+                             "subframe": {b: float(v) for b, v in zip(common, per_bone_s)}}
+    rep["bones_over_tol"] = {"integer": [b for b, v in zip(common, per_bone_i) if v > tol],
+                             "subframe": [b for b, v in zip(common, per_bone_s) if v > tol]}
+    rep["object_matrix_world_max_abs"] = mw
+    if pf.max() > tol:
+        mism.append("INTEGER_FRAME_WORLD_DRIFT_OVER_1MM")
+    if worst_s[0] > tol:
+        mism.append("SUBFRAME_WORLD_DEVIATION_OVER_1MM")
+    if mw > FBXI_OBJECT_TOL:
+        mism.append("OBJECT_TRANSFORM_DIFFERS")
+    sc_o = float(orig["armature_scale"][0])
+    rest = 0.0
+    for b in common:
+        ro, rr = orig["rest"].get(b), rec["rest"].get(b)
+        if ro is None or rr is None or ro["parent"] != rr["parent"]:
+            rest = float("inf")
+            continue
+        for k in ("head_local", "tail_local"):
+            rest = max(rest, float(np.abs(np.array(ro[k]) - np.array(rr[k])).max()) * sc_o)
+    rep["rest_max_m"] = rest
+    rep["armature_scale"] = {"original": orig["armature_scale"], "imported": rec["armature_scale"]}
+    if rest > FBXI_REST_TOL_M:
+        mism.append("REST_GEOMETRY_DIFFERS")
+    if max(abs(x - y) for x, y in zip(orig["armature_scale"], rec["armature_scale"])) > 1e-6:
+        mism.append("ARMATURE_SCALE_DIFFERS")
+    # interpolation: every source-driven (item, group) must be recovered with the source interpolation
+    def groups_of(rb):
+        g = {}
+        for c in rb["fcurve_census"]["fcurves"]:
+            k = X.source_group_key(c["data_path"], rb["armature_object"])
+            key = f"{k[0].split(':')[0]}|{k[1]}" if k and k[0].startswith("object:") else (f"{k[0]}|{k[1]}" if k else c["data_path"])
+            g.setdefault(key, set()).update(c["interpolation"])
+        return {k: sorted(v) for k, v in g.items()}
+    go, gr = groups_of(orig), groups_of(rec)
+    bad = {k: {"source": v, "imported": gr.get(k)} for k, v in go.items() if gr.get(k) != v}
+    rep["interpolation"] = {"source_groups": go, "imported_groups_for_source_groups": {k: gr.get(k) for k in go},
+                            "imported_undriven_groups": {k: v for k, v in gr.items() if k not in go},
+                            "source_census_curves": orig["fcurve_census"]["interpolation_census_curves"],
+                            "imported_census_curves": rec["fcurve_census"]["interpolation_census_curves"],
+                            "source_fcurves": orig["fcurve_census"]["n_fcurves"], "imported_fcurves": rec["fcurve_census"]["n_fcurves"],
+                            "not_recovered": bad}
+    if bad:
+        mism.append("INTERPOLATION_NOT_RECOVERED")
+    rep["actions"] = {"original": orig["actions_in_file"], "imported": rec["actions_in_file"]}
+    if len(rec["actions_in_file"]) != 1:
+        mism.append("MULTIPLE_ACTIONS_AFTER_IMPORT")
+    ko = [orig["fcurve_census"]["key_frame_min"], orig["fcurve_census"]["key_frame_max"]]
+    kr = [rec["fcurve_census"]["key_frame_min"], rec["fcurve_census"]["key_frame_max"]]
+    rep["key_range"] = {"original": ko, "imported": kr}
+    if ko != kr:
+        mism.append("KEY_RANGE_CHANGED")
+    rep["scene"] = {"original": orig["scene"], "imported": rec["scene"]}
+    if abs(orig["scene"]["effective_fps"] - rec["scene"]["effective_fps"]) > 1e-9:
+        mism.append("SCENE_FPS_DIFFERS")
+    if (orig["scene"]["frame_start"], orig["scene"]["frame_end"]) != (rec["scene"]["frame_start"], rec["scene"]["frame_end"]):
+        mism.append("SCENE_FRAME_RANGE_NOT_CARRIED")
+    if pin:
+        res = {}
+        for name, rb in (("original", orig), ("imported", rec)):
+            fm = {f["blender_frame"]: f for f in rb["frames"]}
+            sm = {(s["blender_frame"], s["subframe"]): s for s in rb["subframes"]}
+            t = np.array(pin["target"])
+            ri = [float(np.linalg.norm(np.array(_pt(fm[f], pin["bone"], pin["point"])) - t)) for f in pin["action_frames"] if f in fm]
+            inner = [k for k in sm if k[0] in pin["action_frames"] and k[0] + 1 in pin["action_frames"]]
+            rs = [float(np.linalg.norm(np.array(_pt(sm[k], pin["bone"], pin["point"])) - t)) for k in inner]
+            res[name] = {"integer_pin_frames_max_m": max(ri) if ri else None, "subframes_between_pin_frames_max_m": max(rs) if rs else None,
+                         "n_integer": len(ri), "n_subframes": len(rs)}
+        rep["pin"] = dict(pin, residual=res)
+        if (res["imported"]["integer_pin_frames_max_m"] or 0) > tol or (res["imported"]["subframes_between_pin_frames_max_m"] or 0) > tol:
+            mism.append("PIN_RESIDUAL_OVER_1MM")
+    rep["mismatches"] = mism
+    rep["verdict"] = "PASS" if not mism else "FAIL"
+    return rep
+
+
+def evaluate_pair(blender, orig_blend, imported_blend, out, pin=None, label=""):
+    """Two FRESH Blender processes (one per .blend) on the frozen grid, then ``compare_interchange``.  Used by
+    ``fbx-verify`` and by the W127 harness for the stock / raw A/B on the same grid."""
+    subs = ",".join(str(s) for s in FBXI_SUBFRAMES)
+    for name, bl, fz in (("original", orig_blend, "1"), ("imported", imported_blend, "0")):
+        rc = _stage(blender, "readback", out / f"{name}_readback.log", blend=bl, report=out / f"{name}_readback.json", subframes=subs,
+                    frozen_audit=fz)
+        if rc != 0:
+            raise SliceStop("EVALUATOR_READBACK_FAILED", f"{name}: see {out / (name + '_readback.log')}")
+    o, r = load(out / "original_readback.json"), load(out / "imported_readback.json")
+    if o["blend_sha256"] != sha256_file(orig_blend) or r["blend_sha256"] != sha256_file(imported_blend):
+        raise SliceStop("EVALUATOR_READBACK_NOT_OF_BLEND", label)
+    rep = compare_interchange(o, r, pin)
+    rep.update({"label": label, "original_blend_sha256": o["blend_sha256"], "imported_blend_sha256": r["blend_sha256"],
+                "original_readback_sha256": sha256_file(out / "original_readback.json"),
+                "imported_readback_sha256": sha256_file(out / "imported_readback.json"), "grid_subframes": list(FBXI_SUBFRAMES)})
+    return rep
+
+
+def cmd_fbx_verify(a):
+    """EVALUATOR: separate from producer and consumer.  The original .blend is read ONLY here, after the import."""
+    run = Path(a.run).resolve()
+    R, man = load_run(run)
+    require_no_pending(run)
+    refs, raw, kind = read_refs(run)
+    cdir = Path(a.consumed).resolve()
+    crep = load(cdir / "consume_report.json")
+    blend = cdir / ("recovered.blend" if crep.get("mode") == "adapter" else "raw_import.blend")
+    if not blend.exists() or sha256_file(blend) != crep.get("recovered_blend_sha256"):
+        raise SliceStop("CONSUMED_OUTPUT_UNVERIFIED", str(blend))
+    sid = crep["source_identity"]["state_id"]
+    if a.state not in (None, "package"):
+        want = refs["head"] if a.state == "head" else R["baseline_state_id"] if a.state == "baseline" else a.state
+        if want != sid:
+            raise SliceStop("PACKAGE_NOT_OF_THIS_STATE", f"package state {sid} vs requested {want}")
+    rec, _ = verify_state_blend(run, sid, refs, kind)
+    if rec["blend_sha256"] != crep["source_identity"]["blend_sha256"]:
+        raise SliceStop("PACKAGE_NOT_OF_THIS_STATE", "the package was produced from another .blend")
+    out = _fresh_dir(a.out)
+    pin = pin_context(run, sid)
+    rep = evaluate_pair(R["blender"], run / rec["blend"], blend, out, pin, label=crep.get("label", ""))
+    rep.update({"state_id": sid, "state_role": rec["role"], "semantic_authorization": rec["semantic_authorization"],
+                "is_current_head": sid == refs["head"], "consume_mode": crep.get("mode"), "consume_report_sha256": sha256_file(cdir / "consume_report.json"),
+                "consumer_file_access": crep.get("file_access_audit", {}).get("classified"),
+                "interchange_verdict": ("INTERCHANGE_PASS" if rep["verdict"] == "PASS" and crep.get("mode") == "adapter" and
+                                        not (crep.get("file_access_audit", {}).get("classified", {}).get("UNDECLARED")) else "FAIL")})
+    dump(out / "fbx_verify_report.json", rep)
+    print(json.dumps({k: rep.get(k) for k in ("state_id", "state_role", "semantic_authorization", "consume_mode", "verdict", "interchange_verdict",
+                                              "mismatches")} | {"integer_max_m": rep["integer"]["max_m"], "subframe_max_m": rep["subframe"]["max_m"],
+                                                                "pin": (rep.get("pin") or {}).get("residual")}, indent=1, default=str))
+    return 0
+
+
 # --------------------------------------------------------------------------------------------------- CLI glue ---
 def add_subparser(sub):
     """Register ``experimental-video-action`` on the motion-tool parser (called by app.cli; argparse only, no imports)."""
@@ -2255,6 +2674,22 @@ def add_subparser(sub):
     f = s.add_parser("fbx", help="export a state's .blend with the existing exporter and re-import it (characterisation only)")
     f.add_argument("--run", required=True)
     f.add_argument("--state", default="head", help="head | baseline | <state id>")
+    xi = s.add_parser("fbx-interchange", help="EXPERIMENTAL opt-in (W127): export ONE verified published state as a NEW FBX "
+                                             "interchange package (read-only on the run; the stock `fbx` command is unchanged)")
+    xi.add_argument("--run", required=True)
+    xi.add_argument("--state", default="head", help="head | baseline | <published state id>")
+    xi.add_argument("--out", required=True, help="NEW output directory (never overwritten)")
+    xc = s.add_parser("fbx-consume", help="EXPERIMENTAL opt-in (W127): source-free Blender consumer; reads ONLY the package directory")
+    xc.add_argument("--package", required=True, help="the package/ directory written by fbx-interchange")
+    xc.add_argument("--out", required=True, help="NEW output directory (never overwritten)")
+    xc.add_argument("--mode", choices=("adapter", "raw"), default="adapter",
+                    help="adapter: package-aware recovery (default); raw: stock importer only (A/B, nothing recovered)")
+    xc.add_argument("--blender")
+    xv = s.add_parser("fbx-verify", help="EXPERIMENTAL opt-in (W127): separate evaluator: original vs consumed .blend in fresh processes")
+    xv.add_argument("--run", required=True)
+    xv.add_argument("--consumed", required=True, help="the fbx-consume output directory")
+    xv.add_argument("--state", default="package", help="package (default: the state the package declares) | head | baseline | <id>")
+    xv.add_argument("--out", required=True, help="NEW output directory (never overwritten)")
     t = s.add_parser("status", help="print the authoritative head, lineage, .blend registry, pending transactions and recovery need")
     t.add_argument("--run", required=True)
     rc = s.add_parser("recover", help="complete (roll forward) or roll back interrupted transactions; never invents accepted state")
@@ -2270,7 +2705,8 @@ def dispatch(args):
             args.blender_exe = find_blender(args.blender)
             return cmd_build(args)
         return {"propose": cmd_propose, "commit": cmd_commit, "revert": cmd_revert, "review": cmd_review, "fbx": cmd_fbx,
-                "status": cmd_status, "recover": cmd_recover, "adopt": cmd_adopt}[args.exp_action](args)
+                "status": cmd_status, "recover": cmd_recover, "adopt": cmd_adopt, "fbx-interchange": cmd_fbx_interchange,
+                "fbx-consume": cmd_fbx_consume, "fbx-verify": cmd_fbx_verify}[args.exp_action](args)
     except SliceStop as e:
         print(f"[experimental-video-action] STOP {e.code}: {e.detail}", file=sys.stderr)
         return 2

@@ -163,7 +163,7 @@ def cli(code_root, run, *args, env_extra=None):
     r = subprocess.run([PY, "-X", "utf8", "-m", "app.cli", "experimental-video-action", args[0], "--run", str(run), *args[1:]],
                        cwd=code_root, env=env, capture_output=True, text=True, timeout=1800)
     return {"cmd": " ".join(["experimental-video-action", *args[:1], "--run", "<run>", *args[1:]]), "exit": r.returncode,
-            "stdout": r.stdout[-6000:], "stderr": r.stderr[-4000:], "seconds": round(time.time() - t0, 2)}
+            "stdout": r.stdout[-6000:], "stderr": r.stderr[-4000:], "seconds": round(time.time() - t0, 2), "_stdout_full": r.stdout}
 
 
 # ------------------------------------------------------------------------------------------------- preflight ---
@@ -230,6 +230,7 @@ def cmd_preflight(a):
     rq = req("OLD_T", refs["head"], "S1", OFFSETS["W126T"])
     dump(out / "oldcode_S1" / "OLD_T.json", rq)
     pr = cli(code, s1, "propose", "--request", str(out / "oldcode_S1" / "OLD_T.json"))
+    pr.pop("_stdout_full", None)
     rep["oldcode_bypass_S1"] = {"propose": pr, **(_bypass(code, s1, "OLD_T") if pr["exit"] == 0 else {})}
     rep["w125_runs_unchanged_after_preflight"] = {s: w125_tree_check(W125 / "runs" / f"{s}_replay")["ok"] for s in ("S1", "S3")}
     print(dump(out / "preflight.json", rep))
@@ -242,6 +243,7 @@ def _bypass(code, run, rid):
     p["decision"] = {"decision": "ACCEPT", "failure_class": "NONE", "reasons": []}
     (run / "edits" / rid / "proposal.json").write_text(json.dumps(p, indent=1), encoding="utf-8")
     c = cli(code, run, "commit", "--request-id", rid, "--decision", "accept")
+    c.pop("_stdout_full", None)
     after = load(run / "lineage" / "refs.json")
     out = {"original_decision": orig, "tamper": "proposal.json decision -> ACCEPT (no other change)", "commit": c,
            "head_before": before["head"], "head_after": after["head"], "published": after["head"] == p["candidate"]}
@@ -299,7 +301,7 @@ def audit(run, src, step):
     ints, subs = E._frames_equal(fresh, rec)
     a["fresh_readback"] = {"value_digest_equal": fresh["value_digest"] == hb["value_digest"], "blend_sha_bound": fresh["blend_sha256"] == hb["blend_sha256"],
                            "integer_frames_bit_equal": ints, "subframes_bit_equal": subs}
-    st = json.loads(cli(ROOT, run, "status")["stdout"])
+    st = json.loads(cli(ROOT, run, "status")["_stdout_full"])
     chain = [x["state_id"] for x in st["lineage"]]
     a["no_ghost_acceptance"] = all(e.get("decision") != "ACCEPTED" or load(run / "edits" / rid / "commit.json")["head_after"] in chain
                                    for rid, e in st["edits"].items())
@@ -401,6 +403,7 @@ def cmd_run(a):
                 r = cli(ROOT, run, "fbx", "--state", kw["state"])
             elif cmd == "revert":
                 r = cli(ROOT, run, "revert")
+            r.pop("_stdout_full", None)
             rec.update(r)
             refs1 = load(run / "lineage" / "refs.json")
             rec.update(head_after=refs1["head"], generation_after=refs1.get("generation"))
@@ -412,7 +415,7 @@ def cmd_run(a):
             rec["status_after"] = {"edits": {k: v for k, v in st["edits"].items()
                                              if k.startswith("W126") or k == LEGACY_UNDECIDED[src] or k in ("R1",)}}
             if cmd == "status":
-                rec["status"] = {"legacy": {k: v["gate"] for k, v in st["edits"].items() if not k.startswith("W126")},
+                rec["status"] = {"legacy": {k: v.get("gate", v.get("state")) for k, v in st["edits"].items() if not k.startswith("W126")},
                                  "historical_accepted": {k: v["semantic_authorization"] for k, v in st["edits"].items()
                                                          if v.get("decision") == "ACCEPTED"}}
             if cmd == "commit" and (run / "edits" / kw["rid"] / "commit.json").exists():
@@ -428,7 +431,7 @@ def cmd_run(a):
             if cmd == "review" and r["exit"] == 0:
                 rec["review"] = load(run / "review" / kw["rid"] / "review_report.json")
             if cmd == "fbx" and r["exit"] == 0:
-                fx = sorted((run / "fbx").glob("head_*"))[-1]
+                fx = run / "fbx" / f"head_{refs1['head'][:12]}"
                 rec["fbx"] = {k: v for k, v in load(fx / "fbx_roundtrip_report.json").items() if k not in ("export", "blend_scene", "fbx_scene")}
             if cmd == "revert" and r["exit"] == 0:
                 h = refs1["head"]

@@ -68,12 +68,23 @@ def executor(kind, calls):
         verdict = "CASE D (negative)" if kind == "negative" else "CASE A"
         marker = "" if kind == "no_marker" else f"\nAUTOMATION_BATCH_STATUS: COMPLETE\nBATCH_NUMBER: {batch}\n"
         (clone/"docs"/f"{batch}_WORKLOG_SYNTH_RESULT.md").write_text(f"# Worklog {batch}\n{verdict}\n{marker}")
+        if kind in ("remote_moved", "conflict"):
+            # the Batch runs on its starting documents: the central doc is the pre-update one
+            calls.append((clone/"docs"/"CENTRAL.md").read_text() if (clone/"docs"/"CENTRAL.md").exists() else None)
+            if kind == "conflict":
+                (clone/"docs"/"CENTRAL.md").write_text("Batch edit\n")
+            # meanwhile ChatGPT commits an agreed central-document update to the remote
+            owner = Path(cfg["repo"]).parent/"chatgpt"
+            run(owner, "pull", "-q", "--ff-only")
+            (owner/"docs"/"CENTRAL.md").write_text("Architecture decision v2\n")
+            run(owner, "add", "-A"); run(owner, "commit", "-qm", "ChatGPT: central doc update"); run(owner, "push", "-q")
         if kind == "edit_instruction":
             (clone/ba.INSTRUCTION).write_text("tampered")
             run(clone, "add", "-A"); run(clone, "commit", "-q", "--no-verify", "-m", f"tamper\n\n{ba.TRAILER}: {batch}")
         else:
             run(clone, "add", "-A"); run(clone, "commit", "-qm", f"Worklog {batch}\n\n{ba.TRAILER}: {batch}")
-        run(clone, "push", "-q", "origin", BRANCH)
+        pushed = run(clone, "push", "-q", "origin", BRANCH, check=False)
+        assert (pushed.returncode != 0) == (kind in ("remote_moved", "conflict"))   # rejected: remote advanced
         return 0
     return go
 
@@ -208,6 +219,68 @@ def test_K2_agent_that_bypasses_hook_is_caught_by_post_verification(env):
     env["publish"](instruction(7)); calls = []
     s = ba.poll(env["cfg"], executor("edit_instruction", calls))
     assert s["outcome"] == "stop" and "modified docs/next_batch.md" in s["reason"] and lock(env)["state"] == "NEEDS_REVIEW"
+
+
+# M: the remote advances during a Batch (ChatGPT central-document updates)
+def test_M_remote_docs_update_during_batch_is_merged_and_batch_completes(env):
+    env["publish"]("Architecture decision v1\n", "docs/CENTRAL.md")
+    env["publish"](instruction(7)); calls = []
+    blob = ba.remote_view(env["cfg"]).blob
+    s = ba.poll(env["cfg"], executor("remote_moved", calls))
+    assert s["outcome"] == "complete" and lock(env) is None
+    assert calls == [7, "Architecture decision v1\n"]          # the running Batch kept its starting documents
+    remote = f"origin/{BRANCH}"
+    run(env["clone"], "fetch", "-q")
+    show = lambda p: run(env["clone"], "show", f"{remote}:{p}").stdout
+    assert show("docs/CENTRAL.md") == "Architecture decision v2\n"      # the update is kept, not overwritten
+    assert "AUTOMATION_BATCH_STATUS: COMPLETE" in show("docs/7_WORKLOG_SYNTH_RESULT.md")
+    assert run(env["clone"], "rev-parse", f"{remote}:{ba.INSTRUCTION}").stdout.strip() == blob
+    tip = run(env["clone"], "show", "-s", "--format=%P%n%B", remote).stdout
+    assert len(tip.splitlines()[0].split()) == 2 and f"{ba.TRAILER}: 7" in tip   # one ordinary merge commit
+    journal = ba.read_json(ba.state_paths(env["cfg"])["journal"])
+    assert journal[-1]["batch"] == 7 and len(journal[-1]["merged_remote_updates"]) == 1
+    assert ba.poll(env["cfg"], executor("ok", calls))["outcome"] == "noop" and calls.count(7) == 1
+
+
+def test_M2_conflicting_remote_update_is_never_forced(env):
+    env["publish"](instruction(7)); calls = []
+    s = ba.poll(env["cfg"], executor("conflict", calls))
+    assert s["outcome"] == "stop" and "conflicts" in s["reason"] and lock(env)["state"] == "NEEDS_REVIEW"
+    assert lock(env)["publication"]["result"] == "refused"
+    clone = env["clone"]
+    assert run(clone, "status", "--porcelain").stdout == "" and not (clone/".git"/"MERGE_HEAD").exists()
+    run(clone, "fetch", "-q")
+    assert run(clone, "show", f"origin/{BRANCH}:docs/CENTRAL.md").stdout == "Architecture decision v2\n"
+    assert run(clone, "ls-tree", "--name-only", f"origin/{BRANCH}", "docs/7_WORKLOG_SYNTH_RESULT.md").stdout == ""
+    again = ba.poll(env["cfg"], executor("ok", calls))           # never retried automatically
+    assert "ambiguous lock" in again["reason"] and lock(env)["state"] == "NEEDS_REVIEW"
+
+
+def test_M4_review_lock_from_pre_merge_worker_is_published_on_next_poll(env, monkeypatch):
+    env["publish"](instruction(7)); calls = []
+    monkeypatch.setattr(ba, "publish_pending", lambda *a, **k: {"result": "nothing"})   # the old worker had no merge step
+    s = ba.poll(env["cfg"], executor("remote_moved", calls))
+    assert s["outcome"] == "stop" and set(lock(env)["problems"]) == {"local commits not published",
+                                                                       "expected exactly one Worklog 7, found []"}
+    monkeypatch.undo()
+    s = ba.poll(env["cfg"], executor("ok", calls))
+    assert s["outcome"] == "complete" and lock(env) is None and calls.count(7) == 1
+    journal = ba.read_json(ba.state_paths(env["cfg"])["journal"])
+    assert journal[-1]["batch"] == 7 and journal[-1]["merged_remote_updates"]
+
+
+def test_M3_unfinished_batch_is_not_published_even_if_remote_moved(env):
+    env["publish"](instruction(7))
+    ba.poll(env["cfg"], lambda *a: 0)                           # executor wrote nothing, exited 0
+    assert lock(env)["state"] == "NEEDS_REVIEW"
+    run(env["owner"], "pull", "-q", "--ff-only")
+    start = lock(env)["start_commit"]
+    (env["clone"]/"docs"/"7_WORKLOG_X.md").write_text("# Worklog 7\npartial\n")
+    run(env["clone"], "add", "-A"); run(env["clone"], "commit", "-qm", "partial")
+    env["publish"]("update\n", "docs/CENTRAL.md")
+    r = ba.publish_pending(env["cfg"], 7, start)
+    assert r["result"] == "refused" and "not final" in r["reason"]
+    assert run(env["clone"], "rev-list", "--merges", f"{start}..HEAD").stdout == ""
 
 
 # L

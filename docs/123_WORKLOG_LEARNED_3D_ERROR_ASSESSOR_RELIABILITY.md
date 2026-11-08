@@ -598,3 +598,6 @@ Outputs go under `%USERPROFILE%\animcv-w123\results`. Stages refuse to overwrite
 - Generator use of such a signal is UNPROVEN and was not tested.
 - The sidecar is a defensible scratch contract that keeps soft reliability separate from hard pins and from the raw
   detector score. It is not a Production schema.
+
+AUTOMATION_BATCH_STATUS: COMPLETE
+BATCH_NUMBER: 123

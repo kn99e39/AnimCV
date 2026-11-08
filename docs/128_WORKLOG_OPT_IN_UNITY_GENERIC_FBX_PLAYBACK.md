@@ -45,6 +45,7 @@ Worklog, run, package or test was edited.
 | W127 completion head (provenance) | `5c2782916ae3741753b6328add134b13033f37cf`, an ancestor of the starting commit |
 | Final source revision | `910d778`: the preflight script, the only code added |
 | Later commits | documentation only: this Worklog and one `docs/README.md` index line, then the COMPLETE marker |
+| Push | **Not pushed by this agent.** The first fetch + push waited about 10 min on a Git Credential Manager sign-in prompt and was killed. A non-interactive `git fetch` then succeeded, showing the remote had not advanced. A non-interactive `git push` failed: `could not read Username … terminal prompts disabled`. I did not sign in. The commits stay local, for the worker to publish. |
 | Machine | Main only. No LabServer, no training. Network use: `git fetch/push`, plus Unity's own licensing client contacting Unity servers during the probes. |
 
 ## 3. What was run, and why it is a licence block

@@ -395,6 +395,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--blender-executable", default=None, help="Path to blender(.exe); overrides autodetection"
     )
 
+    # EXPERIMENTAL opt-in slice (Batch 124).  Registration only: app.experimental_video_action imports nothing heavy at
+    # module level and is never called by any default command.
+    from app.experimental_video_action import add_subparser as _add_experimental_video_action
+
+    _add_experimental_video_action(sub)
+
     return parser
 
 
@@ -1162,6 +1168,11 @@ def _export_blender(args: argparse.Namespace) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    if args.command == "experimental-video-action":
+        from app.experimental_video_action import dispatch as _dispatch_experimental_video_action
+
+        return _dispatch_experimental_video_action(args)
 
     try:
         if args.command == "extract-frames":

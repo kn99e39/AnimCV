@@ -1,0 +1,12 @@
+{
+ "schema": "animcv_exp_world_pin_request_v1",
+ "request_id": "hold_left_wrist_example",
+ "parent_state_id": "<current head state id printed by build / status>",
+ "type": "WORLD_POSITION_PIN",
+ "semantic_joint": "left_wrist",
+ "coordinate_frame": "SCENE_WORLD",
+ "unit": "m",
+ "frames": [210, 218],
+ "target": {"kind": "CAPTURED_PLUS_DECLARED_OFFSET", "capture_frame": 210, "offset_m": [0.0, 0.0, 0.0]},
+ "authorized_channels": ["lowerarm_l", "upperarm_l"]
+}

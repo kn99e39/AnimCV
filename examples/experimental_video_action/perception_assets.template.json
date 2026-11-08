@@ -1,0 +1,8 @@
+{
+ "_comment": "EXPERIMENTAL slice. Fill in local paths to the FROZEN W102 M1 + S0 perception assets. Identities are verified against src/app/experimental_video_action.PERCEPTION_EXPECTED; any mismatch stops the command.",
+ "frozen_code_dir": "<path to the frozen W102 code snapshot (contains scripts/w102_video_diagnostic.py)>",
+ "weights_dir": "<directory with rtmdet_tiny_..._78e30dcc.pth and rtmpose-tiny_..._e613ba3f_20230127.pth>",
+ "checkpoint": "<path to s0_checkpoint.pt (frozen S0_neutral_sign)>",
+ "gate_report": "<path to the W102 M1 gate_report.json>",
+ "lock": "<path to the W102 baseline0 s0_report.json (environment lock)>"
+}

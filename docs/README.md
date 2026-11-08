@@ -4,6 +4,8 @@
 
 ## 현재 기준 문서·진행상황 (2026-11-08)
 
+> **2026-11-09 갱신 (W125):** 최신 완료 Worklog는 [125 — Crash-Consistent Editable Action Transactions](125_WORKLOG_CRASH_CONSISTENT_EDITABLE_ACTION_TRANSACTIONS.md), **CASE A (트랜잭션 능력 한정)**. EXPERIMENTAL opt-in 경로 `experimental-video-action`의 accept/reject/revert가 OS 잠금 + 봉인된 journal + 단일 원자적 `refs.json` 게시 지점으로 바뀌었고 `recover`/`adopt` 명령이 추가되었다 ([사용법](EXPERIMENTAL_VIDEO_ACTION_WORLD_PIN.md)). 증거 수준: **Agent-run**, Windows 11/NTFS의 프로세스 수준 장애(예외, `os._exit`, 강제 종료)와 경쟁 프로세스만 시험; 정전·OS 크래시는 시험·주장하지 않음. `proposal.json`은 봉인되지 않아 수동 변조된 gate 결정은 막지 못한다(W124부터 존재). 애니메이션 품질·FBX(여전히 FAIL)·Production 기본 이행 주장이 아니다.
+
 > **2026-11-09 갱신 (W124):** 최신 완료 Worklog는 [124 — Opt-in Video → Editable Action + World Pin](124_WORKLOG_OPT_IN_VIDEO_TO_EDITABLE_ACTION_WORLD_PIN.md), **CASE B**. 첫 **EXPERIMENTAL opt-in** 사용자 경로 `motion-tool experimental-video-action` ([사용법](EXPERIMENTAL_VIDEO_ACTION_WORLD_PIN.md))이 추가되었다: 인증된 30 fps 실제 영상(W121/W122 S1·S3 engineering replay) → frozen M1+S0 live 인식 → W105 BaseRig 편집 가능 `.blend` Action → left-wrist WORLD_POSITION_PIN 제안/수락/거부/정확한 되돌리기. `.blend` 경로는 Agent-run 검증됨; FBX round-trip은 FAIL(W107–W112 계열 결함 재현). 기본 CLI/GUI 경로·기본 정책은 변경되지 않았으며 Production 기본 이행이 아니다. W123은 Worklog 123으로 완료(CASE B)되었다.
 
 - **브랜치:** `arch/single_frame_first` (사용자 확인). `On_Work`가 활성이라는 오래된 `AGENTS.md` 문구는 수정되었다.

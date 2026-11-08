@@ -155,6 +155,12 @@ $PY -m app.cli experimental-video-action recover --run R   # ROLLED_FORWARD; com
 $PY -m app.cli experimental-video-action status  --run R   # recovery_required: false; edits.hold_1.decision = ACCEPTED
 ```
 
+**Not protected (W125 finding).** `edits/<id>/proposal.json` is not sealed. `commit` re-verifies that the accepted `.blend`
+is bit-identical to the candidate and that its actual footprint equals the proposal's, but it reads the **gate decision**
+from `proposal.json`. A hand-edited proposal that flips a gate REJECT to ACCEPT is therefore published (shown on a synthetic
+fixture: an UNREACHABLE candidate with a 136 mm pin residual). The statement "a gate-rejected candidate can never be
+accepted" holds only if `proposal.json` is not tampered with. The W124 code had the same exposure.
+
 **Durability scope.** Tested: Python exceptions, `os._exit`, and hard termination of the CLI process (including while its
 Blender child is running) on Windows 11 / local NTFS. Not tested and not claimed: power loss, OS crash, full disk,
 network or other filesystems. On Windows the directory entry of a rename is not fsynced (Python cannot do that), so a

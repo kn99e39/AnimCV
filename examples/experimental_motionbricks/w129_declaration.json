@@ -1,0 +1,569 @@
+{
+ "batch": 129,
+ "branches": {
+  "A": "untouched frozen baseline .blend (byte copy, no-op)",
+  "B": "per-channel endpoint-matched slerp of the upperarm_l / lowerarm_l basis between Action context_last and target_first, t = (f - f0) / 29, interior only",
+  "C": "MotionBricks primary sample, left-arm channels projected on the interior only"
+ },
+ "case_rule": {
+  "A": "G0-G7 pass AND QA1-QA5 pass (visible quality improvement vs BOTH the no-op A and the slerp B without materially worse source fidelity)",
+  "B": "authentic model and a safe separate Blender candidate are demonstrated (G0-G7 pass) but any A quality criterion (QA1-QA5) fails",
+  "C": "the real model ran but a timing (G2), mapping (G1), Action (G4) or hard-constraint (G5) gate fails, or the representation cannot be projected safely",
+  "D": "invalid evidence or predeclared control-integrity failure: a mapping/runtime/adapter negative control does not fail closed, the primary sample is not the real pinned model (mock/substitution/provenance mismatch), or an instrument changed after this declaration",
+  "DATA_BLOCKED": "a prerequisite (model bytes/licence/runtime, authentic S1 baseline/lineage, Blender, native-time alignment) is missing before any primary evidence",
+  "precedence": "DATA_BLOCKED > D > C > B > A; S3 (secondary) never changes the S1 CASE"
+ },
+ "episodes": {
+  "S1": {
+   "allowed_token_counts": [
+    9
+   ],
+   "context_action": [
+    168,
+    169,
+    170,
+    171
+   ],
+   "context_source": [
+    246,
+    247,
+    248,
+    249
+   ],
+   "interior_action": [
+    172,
+    199
+   ],
+   "interior_source": [
+    250,
+    277
+   ],
+   "n_tokens": 9,
+   "protected_action_frames": [
+    132,
+    133,
+    134,
+    135,
+    136,
+    137,
+    138,
+    139,
+    140
+   ],
+   "protected_source_frames": [
+    210,
+    211,
+    212,
+    213,
+    214,
+    215,
+    216,
+    217,
+    218
+   ],
+   "raw_frames": 36,
+   "segment_first_source": 79,
+   "target_action": [
+    200,
+    201,
+    202,
+    203
+   ],
+   "target_source": [
+    278,
+    279,
+    280,
+    281
+   ],
+   "valid_action": [
+    171,
+    172,
+    173,
+    174,
+    175,
+    176,
+    177,
+    178,
+    179,
+    180,
+    181,
+    182,
+    183,
+    184,
+    185,
+    186,
+    187,
+    188,
+    189,
+    190,
+    191,
+    192,
+    193,
+    194,
+    195,
+    196,
+    197,
+    198,
+    199,
+    200
+   ],
+   "valid_samples": 30,
+   "valid_source": [
+    249,
+    250,
+    251,
+    252,
+    253,
+    254,
+    255,
+    256,
+    257,
+    258,
+    259,
+    260,
+    261,
+    262,
+    263,
+    264,
+    265,
+    266,
+    267,
+    268,
+    269,
+    270,
+    271,
+    272,
+    273,
+    274,
+    275,
+    276,
+    277,
+    278
+   ]
+  },
+  "S3": {
+   "allowed_token_counts": [
+    9
+   ],
+   "context_action": [
+    107,
+    108,
+    109,
+    110
+   ],
+   "context_source": [
+    106,
+    107,
+    108,
+    109
+   ],
+   "interior_action": [
+    111,
+    138
+   ],
+   "interior_source": [
+    110,
+    137
+   ],
+   "n_tokens": 9,
+   "protected_action_frames": [
+    42,
+    43,
+    44,
+    45,
+    46,
+    47,
+    48,
+    49,
+    50
+   ],
+   "protected_source_frames": [
+    41,
+    42,
+    43,
+    44,
+    45,
+    46,
+    47,
+    48,
+    49
+   ],
+   "raw_frames": 36,
+   "segment_first_source": 0,
+   "target_action": [
+    139,
+    140,
+    141,
+    142
+   ],
+   "target_source": [
+    138,
+    139,
+    140,
+    141
+   ],
+   "valid_action": [
+    110,
+    111,
+    112,
+    113,
+    114,
+    115,
+    116,
+    117,
+    118,
+    119,
+    120,
+    121,
+    122,
+    123,
+    124,
+    125,
+    126,
+    127,
+    128,
+    129,
+    130,
+    131,
+    132,
+    133,
+    134,
+    135,
+    136,
+    137,
+    138,
+    139
+   ],
+   "valid_samples": 30,
+   "valid_source": [
+    109,
+    110,
+    111,
+    112,
+    113,
+    114,
+    115,
+    116,
+    117,
+    118,
+    119,
+    120,
+    121,
+    122,
+    123,
+    124,
+    125,
+    126,
+    127,
+    128,
+    129,
+    130,
+    131,
+    132,
+    133,
+    134,
+    135,
+    136,
+    137,
+    138
+   ]
+  }
+ },
+ "gates": {
+  "G0": "prerequisites authenticated (preflight status OK)",
+  "G1": "mapping controls pass: real-frame left-arm round trip <= 1e-5 (quaternion component), posed-control primary direction residual <= 0.05 deg, no-mirroring ok, left-right and parent-child behave as declared, mirrored axis refused",
+  "G2": "timing: allowed token mask exactly {9}; pred_num_tokens == 9; valid samples == 30; endpoint-corrected LeftArm/LeftForeArm locals at sample 0 / 29 equal the last context / first target pose within 2e-3 rad",
+  "G3": "real inference provenance: ONNX bytes = LFS OID 856419dc..., official MotionBricksSOMAEngine TensorRT plan, raw tensors saved",
+  "G4": "candidate is a separate .blend + separately named Action; fresh-process readback: 1 Action, 32 CONSTANT F-curves keyed 1..N, 30 fps, scene 1..N; changed keys only upperarm_l/lowerarm_l on interior frames; every non-left-arm bone world point and the object matrix bit-equal on every integer frame and subframe; left arm bit-equal outside the interior; baseline/lineage files unchanged",
+  "G5": "hard pin: the W126V pin domain (Action frames of source 210-218 for S1) is bit-equal; C composed onto the W126V-accepted .blend keeps every pin-frame residual equal to the W126V residual and <= 1e-6 m",
+  "G6": "negative controls fail closed (runtime: missing ONNX, wrong bytes, LFS pointer, skeleton missing joint; adapter: mirrored axis, missing BaseRig bone, protected overlap, non-30-sample window, out-of-domain channel/frame build)",
+  "G7": "native-rate synchronized A/B/C video: N_action frames written and decoded at 30.000 fps"
+ },
+ "instruction_blob": "390668973f13c2e952fe9c8db8a686609662ff07",
+ "instrument_sha256_lf": {
+  "scripts/w129_motionbricks_harness.py": "036b2a64b4a309924271a62d0c9d1dbd4502d7a5a49e6c74c21edf21a20983b0",
+  "scripts/w129_motionbricks_infer.py": "ec44234d5b0343a9f45746c7a5b26cbde6454adc6157589c9cb4c2bac2f32ed7",
+  "src/app/experimental_motionbricks.py": "3172d5afb64b206828892106c983bbed3a1f5dbeabcbaad5c7f7c9aeeae290dc",
+  "src/blender/experimental_action_stage.py": "c977da7d77ed38d8fc90bcc257493edb4cbe62d39f4f84dfa53e66ddf570fb20",
+  "src/blender/experimental_motionbricks_stage.py": "ad1bd44cffbfb729a04051102604cf27672568e2e6f2548c92526fc049f06488",
+  "tests/test_experimental_motionbricks.py": "5503299a5b7f1902aa5b6b7189fb81427468113a729fc2407a509525f1d30993"
+ },
+ "mapping": {
+  "A_blender_to_soma": [
+   [
+    1.0,
+    0.0,
+    0.0
+   ],
+   [
+    0.0,
+    0.0,
+    1.0
+   ],
+   [
+    0.0,
+    -1.0,
+    0.0
+   ]
+  ],
+  "align": {
+   "Chest": "(('Chest', 'Neck1'), ('H:spine_05', 'H:neck_01'), 'FWD')",
+   "Head": "(('Head', 'HeadEnd'), ('H:neck_02', 'T:neck_02'), 'FWD')",
+   "Hips": "(('Hips', 'Chest'), ('HIPMID', 'H:spine_05'), ('VEC', ('RightLeg', 'LeftLeg'), ('H:thigh_r', 'H:thigh_l')))",
+   "LeftArm": "(('LeftArm', 'LeftForeArm'), ('H:upperarm_l', 'T:upperarm_l'), 'FWD')",
+   "LeftFoot": "(('LeftFoot', 'LeftToeBase'), ('H:foot_l', 'T:foot_l'), 'UP')",
+   "LeftForeArm": "(('LeftForeArm', 'LeftHand'), ('H:lowerarm_l', 'T:lowerarm_l'), 'FWD')",
+   "LeftHand": "(('LeftHand', 'LeftHandMiddle1'), ('H:hand_l', 'H:middle_01_l'), ('VEC', ('LeftHand', 'LeftHandThumb1'), ('H:hand_l', 'H:thumb_01_l')))",
+   "LeftLeg": "(('LeftLeg', 'LeftShin'), ('H:thigh_l', 'T:thigh_l'), 'FWD')",
+   "LeftShin": "(('LeftShin', 'LeftFoot'), ('H:calf_l', 'T:calf_l'), 'FWD')",
+   "LeftShoulder": "(('LeftShoulder', 'LeftArm'), ('H:clavicle_l', 'T:clavicle_l'), 'FWD')",
+   "LeftToeBase": "(('LeftToeBase', 'LeftToeEnd'), ('H:foot_l', 'T:foot_l'), 'UP')",
+   "Neck1": "(('Neck1', 'Neck2'), ('H:neck_01', 'T:neck_01'), 'FWD')",
+   "Neck2": "(('Neck2', 'Head'), ('H:neck_02', 'T:neck_02'), 'FWD')",
+   "RightArm": "(('RightArm', 'RightForeArm'), ('H:upperarm_r', 'T:upperarm_r'), 'FWD')",
+   "RightFoot": "(('RightFoot', 'RightToeBase'), ('H:foot_r', 'T:foot_r'), 'UP')",
+   "RightForeArm": "(('RightForeArm', 'RightHand'), ('H:lowerarm_r', 'T:lowerarm_r'), 'FWD')",
+   "RightHand": "(('RightHand', 'RightHandMiddle1'), ('H:hand_r', 'H:middle_01_r'), ('VEC', ('RightHand', 'RightHandThumb1'), ('H:hand_r', 'H:thumb_01_r')))",
+   "RightLeg": "(('RightLeg', 'RightShin'), ('H:thigh_r', 'T:thigh_r'), 'FWD')",
+   "RightShin": "(('RightShin', 'RightFoot'), ('H:calf_r', 'T:calf_r'), 'FWD')",
+   "RightShoulder": "(('RightShoulder', 'RightArm'), ('H:clavicle_r', 'T:clavicle_r'), 'FWD')",
+   "RightToeBase": "(('RightToeBase', 'RightToeEnd'), ('H:foot_r', 'T:foot_r'), 'UP')",
+   "Spine1": "(('Spine1', 'Spine2'), ('H:spine_01', 'T:spine_01'), 'FWD')",
+   "Spine2": "(('Spine2', 'Chest'), ('H:spine_03', 'T:spine_03'), 'FWD')"
+  },
+  "coverage": {
+   "Chest": "RIG_REST spine_05: undriven in the frozen Action (UNKNOWN in the video; rest is SYNTHETIC)",
+   "Head": "PROXY of neck_02 (rig REST, undriven)",
+   "Hips": "OBJECT_PROXY: Armature Object rotation = S0 W93 torso-frame hypothesis (GT-free); hips position = thigh-head midpoint, NO root travel observed (SYNTHETIC zero travel)",
+   "Jaw": "SYNTHETIC_SOMA_REFERENCE (no BaseRig counterpart; SOMA rest relative to its parent)",
+   "LeftArm": "DRIVEN from upperarm_l: frozen W102 M1+S0 3D hypothesis via W105 (GT-free; not observed truth)",
+   "LeftEye": "SYNTHETIC_SOMA_REFERENCE (no BaseRig counterpart; SOMA rest relative to its parent)",
+   "LeftFoot": "RIG_REST foot_l: undriven in the frozen Action (UNKNOWN in the video; rest is SYNTHETIC)",
+   "LeftForeArm": "DRIVEN from lowerarm_l: frozen W102 M1+S0 3D hypothesis via W105 (GT-free; not observed truth)",
+   "LeftHand": "RIG_REST hand_l: undriven in the frozen Action (UNKNOWN in the video; rest is SYNTHETIC)",
+   "LeftHandMiddleEnd": "SYNTHETIC_SOMA_REFERENCE (no BaseRig counterpart; SOMA rest relative to its parent)",
+   "LeftHandThumbEnd": "SYNTHETIC_SOMA_REFERENCE (no BaseRig counterpart; SOMA rest relative to its parent)",
+   "LeftLeg": "DRIVEN from thigh_l: frozen W102 M1+S0 3D hypothesis via W105 (GT-free; not observed truth)",
+   "LeftShin": "DRIVEN from calf_l: frozen W102 M1+S0 3D hypothesis via W105 (GT-free; not observed truth)",
+   "LeftShoulder": "RIG_REST clavicle_l: undriven in the frozen Action (UNKNOWN in the video; rest is SYNTHETIC)",
+   "LeftToeBase": "PROXY of foot_l (rig REST, undriven)",
+   "Neck1": "RIG_REST neck_01: undriven in the frozen Action (UNKNOWN in the video; rest is SYNTHETIC)",
+   "Neck2": "RIG_REST neck_02: undriven in the frozen Action (UNKNOWN in the video; rest is SYNTHETIC)",
+   "RightArm": "RIG_REST upperarm_r: undriven in the frozen Action (UNKNOWN in the video; rest is SYNTHETIC)",
+   "RightEye": "SYNTHETIC_SOMA_REFERENCE (no BaseRig counterpart; SOMA rest relative to its parent)",
+   "RightFoot": "RIG_REST foot_r: undriven in the frozen Action (UNKNOWN in the video; rest is SYNTHETIC)",
+   "RightForeArm": "RIG_REST lowerarm_r: undriven in the frozen Action (UNKNOWN in the video; rest is SYNTHETIC)",
+   "RightHand": "RIG_REST hand_r: undriven in the frozen Action (UNKNOWN in the video; rest is SYNTHETIC)",
+   "RightHandMiddleEnd": "SYNTHETIC_SOMA_REFERENCE (no BaseRig counterpart; SOMA rest relative to its parent)",
+   "RightHandThumbEnd": "SYNTHETIC_SOMA_REFERENCE (no BaseRig counterpart; SOMA rest relative to its parent)",
+   "RightLeg": "DRIVEN from thigh_r: frozen W102 M1+S0 3D hypothesis via W105 (GT-free; not observed truth)",
+   "RightShin": "DRIVEN from calf_r: frozen W102 M1+S0 3D hypothesis via W105 (GT-free; not observed truth)",
+   "RightShoulder": "RIG_REST clavicle_r: undriven in the frozen Action (UNKNOWN in the video; rest is SYNTHETIC)",
+   "RightToeBase": "PROXY of foot_r (rig REST, undriven)",
+   "Spine1": "DRIVEN from spine_01: frozen W102 M1+S0 3D hypothesis via W105 (GT-free; not observed truth)",
+   "Spine2": "RIG_REST spine_03: undriven in the frozen Action (UNKNOWN in the video; rest is SYNTHETIC)"
+  },
+  "framepose_limits": "17-joint FramePose / W105 partial BaseRig cannot determine: right arm (W105 does not drive it), clavicles, spine above spine_01, neck/head orientation, hands/fingers, feet/toes orientation, root translation / global travel, ground contact; these are rig REST or SYNTHETIC in the conditioning",
+  "inverse": "upperarm_l / lowerarm_l pose-bone basis from the SOMA parent-relative rotation of LeftArm (parent LeftShoulder) / LeftForeArm (parent LeftArm) via L_base = D_p L_soma D_j^T; nothing else is read back from the model",
+  "joint_map": {
+   "Chest": [
+    "BONE",
+    "spine_05"
+   ],
+   "Head": [
+    "PROXY",
+    "neck_02"
+   ],
+   "Hips": [
+    "OBJECT",
+    null
+   ],
+   "LeftArm": [
+    "BONE",
+    "upperarm_l"
+   ],
+   "LeftFoot": [
+    "BONE",
+    "foot_l"
+   ],
+   "LeftForeArm": [
+    "BONE",
+    "lowerarm_l"
+   ],
+   "LeftHand": [
+    "BONE",
+    "hand_l"
+   ],
+   "LeftLeg": [
+    "BONE",
+    "thigh_l"
+   ],
+   "LeftShin": [
+    "BONE",
+    "calf_l"
+   ],
+   "LeftShoulder": [
+    "BONE",
+    "clavicle_l"
+   ],
+   "LeftToeBase": [
+    "PROXY",
+    "foot_l"
+   ],
+   "Neck1": [
+    "BONE",
+    "neck_01"
+   ],
+   "Neck2": [
+    "BONE",
+    "neck_02"
+   ],
+   "RightArm": [
+    "BONE",
+    "upperarm_r"
+   ],
+   "RightFoot": [
+    "BONE",
+    "foot_r"
+   ],
+   "RightForeArm": [
+    "BONE",
+    "lowerarm_r"
+   ],
+   "RightHand": [
+    "BONE",
+    "hand_r"
+   ],
+   "RightLeg": [
+    "BONE",
+    "thigh_r"
+   ],
+   "RightShin": [
+    "BONE",
+    "calf_r"
+   ],
+   "RightShoulder": [
+    "BONE",
+    "clavicle_r"
+   ],
+   "RightToeBase": [
+    "PROXY",
+    "foot_r"
+   ],
+   "Spine1": [
+    "BONE",
+    "spine_01"
+   ],
+   "Spine2": [
+    "BONE",
+    "spine_03"
+   ]
+  },
+  "root": "Hips position = A x (thigh-head midpoint) x (SOMA rest hip height / BaseRig rest hip height); no root travel exists in the Action (SYNTHETIC zero travel)",
+  "soma_skeleton_joints": 77,
+  "synthetic_model_joints": [
+   "Jaw",
+   "LeftEye",
+   "RightEye",
+   "LeftHandThumbEnd",
+   "LeftHandMiddleEnd",
+   "RightHandThumbEnd",
+   "RightHandMiddleEnd"
+  ]
+ },
+ "model": {
+  "commit": "54fc563aeaaf819a753d72cc9fdc6713989cdd43",
+  "config": {
+   "allowed_token_counts": [
+    9
+   ],
+   "context_num_poses": 4,
+   "correct_generated_diff": true,
+   "heading_alignment": [
+    1.0,
+    0.0
+   ],
+   "model_to_runtime": "identity (poses supplied in SOMA model space)",
+   "target_num_poses": 4
+  },
+  "licence_code": "Apache-2.0",
+  "licence_model": "NVIDIA Open Model Agreement",
+  "manifest_sha256": "330c04f07fe0bba0e035d9da3fc6a34209779b463a498405c54257a1777347d1",
+  "model_version": "MotionBricks-SOMA-RP-v1",
+  "onnx": "motionbricks/assets/onnx/soma/mmm_v6_soma_fp32.onnx",
+  "onnx_sha256": "856419dc72aeb14e591eebf4dd0ea05734a2506ddb00bcd39dd6dac2ad60f4fb",
+  "ort_parity": "ONNX Runtime CPU on the identical encoded inputs, diagnostic only",
+  "precision": "FP32 (TF32 permitted, model default)",
+  "repo": "https://github.com/NVlabs/motionbricks",
+  "rerun": "exactly one exact rerun R2 in a new process, labelled determinism only",
+  "runtime": "TensorRT 10.8.0.43 via the official MotionBricksSOMAEngine (CUDA graph)",
+  "seed": "NOT APPLICABLE: the ONNX graph has no random operators (ArgMax/TopK decoding); one primary sample",
+  "tag": "v0.2.0"
+ },
+ "outcomes_inspected": false,
+ "pre_declaration_observations": "A/B-only plumbing dry run on a scratch copy (no model output observed): on S1 the world-space wrist steps around Action 171-177 (300-400 mm) are partly carried by the SHOULDER itself (154-244 mm/frame from the source-derived object/spine_01 tracks, out of the edit domain); in the clavicle_l frame the largest A arm-channel jump is 170->171 (220 mm, inside the frozen context, not editable) followed by 93-203 mm steps at 171-178. A world-space flick criterion would therefore not isolate the edit; QA1/QA2 use arm-local wrist kinematics. The frozen window is NOT changed.",
+ "preflight_sha256": "46119b9c5273e0fe038809f959ef12664abc89794085b94ec8aa351b44813868",
+ "primary_model_output_exists": false,
+ "quality_criteria": {
+  "QA1": "C has 0 ARM-LOCAL wrist reversal flicks (wrist in the clavicle_l frame, i.e. attributable to the edited channels) in steps context_last->+1 .. target_first-1->target_first (consecutive steps both > 20 mm with negative dot)",
+  "QA2": "C ARM-LOCAL boundary C0 entry/exit wrist steps each <= 2 x B's corresponding step + 10 mm",
+  "QA3": "C introduces no near-straight (> 175 deg) interior frame, no bend-direction flip and no frame bending against the A hinge reference",
+  "QA4": "source fidelity: C mean interior wrist deviation from A <= 1.25 x B's + 25 mm",
+  "QA5": "blinded agent visual review: C judged most natural (V2), C not named for a visible flick (V1) or wrong elbow (V3), and C not ranked least source-faithful (V4)"
+ },
+ "repo_head_at_declaration": "0c9a55cf85cec6cabccde1f5e6789a66155fec3f",
+ "schema": "animcv_exp_w129_declaration_v1",
+ "secondary": "S3 runs with the identical frozen configuration only after the S1 primary completes; transfer check only",
+ "sources": {
+  "S1": {
+   "baseline_sha": "0803ab2bf31210fbb729bc81b76931729fdc3e12cce27b9507a5b8caf1d12402",
+   "clip": "C:/Users/dna10/animcv-w121/data/originals/64498918_Double_Kettlebell_Strict_Press_side_view_.webm",
+   "clip_sha": "de8feb9d515daa2bfaeed7167fdcc62028dd3f6450872c4fd81f8fb03dd6359c",
+   "context_last": "249",
+   "head_state": "73dcd3dde3a65ffbd23f36361173ac7a92ee7c4db5e8436e4e85947649a524ab",
+   "n_action": "240",
+   "pin_accepted": "accepted/accepted_03_674ba278e9a0.blend",
+   "pin_accepted_sha": "7e2ab16511f4cbe111171df9af0bc2e1f7d8c09a57bd5a4feff284d34e908f40",
+   "pin_request": "edits/W126V",
+   "role": "PRIMARY",
+   "run": "C:\\Users\\dna10\\animcv-w126\\runs\\S1_replay",
+   "segment": "[79, 318]",
+   "target_first": "278",
+   "value_digest": "25a09802ffa210df56f0e930295468ef4cdb675e2945cb95491c080b5101c8a9"
+  },
+  "S3": {
+   "baseline_sha": "e1cfbae49e3af0e7a29758d93e5e3aec9781c3a16d4d5751d8406a1d3bba34e1",
+   "clip": "None",
+   "clip_sha": "f6b90f2f72e9020d",
+   "context_last": "109",
+   "head_state": "be9a1f09107c2237b37db0d21fe73b950958f747f1bbd65054b2b10cf8af9ae6",
+   "n_action": "154",
+   "pin_accepted": "accepted/accepted_03_fd249fbb203f.blend",
+   "pin_accepted_sha": "702ead2646319f657a515bb19d0fe288184ae0695f149e97f5e22b8016a34810",
+   "pin_request": "edits/W126V",
+   "role": "SECONDARY",
+   "run": "C:\\Users\\dna10\\animcv-w126\\runs\\S3_replay",
+   "segment": "[0, 153]",
+   "target_first": "138",
+   "value_digest": "b90587455a6aa2e831927b229e80462aee8634cd884bb16cc301289573b72937"
+  }
+ },
+ "starting_commit": "cd6db54fee0a354875c4e30df6eabd958be1ae1a",
+ "stop_conditions": [
+  "any G0 prerequisite missing -> DATA_BLOCKED",
+  "G1 mapping control failure -> STOP before S1 inference (representation incompatible)",
+  "token count != 9 or valid != 30 -> no retiming, report C",
+  "projection would touch any non-left-arm channel or frame outside the interior -> refuse (C)",
+  "no tuning: no other window, seed, token count, precision, model or post-processing after seeing output"
+ ],
+ "time": "2026-11-09T06:46:51Z",
+ "time_rule": "9 allowed tokens -> 36 raw frames; the official engine drops 3 boundary frames per end and endpoint-corrects, so valid sample k = SOURCE context_last + k (k = 0..29); sample 0 = last context pose, sample 29 = first target pose; only the 28 interior samples are written; no retiming, no resampling",
+ "visual_protocol": "panels X/Y/Z = random permutation of A/B/C drawn at run time and sealed in blind_key.json; the agent writes its answers to the blinded sheets/video BEFORE reading the key; the review is AGENT-ONLY (no human/animator)",
+ "visual_questions": {
+  "V1": "Which panel(s) show a visible unnatural one-frame flick/teleport/reversal of the left arm (around Action 171-175)?",
+  "V2": "Which panel's left-arm motion through the interior looks most natural and temporally coherent at native rate?",
+  "V3": "Which panel(s) show an anatomically wrong elbow (hyperextension, flip) or limb-length artefact?",
+  "V4": "Rank the panels by agreement with the source video's visible left-arm pose and timing (rack -> press); which is least faithful?",
+  "V5": "Is any boundary discontinuity visible at 171/172 or 199/200 in any panel?"
+ }
+}

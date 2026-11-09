@@ -340,7 +340,7 @@ def stage_controls(a):
     dump(out / "overrides.json", poses)
     blender(STAGE, "dump", out / "dump.log", blend=W / "inputs" / "S1_baseline.blend", report=out / "control_dump.json", overrides=out / "overrides.json")
     cd = load(out / "control_dump.json")
-    fr = {f["blender_frame"]: M.BaseFrame(cd["rest"], f) for f in cd["frames"]}
+    fr = {str(f["blender_frame"]): M.BaseFrame(cd["rest"], f) for f in cd["frames"]}
     mp = M.Mapping(soma, M.rest_frame(cd["rest"], OBJECT_REST_WXYZ, OBJECT_SCALE))
     res = {"alignment": mp.report()}
     L = {k: mp.to_soma_local(v) for k, v in fr.items()}

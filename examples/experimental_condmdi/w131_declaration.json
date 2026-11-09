@@ -1,0 +1,431 @@
+{
+ "batch": 131,
+ "branches": {
+  "A": "untouched frozen baseline (no-op)",
+  "B": "frozen W129 B .blend (endpoint-matched per-channel slerp)",
+  "B_rs": "diagnostic: B through the SAME 30->20->30 + HML263 encode/decode + projection path (no model); does not replace B",
+  "C": "CondMDI R1 left arm, projected on Action 172..199 only",
+  "W129_C": "historical MotionBricks C, reference only (frozen numbers; not rerun)"
+ },
+ "case_rule": {
+  "A": "all gates pass AND QA1-QA6 pass: credible visual/semantic improvement vs BOTH A and B without source-intent loss (visual evidence = agent-only blinded stills; human native-rate review NOT RUN)",
+  "B": "real model, honest partial conditioning and a safe separate Blender Action are demonstrated (all gates pass) but any quality criterion QA1-QA6 fails (no demonstrated superiority)",
+  "C": "the real model ran but a representation/clock/Action/constraint gate (G1, G2, G4, G5, G7) fails or the projection is unsafe",
+  "D": "declared safety/integrity falsification: the masked-input leak control R3 is not bitwise equal to R1 (input-leak/contract failure), a negative control does not fail closed, the sample is not the pinned real model, or an instrument changed after this declaration",
+  "DATA_BLOCKED": "a prerequisite (rights, checkpoint identity, authentic S1/W126/W129 baselines, runtime, Blender, mask semantics, honest mapping, bounded 20<->30 conversion) is missing before primary inference",
+  "precedence": "DATA_BLOCKED > D > C > B > A"
+ },
+ "config": {
+  "deterministic_cuda": "cudnn.deterministic, no TF32, use_deterministic_algorithms(warn_only)",
+  "guidance": 2.5,
+  "impute": true,
+  "leak_control": "R3 = UNKNOWN rig channels ['upperarm_r', 'lowerarm_r', 'hand_l', 'hand_r', 'foot_l', 'foot_r', 'neck_01', 'neck_02'] randomly rotated (seed 131) AND every masked input feature replaced by seeded noise (seed 131); output must be bitwise equal to R1",
+  "length": 160,
+  "no_tuning": "one model, one episode, one text, one mask, one sampler, one seed; no prompt/seed/window/mask/guidance sweep, no post-hoc smoothing",
+  "rerun": "R2 = exact rerun in a new process (determinism only)",
+  "respacing": "ddim100",
+  "seed": 42,
+  "stop_imputation_at": 0,
+  "text": "a person stands in place and presses both arms straight up overhead"
+ },
+ "controls_sha256": "d6d234ef8f83b75742b5377fb6c4d896055873a27f591b14cd18dd96c47a3e47",
+ "gates": {
+  "G0": "preflight OK_PENDING_IDENTITY + identity: HF model.safetensors bitwise = official random_joints model_avg; LFS hashes",
+  "G1": "representation controls (controls.json G1_pass): FK parity <= 1e-5 m; arm-direction round trip <= 1e-3 deg; projection identity <= 1e-6; B_rs vs B <= 1e-6; official encoder/abs/decoder parity <= 1e-4; synthetic static/rotated/asymmetric/parent-child controls; UNKNOWN rig perturbation leaves every observed feature bitwise equal",
+  "G2": "clock: 160 samples x 1/20 s = 240 x 1/30 s; interior samples 114..132 only; frames 172..199 reconstructed from samples 114..132 on the original timestamps; scene 30 fps, keys 1..240 unchanged",
+  "G3": "authentic inference: pinned weights (hash-checked in the runner), official CondMDIPipeline._sample, mask validated (no UNKNOWN observed, left arm observed on both sides, not in the interior); R2 bitwise = R1; R3 (leak control) bitwise = R1",
+  "G4": "C (and B_rs) separate .blend + separately named Action; fresh-process readback: 1 Action, 32 CONSTANT F-curves keyed 1..240, 30 fps, scene 1..240; changed keys only upperarm_l/lowerarm_l in 172..199; every non-left-arm bone world point and the object matrix bit-equal on every integer frame and subframe; left arm bit-equal outside 172..199; baseline/lineage files unchanged",
+  "G5": "hard pin: Action 132..140 bit-equal C vs A; C composed onto the W126V-accepted .blend keeps every pin-frame residual equal to W126V's and <= 1e-6 m (authoritative tolerance 1 mm)",
+  "G6": "negative controls fail closed (controls.json G6_adapter_pass)",
+  "G7": "native-rate synchronized video: 240 frames written and decoded at 30.000 fps"
+ },
+ "identity_sha256": "d0fd115ba472a9795a751eaf809588a51830216a1440f48a1e3546d69a54b61e",
+ "instruction_blob": "a06baf169f296195561dedcf123de506ffe5853b",
+ "instrument_sha256_lf": {
+  "scripts/w131_condmdi_harness.py": "a1681b6c182cef6e6c6671ac1fcfc1f178c5cbf2a3a07fc61904236ccc18b642",
+  "scripts/w131_condmdi_infer.py": "6d894a8be83734f23247cec2bff9295c3fea51fa7b180109e9f209731686a375",
+  "scripts/w131_condmdi_preflight.py": "aeb162460c158977229ad2fb04f965a372f9bd672531ef7777f2d4de12b2671c",
+  "src/app/experimental_condmdi.py": "bad831313ce46010007b1d5140ced507d53a49cd71f357a3fb282e9361073637",
+  "src/app/experimental_motionbricks.py": "3172d5afb64b206828892106c983bbed3a1f5dbeabcbaad5c7f7c9aeeae290dc",
+  "src/blender/experimental_action_stage.py": "c977da7d77ed38d8fc90bcc257493edb4cbe62d39f4f84dfa53e66ddf570fb20",
+  "src/blender/experimental_motionbricks_stage.py": "ad1bd44cffbfb729a04051102604cf27672568e2e6f2548c92526fc049f06488",
+  "tests/test_experimental_condmdi.py": "0fb46c3c825c2af6e65ffe9bf3b85c03ee125b284261ccf9956cc66e23fde1b9"
+ },
+ "model": {
+  "code": "setarehc/diffusion-motion-inbetweening 0c58473 (MIT)",
+  "hf_id": "ZeyuLing/motius-condmdi-humanml3d",
+  "hf_revision": "1e84d9ebf9a2562a2e3aa01926b9fb3606bd23de",
+  "identity": "196/196 tensors bitwise equal (identity.json)",
+  "lfs_sha256": {
+   "Mean_abs_3d.npy": "1bb2633e77a99f1120fc1eb424b7489360bac0a8dfb579e18bd5065431b4b07e",
+   "Std_abs_3d.npy": "9f5f12cae2003ef19fea119347346d0e46ad85c86dcd1096f1e319ee2a69f940",
+   "clip.safetensors": "431adb635d7a35aaaf5b70acf8738712c6f9ae30d08e17698c6f505c9a686fb8",
+   "model.safetensors": "3d9e299f6096405c028b3b8b9f8a663794a1e938bfae8ff27102caaa0e1c0e29"
+  },
+  "licence": "checkpoint card license: mit; code MIT; CLIP MIT; training data HumanML3D/AMASS (non-commercial research) - declared use is local non-commercial research evaluation",
+  "name": "CondMDI (Cohan et al., SIGGRAPH 2024), official 'randomly sampled frames and joints' release, EMA weights",
+  "official_release": "condmdi_random_joints.zip (Google Drive 1aP-z1JxSCTcUHhMqqdL2wbwQJUZWHT2j), model000750000.pt model_avg",
+  "runtime": "ZeyuLing/Motius d04a38c (CondMDI MIT + CLIP MIT retained), scratch Python 3.12 / torch 2.9.1+cu128"
+ },
+ "outcomes_inspected": false,
+ "preflight_sha256": "a2ceb54a4f9fa484672b111f6458fa0b0e6f640de9fb801e9dd8b14360d37731",
+ "primary_model_output_exists": false,
+ "quality_criteria": {
+  "QA1": "C has 0 ARM-LOCAL wrist reversal flicks (clavicle_l frame) in steps 171->172 .. 199->200 (consecutive steps both > 20 mm with negative dot)",
+  "QA2": "C ARM-LOCAL boundary C0 entry/exit wrist steps each <= 2 x B's + 10 mm",
+  "QA3": "C has no near-straight (> 175 deg) interior frame, no bend-direction flip, no frame bending against the A hinge reference",
+  "QA4": "source fidelity: C mean interior WORLD wrist deviation from A <= 1.25 x B's + 25 mm",
+  "QA5": "overhead-press intent (no swing): over Action 172..199, C's wrist height above the left shoulder (world z) never falls more than 50 mm below the lower of its values at Action 171 and 200",
+  "QA6": "blinded agent visual review: C judged most natural (V2), not named for a flick (V1) or wrong elbow (V3), not least faithful (V4), and read as an upward press (V6 = yes)"
+ },
+ "repo_head_at_declaration": "fb29aa914a05bdf32b20cbce65de6308a1810441",
+ "representation": {
+  "axes": [
+   [
+    1.0,
+    0.0,
+    0.0
+   ],
+   [
+    0.0,
+    0.0,
+    1.0
+   ],
+   [
+    0.0,
+    -1.0,
+    0.0
+   ]
+  ],
+  "c_ankle_m": 0.056649863719940186,
+  "coverage": {
+   "feature_groups": {
+    "foot_contact": "MASKED (UNKNOWN)",
+    "rot_6d": "MASKED (IK chain through UNKNOWN twist / rest joints)",
+    "velocity": "MASKED (contains UNKNOWN root travel)"
+   },
+   "interior_samples": [
+    114,
+    115,
+    116,
+    117,
+    118,
+    119,
+    120,
+    121,
+    122,
+    123,
+    124,
+    125,
+    126,
+    127,
+    128,
+    129,
+    130,
+    131,
+    132
+   ],
+   "joints": {
+    "head": {
+     "class": "UNKNOWN",
+     "masked_samples": 160,
+     "note": "not determined by the source evidence (feet orientation, head/neck orientation, right arm); MASKED",
+     "passed_interpolated_samples": 0,
+     "passed_samples": 0,
+     "rig_point": "T:neck_02"
+    },
+    "left_ankle": {
+     "class": "OBSERVED_HYPOTHESIS",
+     "masked_samples": 0,
+     "note": "position follows a DRIVEN Action channel (frozen W102 M1+S0 3D hypothesis via W105; GT-free, not truth)",
+     "passed_interpolated_samples": 80,
+     "passed_samples": 160,
+     "rig_point": "H:foot_l"
+    },
+    "left_collar": {
+     "class": "PROXY_RIGID_TORSO",
+     "masked_samples": 0,
+     "note": "rigid on the driven spine_01 through the UNDRIVEN rest spine_02..05 / neck_01 / clavicles: the upper-spine and clavicle bending is UNKNOWN and is the rig's rest; passed as a labelled PROXY because every HML263 arm position is pelvis-relative through this chain (declared coupling)",
+     "passed_interpolated_samples": 80,
+     "passed_samples": 160,
+     "rig_point": "H:clavicle_l"
+    },
+    "left_elbow": {
+     "class": "OBSERVED_HYPOTHESIS",
+     "masked_samples": 19,
+     "note": "position follows a DRIVEN Action channel (frozen W102 M1+S0 3D hypothesis via W105; GT-free, not truth)",
+     "passed_interpolated_samples": 71,
+     "passed_samples": 141,
+     "rig_point": "H:lowerarm_l"
+    },
+    "left_foot": {
+     "class": "UNKNOWN",
+     "masked_samples": 160,
+     "note": "not determined by the source evidence (feet orientation, head/neck orientation, right arm); MASKED",
+     "passed_interpolated_samples": 0,
+     "passed_samples": 0,
+     "rig_point": "T:foot_l"
+    },
+    "left_hip": {
+     "class": "PROXY_PELVIS",
+     "masked_samples": 0,
+     "note": "rigid on the Armature Object rotation (W93 GT-free torso-frame hypothesis); no pelvis bone",
+     "passed_interpolated_samples": 80,
+     "passed_samples": 160,
+     "rig_point": "H:thigh_l"
+    },
+    "left_knee": {
+     "class": "OBSERVED_HYPOTHESIS",
+     "masked_samples": 0,
+     "note": "position follows a DRIVEN Action channel (frozen W102 M1+S0 3D hypothesis via W105; GT-free, not truth)",
+     "passed_interpolated_samples": 80,
+     "passed_samples": 160,
+     "rig_point": "H:calf_l"
+    },
+    "left_shoulder": {
+     "class": "PROXY_RIGID_TORSO",
+     "masked_samples": 0,
+     "note": "rigid on the driven spine_01 through the UNDRIVEN rest spine_02..05 / neck_01 / clavicles: the upper-spine and clavicle bending is UNKNOWN and is the rig's rest; passed as a labelled PROXY because every HML263 arm position is pelvis-relative through this chain (declared coupling)",
+     "passed_interpolated_samples": 80,
+     "passed_samples": 160,
+     "rig_point": "H:upperarm_l"
+    },
+    "left_wrist": {
+     "class": "OBSERVED_HYPOTHESIS",
+     "masked_samples": 19,
+     "note": "position follows a DRIVEN Action channel (frozen W102 M1+S0 3D hypothesis via W105; GT-free, not truth)",
+     "passed_interpolated_samples": 71,
+     "passed_samples": 141,
+     "rig_point": "H:hand_l"
+    },
+    "neck": {
+     "class": "PROXY_RIGID_TORSO",
+     "masked_samples": 0,
+     "note": "rigid on the driven spine_01 through the UNDRIVEN rest spine_02..05 / neck_01 / clavicles: the upper-spine and clavicle bending is UNKNOWN and is the rig's rest; passed as a labelled PROXY because every HML263 arm position is pelvis-relative through this chain (declared coupling)",
+     "passed_interpolated_samples": 80,
+     "passed_samples": 160,
+     "rig_point": "H:neck_01"
+    },
+    "pelvis": {
+     "class": "PROXY_PELVIS",
+     "masked_samples": 0,
+     "note": "rigid on the Armature Object rotation (W93 GT-free torso-frame hypothesis); no pelvis bone",
+     "passed_interpolated_samples": 80,
+     "passed_samples": 160,
+     "rig_point": "HIPMID",
+     "root_features": {
+      "height": "PROXY (pelvis above the declared supported-joint floor), passed",
+      "xz": "UNKNOWN travel (no root translation in the Action), MASKED",
+      "yaw": "PROXY (official heading of hips + rigid-torso shoulders), passed"
+     }
+    },
+    "right_ankle": {
+     "class": "OBSERVED_HYPOTHESIS",
+     "masked_samples": 0,
+     "note": "position follows a DRIVEN Action channel (frozen W102 M1+S0 3D hypothesis via W105; GT-free, not truth)",
+     "passed_interpolated_samples": 80,
+     "passed_samples": 160,
+     "rig_point": "H:foot_r"
+    },
+    "right_collar": {
+     "class": "PROXY_RIGID_TORSO",
+     "masked_samples": 0,
+     "note": "rigid on the driven spine_01 through the UNDRIVEN rest spine_02..05 / neck_01 / clavicles: the upper-spine and clavicle bending is UNKNOWN and is the rig's rest; passed as a labelled PROXY because every HML263 arm position is pelvis-relative through this chain (declared coupling)",
+     "passed_interpolated_samples": 80,
+     "passed_samples": 160,
+     "rig_point": "H:clavicle_r"
+    },
+    "right_elbow": {
+     "class": "UNKNOWN",
+     "masked_samples": 160,
+     "note": "not determined by the source evidence (feet orientation, head/neck orientation, right arm); MASKED",
+     "passed_interpolated_samples": 0,
+     "passed_samples": 0,
+     "rig_point": "H:lowerarm_r"
+    },
+    "right_foot": {
+     "class": "UNKNOWN",
+     "masked_samples": 160,
+     "note": "not determined by the source evidence (feet orientation, head/neck orientation, right arm); MASKED",
+     "passed_interpolated_samples": 0,
+     "passed_samples": 0,
+     "rig_point": "T:foot_r"
+    },
+    "right_hip": {
+     "class": "PROXY_PELVIS",
+     "masked_samples": 0,
+     "note": "rigid on the Armature Object rotation (W93 GT-free torso-frame hypothesis); no pelvis bone",
+     "passed_interpolated_samples": 80,
+     "passed_samples": 160,
+     "rig_point": "H:thigh_r"
+    },
+    "right_knee": {
+     "class": "OBSERVED_HYPOTHESIS",
+     "masked_samples": 0,
+     "note": "position follows a DRIVEN Action channel (frozen W102 M1+S0 3D hypothesis via W105; GT-free, not truth)",
+     "passed_interpolated_samples": 80,
+     "passed_samples": 160,
+     "rig_point": "H:calf_r"
+    },
+    "right_shoulder": {
+     "class": "PROXY_RIGID_TORSO",
+     "masked_samples": 0,
+     "note": "rigid on the driven spine_01 through the UNDRIVEN rest spine_02..05 / neck_01 / clavicles: the upper-spine and clavicle bending is UNKNOWN and is the rig's rest; passed as a labelled PROXY because every HML263 arm position is pelvis-relative through this chain (declared coupling)",
+     "passed_interpolated_samples": 80,
+     "passed_samples": 160,
+     "rig_point": "H:upperarm_r"
+    },
+    "right_wrist": {
+     "class": "UNKNOWN",
+     "masked_samples": 160,
+     "note": "not determined by the source evidence (feet orientation, head/neck orientation, right arm); MASKED",
+     "passed_interpolated_samples": 0,
+     "passed_samples": 0,
+     "rig_point": "H:hand_r"
+    },
+    "spine1": {
+     "class": "PROXY_RIGID_TORSO",
+     "masked_samples": 0,
+     "note": "rigid on the driven spine_01 through the UNDRIVEN rest spine_02..05 / neck_01 / clavicles: the upper-spine and clavicle bending is UNKNOWN and is the rig's rest; passed as a labelled PROXY because every HML263 arm position is pelvis-relative through this chain (declared coupling)",
+     "passed_interpolated_samples": 80,
+     "passed_samples": 160,
+     "rig_point": "H:spine_02"
+    },
+    "spine2": {
+     "class": "PROXY_RIGID_TORSO",
+     "masked_samples": 0,
+     "note": "rigid on the driven spine_01 through the UNDRIVEN rest spine_02..05 / neck_01 / clavicles: the upper-spine and clavicle bending is UNKNOWN and is the rig's rest; passed as a labelled PROXY because every HML263 arm position is pelvis-relative through this chain (declared coupling)",
+     "passed_interpolated_samples": 80,
+     "passed_samples": 160,
+     "rig_point": "H:spine_04"
+    },
+    "spine3": {
+     "class": "PROXY_RIGID_TORSO",
+     "masked_samples": 0,
+     "note": "rigid on the driven spine_01 through the UNDRIVEN rest spine_02..05 / neck_01 / clavicles: the upper-spine and clavicle bending is UNKNOWN and is the rig's rest; passed as a labelled PROXY because every HML263 arm position is pelvis-relative through this chain (declared coupling)",
+     "passed_interpolated_samples": 80,
+     "passed_samples": 160,
+     "rig_point": "H:spine_05"
+    }
+   },
+   "n_observed_features": 7886,
+   "n_samples_exact": 80,
+   "n_samples_interpolated": 80
+  },
+  "declared_coupling": "HML263 positions are pelvis-relative: the left elbow/wrist conditioning is anchored on the rigid rest upper torso (PROXY) carried by the driven spine_01; the upper-spine/clavicle bending is UNKNOWN and is the rig's rest. Disclosed, not hidden.",
+  "encoder": "official HumanML3D recipe (uniform skeleton with 000021 lengths, canonical frame-0, smoothed official root heading, root-relative positions); the floor deviates: min over ankles minus c_ankle",
+  "mask": "absolute-space: root yaw + height; ric positions of every non-UNKNOWN joint at all 160 samples; left elbow/wrist only outside samples 114..132; no rotation, velocity, contact or root-xz feature",
+  "n_observed_features": 7886,
+  "projection": "generated left_shoulder->elbow and elbow->wrist directions (canonical -> undo frame-0 facing -> A^T) -> minimal swing from the frozen W129 B orientation (B supplies twist) -> upperarm_l, then lowerarm_l; per sample, then 20->30 slerp",
+  "rig_points": {
+   "head": "T:neck_02",
+   "left_ankle": "H:foot_l",
+   "left_collar": "H:clavicle_l",
+   "left_elbow": "H:lowerarm_l",
+   "left_foot": "T:foot_l",
+   "left_hip": "H:thigh_l",
+   "left_knee": "H:calf_l",
+   "left_shoulder": "H:upperarm_l",
+   "left_wrist": "H:hand_l",
+   "neck": "H:neck_01",
+   "pelvis": "HIPMID",
+   "right_ankle": "H:foot_r",
+   "right_collar": "H:clavicle_r",
+   "right_elbow": "H:lowerarm_r",
+   "right_foot": "T:foot_r",
+   "right_hip": "H:thigh_r",
+   "right_knee": "H:calf_r",
+   "right_shoulder": "H:upperarm_r",
+   "right_wrist": "H:hand_r",
+   "spine1": "H:spine_02",
+   "spine2": "H:spine_04",
+   "spine3": "H:spine_05"
+  }
+ },
+ "schema": "animcv_exp_w131_declaration_v1",
+ "source": {
+  "baseline_sha256": "0803ab2bf31210fbb729bc81b76931729fdc3e12cce27b9507a5b8caf1d12402",
+  "clip_sha256": "de8feb9d515daa2bfaeed7167fdcc62028dd3f6450872c4fd81f8fb03dd6359c",
+  "edit_domain": "upperarm_l / lowerarm_l local quaternion keys at Action 172..199 = SOURCE 250..277",
+  "episode": "S1 (CC BY-SA 4.0 double kettlebell strict press, side view)",
+  "lineage_head": "73dcd3dde3a65ffbd23f36361173ac7a92ee7c4db5e8436e4e85947649a524ab",
+  "protected_pin": {
+   "action_frames": [
+    132,
+    133,
+    134,
+    135,
+    136,
+    137,
+    138,
+    139,
+    140
+   ],
+   "request": "edits/W126V",
+   "source_frames": [
+    210,
+    211,
+    212,
+    213,
+    214,
+    215,
+    216,
+    217,
+    218
+   ],
+   "state": "accepted in W126 then REVERTED (no active pin at the head)",
+   "target_m": [
+    -0.09265540540218353,
+    0.21994641423225403,
+    1.4505867958068848
+   ],
+   "tolerance_m": 0.001
+  },
+  "run": "C:\\Users\\dna10\\animcv-w126\\runs\\S1_replay",
+  "segment": "SOURCE 79..318 -> Action 1..240 (Action = SOURCE - 78)",
+  "value_digest": "25a09802ffa210df56f0e930295468ef4cdb675e2945cb95491c080b5101c8a9",
+  "w129_B_sha256": "8899f43341ac1a7a565229a9551b1f8a79943cc038ad519e5544af89e772a33f"
+ },
+ "starting_commit": "d2e68f1a3e7c2148ad81d3d8256b6b48c67ed697",
+ "stop_conditions": [
+  "leak control R3 not bitwise equal -> STOP (D, input-leak/contract failure)",
+  "projection would touch any non-left-arm channel or frame outside 172..199 -> refuse (C)",
+  "no retiming / window shift / tuning after output"
+ ],
+ "time": "2026-11-09T10:03:42Z",
+ "time_map": {
+  "interior_samples": [
+   114,
+   115,
+   116,
+   117,
+   118,
+   119,
+   120,
+   121,
+   122,
+   123,
+   124,
+   125,
+   126,
+   127,
+   128,
+   129,
+   130,
+   131,
+   132
+  ],
+  "no_retiming": true,
+  "reconstruction": "frame f <- model position s=2(f-1)/3: exact sample when integral, else slerp of the per-sample left-arm basis between samples floor(s), floor(s)+1 (weights 1/3, 2/3); only Action 172..199 (s=114..132) are written; Action 240 (s=159.33) is beyond the last sample and never reconstructed",
+  "rule": "Action frame f at t=(f-1)/30 s on [0, 8.0); model sample k at t=k/20 s; 240 frames <-> 160 samples; even k = exact frame 1+1.5k; odd k = half-frame, every keyed channel SO(3)-slerped at 0.5 (INTERPOLATED hypothesis)"
+ },
+ "visual_protocol": "panels X/Y/Z = random permutation of A/B/C sealed in blind_key_SEALED.json; the agent answers from blinded stills BEFORE reading the key; AGENT-ONLY, not human; native-rate perceptual review NOT RUN (cannot be done by the agent)",
+ "visual_questions": {
+  "V1": "Which panel(s) show a visible unnatural one-frame flick/teleport/reversal of the left arm (around Action 171-175)?",
+  "V2": "Which panel's left-arm motion through the interior looks most natural and temporally coherent?",
+  "V3": "Which panel(s) show an anatomically wrong elbow (hyperextension, flip) or limb-length artefact?",
+  "V4": "Rank the panels by agreement with the source video's visible left-arm pose and timing (rack -> press); which is least faithful?",
+  "V5": "Is any boundary discontinuity visible at 171/172 or 199/200 in any panel?",
+  "V6": "For each panel: does the interior read as an upward overhead press (yes) or as a swing / detour / other motion (no)?"
+ }
+}

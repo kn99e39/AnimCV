@@ -240,3 +240,6 @@ differs. The verdict fields do not change unless the remote metadata changes.
 - Qwen3-8B text encoding on CPU (README: "substantial system RAM"; 64 GB is available);
 - a 0.46B transformer on the 16 GB RTX 5080, whose VRAM needs the authors have not benchmarked;
 - a new PyTorch ≥ 2.6 scratch environment with Blackwell (sm_120) support, separate from the AnimCV 3.11 venv.
+
+AUTOMATION_BATCH_STATUS: COMPLETE
+BATCH_NUMBER: 130

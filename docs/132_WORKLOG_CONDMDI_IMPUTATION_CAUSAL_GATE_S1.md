@@ -475,3 +475,6 @@ No weights, videos, renders or large artifacts are committed.
   Python 3.12 environment, unchanged. The AnimCV venv was not modified.
 - Network was needed only for the metadata rights recheck. Without it, the preflight records `network: false` and relies on
   the local W131 copies.
+
+AUTOMATION_BATCH_STATUS: COMPLETE
+BATCH_NUMBER: 132

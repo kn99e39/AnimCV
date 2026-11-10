@@ -1,0 +1,296 @@
+{
+ "batch": 132,
+ "candidate": {
+  "quality_criteria": {
+   "QA1": "C_OFF has 0 ARM-LOCAL wrist reversal flicks in steps 171->172 .. 199->200 (W131 definition)",
+   "QA2": "continuity: C_OFF arm-local entry/exit C0 steps each <= 2 x B's + 10 mm AND max(entry, exit) < C_ON's AND arm-local RMS jerk < C_ON's",
+   "QA3": "C_OFF has no near-straight (>175 deg) interior frame, no bend-direction flip, no hinge-opposite frame",
+   "QA4": "source fidelity: C_OFF mean interior WORLD wrist deviation from A < B's AND < C_ON's",
+   "QA5": "press intent (W131 rule): wrist-above-shoulder never dips > 50 mm below the lower endpoint value (171/200)",
+   "QA6": "blinded agent review: C_OFF most natural (V2), not named for a flick (V1) or a wrong elbow (V3), not least faithful and ranked above BOTH B and C_ON (V4), read as an upward press (V6)"
+  },
+  "rule": "only if replay, flag isolation, leak and the R1 context gate pass: R1 interior samples 114..132 projected with the UNCHANGED W131 projection (W129 B twist reference, 20->30 slerp, no filtering) -> C_OFF separate .blend from the frozen baseline and C_OFF composed on the W126V-accepted .blend; fresh-process readbacks; footprint/pin gates as W131 G4/G5; A / B / C_ON (frozen W131 C .blend) / C_OFF on the same rig, renders, crop and 30-fps grid",
+  "visual_protocol": "panels W/X/Y/Z = random permutation of A/B/C_ON/C_OFF sealed in blind_key_SEALED.json; the agent answers from blinded stills before reading the key; AGENT-ONLY; human native-rate review NOT RUN. Disclosed weakness: the agent knows the W131 C_ON appearance (teleport at 171/172) and the R1 model-space numbers before review",
+  "visual_questions": {
+   "V1": "Which panel(s) show a visible unnatural one-frame flick/teleport/reversal of the left arm (Action 171-201)?",
+   "V2": "Which panel's left-arm motion through the interior looks most natural and temporally coherent?",
+   "V3": "Which panel(s) show an anatomically wrong elbow (hyperextension, flip) or limb-length artefact?",
+   "V4": "Rank the four panels most -> least by agreement with the source video's visible left-arm pose and timing (rack -> press).",
+   "V5": "Is any boundary discontinuity visible at 171/172 or 199/200 in any panel?",
+   "V6": "For each panel: does the interior read as an upward overhead press (yes) or as a swing / detour / hold / other (no)?"
+  }
+ },
+ "case_rule": {
+  "A": "all gates pass AND QA1-QA6 pass (narrowly supported; supports only a follow-up human decision, never promotion)",
+  "B": "authentic paired runs and (when built) a safe comparison, but any QA1-QA6 fails: mechanism evidence, quality negative",
+  "C": "real inference ran but R1 fails the observed-context gate, the projection is unsafe/refused, or a C_OFF Action/pin/clock/video gate fails: no candidate acceptance",
+  "D": "integrity falsified: W131 R0 exact replay mismatch (either runner), ON/OFF flag-isolation check fails (OFF changes anything but the diffusion-step replacement), the R1 masked-input leak control is not bitwise equal, a negative control does not fail closed, or a declaration/instrument hash changed",
+  "DATA_BLOCKED": "a required authentic prerequisite (rights, exact W131 checkpoint/artifacts, S1 source/baseline/rig, W126/W129 inputs, runtime, Blender) is absent or mismatched before the S1 causal pair",
+  "precedence": "DATA_BLOCKED > D > C > B > A"
+ },
+ "conditions": {
+  "R0": "W132 instrumented runner, impute=True: must be bitwise equal to frozen W131 model_R1 (instrumentation non-invasive)",
+  "R0_w131code": "UNCHANGED W131 runner (impute=True), frozen W131 conditioning.npz: exact replay; output must be bitwise equal to frozen W131 model_R1",
+  "R1": "W132 instrumented runner, impute=False; every other input, flag, seed and tensor identical",
+  "R1_leak": "R1 with the frozen W131 conditioning_leak.npz (UNKNOWN rig channels rotated, seed 131) AND every masked input feature replaced by seeded noise (seed 131): output must be bitwise equal to R1",
+  "determinism_rerun": "not planned (R0 replays a cross-session result; R1_leak doubles as an R1 rerun); run only if needed, labelled",
+  "negative_controls": "runner refuses a mismatched input / reference SHA-256 (no model load); Blender stage refuses a channel outside the edit domain and a frame outside 172..199; declaration/instrument tamper refused (unit test)"
+ },
+ "config": {
+  "deterministic": "cudnn deterministic, TF32 off, use_deterministic_algorithms(warn_only)",
+  "guidance": 2.5,
+  "length": 160,
+  "network_precision": "fp32",
+  "respacing": "ddim100",
+  "sampler": "official CondMDIPipeline._sample -> p_sample_loop -> p_sample -> p_mean_variance (ancestral over the ddim100 respaced schedule)",
+  "seed": 42,
+  "text": "a person stands in place and presses both arms straight up overhead"
+ },
+ "context_gate": {
+  "arm_window": "left elbow/wrist ric error at observed samples 103..113 and 133..143 <= 0.05 m",
+  "consequence": "FAIL -> R1 cannot be accepted as an edit: no candidate projection (CASE C)",
+  "observed_mean": "mean ric error over every observed joint-sample <= 0.05 m",
+  "root_height": "max |root height error| <= 0.05 m",
+  "root_yaw": "max |root yaw error| <= 0.087266 rad (5 deg)"
+ },
+ "flag_isolation": {
+  "consequence": "fail -> CASE D",
+  "rule": "ON/OFF pass only if: identical input/absolute/mask/effective-conditioning arrays; identical seed/text/length/guidance/respacing; equal network-call count (= 2 x steps, CFG); one identical obs_x0 and obs_mask hash on every call of both runs; identical text tokens; y option keys differ exactly by {imputate, stop_imputation_at, replacement_distribution, inpainted_motion, inpainting_mask}; requires_imputation True on every step (ON) / False on every step (OFF); reconstruction guidance never; first-step network inputs and outputs identical; first divergence at or after network call 2"
+ },
+ "frozen_w131": {
+  "w131_C_blend": {
+   "path": "C:\\Users\\dna10\\animcv-w131\\results\\run\\S1\\C_S1.blend",
+   "sha256": "8f49a93a7c012352696ebac48cca109d0b0176c3087dba09a8af708aece1da60"
+  },
+  "w131_assessment": {
+   "path": "C:\\Users\\dna10\\animcv-w131\\results\\assess\\assessment.json",
+   "sha256": "9633a3621065058f3cd0d23af1a0f6fed2baf507b578c5c00c510ed6307404ac"
+  },
+  "w131_conditioning": {
+   "path": "C:\\Users\\dna10\\animcv-w131\\results\\run\\S1\\conditioning.npz",
+   "sha256": "b6e46ccfd7f51f611c47ef0f22fead413ca8b1159f0a0b7a23ec67e5fd3e8483"
+  },
+  "w131_conditioning_leak": {
+   "path": "C:\\Users\\dna10\\animcv-w131\\results\\run\\S1\\conditioning_leak.npz",
+   "sha256": "b07a8d3b2e5c37fe62d73a74cee5e1f0fe280e91f6e7ab4ed2a8fa6a23ae0913"
+  },
+  "w131_declaration": {
+   "path": "C:\\Users\\dna10\\animcv-w131\\results\\declare\\declaration.json",
+   "sha256": "dca4a891d21725f813b8cbb1867abaab8f237f59e6f36080086b2267355107e4"
+  },
+  "w131_evidence_manifest": {
+   "path": "C:\\Users\\dna10\\animcv-w131\\results\\evidence_manifest.json",
+   "sha256": "98505f804945b6a772dd2e63aa469ae5e207a2a9d17101dde6f2775ce73d7cc0"
+  },
+  "w131_model_R1": {
+   "path": "C:\\Users\\dna10\\animcv-w131\\results\\run\\S1\\model_R1\\model_io.npz",
+   "sha256": "2ec9355557ae47724447a77833c462d9508c747b4ee6ef5dcfd54404191b5b73"
+  },
+  "w131_projection": {
+   "path": "C:\\Users\\dna10\\animcv-w131\\results\\run\\S1\\projection.json",
+   "sha256": "133a2ebf12cb3e2605651f2e945792fa492b8cb1ab1b407e575ccfa1261ac598"
+  },
+  "w131_run_result": {
+   "path": "C:\\Users\\dna10\\animcv-w131\\results\\run\\S1\\run_result.json",
+   "sha256": "f5fbdb8f6a1ec291a7b7047cf0d410b28abeec20167a3bfdc1dd445e669dcad1"
+  },
+  "w131_smoke_result": {
+   "path": "C:\\Users\\dna10\\animcv-w131\\results\\smoke\\result.json",
+   "sha256": "8f710d2cbbddf64105d91125376c95d244e72b00679ac4a95569bd8174751c6c"
+  },
+  "w131_smoke_t2m": {
+   "path": "C:\\Users\\dna10\\animcv-w131\\results\\smoke\\smoke_t2m.npz",
+   "sha256": "c60b4b3542c2bd2461460db7afd89309cadac4f9b3262d4b6be55f6f1791ae7f"
+  }
+ },
+ "instruction_blob": "5abe31a8cd1e272478ca56aa2290f102fe26cc45",
+ "instrument_sha256_lf": {
+  "scripts/w131_condmdi_harness.py": "a1681b6c182cef6e6c6671ac1fcfc1f178c5cbf2a3a07fc61904236ccc18b642",
+  "scripts/w131_condmdi_infer.py": "6d894a8be83734f23247cec2bff9295c3fea51fa7b180109e9f209731686a375",
+  "scripts/w131_condmdi_preflight.py": "aeb162460c158977229ad2fb04f965a372f9bd672531ef7777f2d4de12b2671c",
+  "scripts/w132_condmdi_causal_harness.py": "0ad5b4e473a7c8751be0f0eea6542e040163d031a0735c6f7123401ec4ab5dd1",
+  "scripts/w132_condmdi_causal_infer.py": "fb2b65a4e2133a16fa7ab45c35c05d29048a4f0612e1279100174198564a074e",
+  "src/app/experimental_condmdi.py": "bad831313ce46010007b1d5140ced507d53a49cd71f357a3fb282e9361073637",
+  "src/app/experimental_condmdi_causal.py": "9e073acb43ec584ada68c99f6565d054bd9868794461c2b30e7df33b1d0f1a36",
+  "src/app/experimental_motionbricks.py": "3172d5afb64b206828892106c983bbed3a1f5dbeabcbaad5c7f7c9aeeae290dc",
+  "src/blender/experimental_action_stage.py": "c977da7d77ed38d8fc90bcc257493edb4cbe62d39f4f84dfa53e66ddf570fb20",
+  "src/blender/experimental_motionbricks_stage.py": "ad1bd44cffbfb729a04051102604cf27672568e2e6f2548c92526fc049f06488",
+  "tests/test_experimental_condmdi.py": "0fb46c3c825c2af6e65ffe9bf3b85c03ee125b284261ccf9956cc66e23fde1b9",
+  "tests/test_experimental_condmdi_causal.py": "c7eb44cd5adef5ab499fef5d1419783b976420dcdcbfd8f905e7d9e370396662"
+ },
+ "mechanism_rule": {
+  "OFF_CONTINUOUS_ONLY_BY_DEPARTING_FROM_CONTEXT": "else, if the R1 context gate fails or max(R1 effective) > 0.5 x max(R0 effective)",
+  "PERSISTS_UNDER_LEARNED_CONDITIONING": "max(R1 internal entry, exit) > 0.5 x max(R0 effective entry, exit)",
+  "REPLACEMENT_IMPUTATION_PRIMARY_SUPPORTED": "otherwise (R1 continuous AND consistent with the observed context)",
+  "inputs": "left-wrist model-space ric (root-relative heading-frame) positions; R0 = impute ON (= W131 R1), R1 = impute OFF; effective entry = |out[114] - observed[113]|, effective exit = |observed[133] - out[132]|, internal = same with out[113]/out[133]",
+  "limits": "one source, one seed, one text: does not separately identify proxy torso, source jitter, text semantics or training coverage"
+ },
+ "model": {
+  "code": "setarehc/diffusion-motion-inbetweening 0c58473 (MIT)",
+  "condmdi_code_rev": "0c58473066ef582b9464a66d5542e0d1b6ae66c8",
+  "hf_id": "ZeyuLing/motius-condmdi-humanml3d",
+  "hf_revision": "1e84d9ebf9a2562a2e3aa01926b9fb3606bd23de",
+  "identity": "196/196 tensors bitwise equal (identity.json)",
+  "lfs_sha256": {
+   "Mean_abs_3d.npy": "1bb2633e77a99f1120fc1eb424b7489360bac0a8dfb579e18bd5065431b4b07e",
+   "Std_abs_3d.npy": "9f5f12cae2003ef19fea119347346d0e46ad85c86dcd1096f1e319ee2a69f940",
+   "clip.safetensors": "431adb635d7a35aaaf5b70acf8738712c6f9ae30d08e17698c6f505c9a686fb8",
+   "model.safetensors": "3d9e299f6096405c028b3b8b9f8a663794a1e938bfae8ff27102caaa0e1c0e29"
+  },
+  "licence": "checkpoint card license: mit; code MIT; CLIP MIT; training data HumanML3D/AMASS (non-commercial research) - declared use is local non-commercial research evaluation",
+  "motius_rev": "d04a38c9bc9dab3f0e9e2d843f8a6b21eaa13abc",
+  "name": "CondMDI (Cohan et al., SIGGRAPH 2024), official 'randomly sampled frames and joints' release, EMA weights",
+  "official_release": "condmdi_random_joints.zip (Google Drive 1aP-z1JxSCTcUHhMqqdL2wbwQJUZWHT2j), model000750000.pt model_avg",
+  "runtime": "ZeyuLing/Motius d04a38c (CondMDI MIT + CLIP MIT retained), scratch Python 3.12 / torch 2.9.1+cu128",
+  "terms": "checkpoint card licence MIT, code MIT, CLIP MIT; training data HumanML3D<-AMASS (non-commercial research): declared use = local non-commercial research evaluation. The code MIT licence is NOT read as a commercial deployment grant for the checkpoint. Agent's documentary reading, not legal advice."
+ },
+ "model_space_metrics": "R0 and R1: left wrist/elbow ric and world steps 113->114, 132->133 (internal and against the observed input), context errors at 113/133, observed-feature residuals by group, left-wrist height trajectory 104..142, interior peak timing, root travel / yaw range; reported before any projection",
+ "new_model_output_exists": false,
+ "no_tuning": "one model, one checkpoint, one S1 source, one text, one seed, one mask, one sampler; no alternative seed/text/guidance/steps/window/time warp/mask/threshold, no post-hoc endpoint correction or smoothing, no fifth reference cell",
+ "outcomes_inspected": false,
+ "preflight_sha256": "508a788b63e10bce920f1322a86dd6d3bc471922bbf72392b7c62ab2bfdfd67d",
+ "reference_control": {
+  "authentic_candidate": {
+   "content": "hml263 (199,263) + joints, 'HumanML3D official tiny sample' Motius test fixture",
+   "decision": "NOT USED: AMASS-derived HumanML3D motion redistributed as a test fixture with no data-licence grant; lawful availability not established (AMASS terms restrict redistribution). condmdi/dataset/000021.npy is raw 52-joint AMASS-derived positions, same status and not HML263.",
+   "path": "ext/motius/tests/assets/humanml3d/004822_protocol.npz"
+  },
+  "caption": "a person walks forward and waves with the right hand",
+  "cells": {
+   "i": {
+    "feature_mode": "pos_rot_vel",
+    "impute": true
+   },
+   "ii": {
+    "feature_mode": "pos",
+    "impute": true
+   },
+   "iii": {
+    "feature_mode": "pos_rot_vel",
+    "impute": false
+   },
+   "iv": {
+    "feature_mode": "pos",
+    "impute": false
+   }
+  },
+  "hidden_mode": "official build_observation_mask(mode='middle', joint_indices=None = all 22 joints)",
+  "hidden_samples": [
+   50,
+   51,
+   52,
+   53,
+   54,
+   55,
+   56,
+   57,
+   58,
+   59,
+   60,
+   61,
+   62,
+   63,
+   64,
+   65,
+   66,
+   67,
+   68
+  ],
+  "hidden_width": 19,
+  "length": 120,
+  "limits": "MODEL-GENERATED CLOSED-LOOP SYNTHETIC: neither held-out data nor proof of on-distribution generalisation; not real-video quality evidence; no fifth cell",
+  "metrics": "per cell vs the reference (as conditioned: relative_to_absolute of the frozen relative tensor): hidden MPJPE (ric/world), endpoint MPJPE at the first/last hidden sample, boundary excess = max over joints of (out step - reference step) at 49->50 and 68->69, observed-feature residual by group, observed-frame MPJPE",
+  "npz": "C:\\Users\\dna10\\animcv-w131\\results\\smoke\\smoke_t2m.npz",
+  "origin": "W131 independent smoke: CondMDI text-to-motion (no observation), model-card caption, seed 42, CFG 2.5, ddim100, 120 samples",
+  "readings": "a cell has a boundary discontinuity if its ric boundary excess > 50.0 mm; replacement effect = (i vs iii), (ii vs iv); feature-group effect = (i vs ii), (iii vs iv); descriptive only",
+  "root_semantics": "official grouping, identical joints/frames in every cell: pelvis pos = root xz + height (observed in all four cells), pelvis rot = root yaw (observed only in pos_rot_vel cells), pelvis vel (pos_rot_vel only); the four foot-contact features are observed in ALL cells (official joint_mask_to_feature_mask always adds them); all values are the reference's own complete model-generated features (nothing synthetic is added)",
+  "seed": 7,
+  "seed_reason": "seed 42 is the noise that generated the reference itself (degenerate closed loop); 7 is the pre-existing W131 smoke mask-contract seed",
+  "sha256": "c60b4b3542c2bd2461460db7afd89309cadac4f9b3262d4b6be55f6f1791ae7f",
+  "tier": "MODEL-GENERATED CLOSED-LOOP SYNTHETIC"
+ },
+ "repo_head_at_declaration": "0bd36773b9d54c396401456a4e6c8e2d4a761b43",
+ "s1": {
+  "conditioning_npz": "frozen W131 run/S1/conditioning.npz (reused bytes; re-derivation from the baseline must be bitwise equal)",
+  "edit_domain": "upperarm_l / lowerarm_l local quaternion keys at Action 172..199 (= SOURCE 250..277), model interior samples 114..132",
+  "n_observed_features": 7886,
+  "protected": "W126 pin Action 132..140 (SOURCE 210..218), outside the edit; all non-left-arm channels, object, frames outside 172..199",
+  "representation_mask": "absolute-space: root yaw + height; ric positions of every non-UNKNOWN joint at all 160 samples; left elbow/wrist only outside samples 114..132; no rotation, velocity, contact or root-xz feature",
+  "source": {
+   "baseline_sha256": "0803ab2bf31210fbb729bc81b76931729fdc3e12cce27b9507a5b8caf1d12402",
+   "clip_sha256": "de8feb9d515daa2bfaeed7167fdcc62028dd3f6450872c4fd81f8fb03dd6359c",
+   "edit_domain": "upperarm_l / lowerarm_l local quaternion keys at Action 172..199 = SOURCE 250..277",
+   "episode": "S1 (CC BY-SA 4.0 double kettlebell strict press, side view)",
+   "lineage_head": "73dcd3dde3a65ffbd23f36361173ac7a92ee7c4db5e8436e4e85947649a524ab",
+   "protected_pin": {
+    "action_frames": [
+     132,
+     133,
+     134,
+     135,
+     136,
+     137,
+     138,
+     139,
+     140
+    ],
+    "request": "edits/W126V",
+    "source_frames": [
+     210,
+     211,
+     212,
+     213,
+     214,
+     215,
+     216,
+     217,
+     218
+    ],
+    "state": "accepted in W126 then REVERTED (no active pin at the head)",
+    "target_m": [
+     -0.09265540540218353,
+     0.21994641423225403,
+     1.4505867958068848
+    ],
+    "tolerance_m": 0.001
+   },
+   "run": "C:\\Users\\dna10\\animcv-w126\\runs\\S1_replay",
+   "segment": "SOURCE 79..318 -> Action 1..240 (Action = SOURCE - 78)",
+   "value_digest": "25a09802ffa210df56f0e930295468ef4cdb675e2945cb95491c080b5101c8a9",
+   "w129_B_sha256": "8899f43341ac1a7a565229a9551b1f8a79943cc038ad519e5544af89e772a33f"
+  },
+  "time_map": {
+   "interior_samples": [
+    114,
+    115,
+    116,
+    117,
+    118,
+    119,
+    120,
+    121,
+    122,
+    123,
+    124,
+    125,
+    126,
+    127,
+    128,
+    129,
+    130,
+    131,
+    132
+   ],
+   "no_retiming": true,
+   "reconstruction": "frame f <- model position s=2(f-1)/3: exact sample when integral, else slerp of the per-sample left-arm basis between samples floor(s), floor(s)+1 (weights 1/3, 2/3); only Action 172..199 (s=114..132) are written; Action 240 (s=159.33) is beyond the last sample and never reconstructed",
+   "rule": "Action frame f at t=(f-1)/30 s on [0, 8.0); model sample k at t=k/20 s; 240 frames <-> 160 samples; even k = exact frame 1+1.5k; odd k = half-frame, every keyed channel SO(3)-slerped at 0.5 (INTERPOLATED hypothesis)"
+  }
+ },
+ "schema": "animcv_exp_w132_declaration_v1",
+ "starting_commit": "2358a73adac6fa72bbbb03677e7e2769244ff9d5",
+ "time": "2026-11-10T02:57:37Z",
+ "w131_declaration": {
+  "path": "C:\\Users\\dna10\\animcv-automation\\repo\\examples\\experimental_condmdi\\w131_declaration.json",
+  "sha256": "dca4a891d21725f813b8cbb1867abaab8f237f59e6f36080086b2267355107e4"
+ }
+}

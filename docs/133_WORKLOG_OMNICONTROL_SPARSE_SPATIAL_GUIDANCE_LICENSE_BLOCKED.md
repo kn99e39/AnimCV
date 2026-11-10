@@ -310,3 +310,6 @@ No living status document was updated: a blocked preflight is not a milestone.
   environment could probably be reused);
 - an OmniControl sampler with 1000 diffusion steps plus per-step spatial-guidance gradients at 196 frames. That is
   likely minutes per sample on the RTX 5080, against seconds for W131's 100-step CondMDI.
+
+AUTOMATION_BATCH_STATUS: COMPLETE
+BATCH_NUMBER: 133

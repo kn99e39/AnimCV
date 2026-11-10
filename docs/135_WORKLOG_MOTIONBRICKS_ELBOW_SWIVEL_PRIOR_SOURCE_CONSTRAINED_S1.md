@@ -471,3 +471,6 @@ Key files:
 
 - The prior is closed-form numpy, so the experiment needs only the AnimCV venv and Blender.
 - The MotionBricks TensorRT environment from W129 was not invoked.
+
+AUTOMATION_BATCH_STATUS: COMPLETE
+BATCH_NUMBER: 135

@@ -198,6 +198,11 @@ def git(*a, cwd=ROOT):
     return subprocess.run(["git", *a], cwd=cwd, capture_output=True, text=True).stdout.strip()
 
 
+def blob(repo, rev, path):
+    """Exact committed bytes (the Windows worktree may be CRLF-converted by core.autocrlf)."""
+    return subprocess.run(["git", "show", f"{rev}:{path}"], cwd=repo, capture_output=True, check=True).stdout
+
+
 def ps(cmd):
     return subprocess.run(["powershell.exe", "-NoProfile", "-Command", cmd], capture_output=True, text=True).stdout.strip()
 
@@ -259,10 +264,11 @@ def stage(a):
     src["github"]["license_spdx"] = (gh.get("license") or {}).get("spdx_id")
     src["local_checkout_head"] = git("rev-parse", "HEAD", cwd=local)
     src["local_worktree_clean"] = git("status", "--porcelain", cwd=local) == ""
-    lic = (local / "LICENSE").read_bytes()
-    src["license_sha256"] = sha256_bytes(lic)
+    lic = blob(local, OC_REV, "LICENSE")
+    src["license_sha256"] = sha256_bytes(lic)                   # committed blob bytes at OC_REV
+    src["official_files_read_from"] = f"git blobs at {OC_REV} (not the CRLF-converted worktree)"
     src["license_head"] = lic.decode("utf-8").splitlines()[:3]
-    readme = (local / "README.md").read_text(encoding="utf-8")
+    readme = blob(local, OC_REV, "README.md").decode("utf-8")
     sec, scoped, defers = code_scoped_licence_section(readme)
     src["readme_license_section"] = sec.strip()
     src["readme_weights_section"] = readme[readme.find("### 3. Download the pretrained models"):][:420].strip()
@@ -330,10 +336,8 @@ def stage(a):
     rep["mirror"] = mir
 
     # ---- runtime assets required by the official sampling path (static reading) ----
-    gen = (local / "sample/generate.py").read_text(encoding="utf-8")
-    cmdm = (local / "model/cmdm.py").read_text(encoding="utf-8")
-    r2x = (local / "model/rotation2xyz.py").read_text(encoding="utf-8")
-    smpl_sh = (local / "prepare/download_smpl_files.sh").read_text(encoding="utf-8")
+    gen, cmdm, r2x, smpl_sh = (blob(local, OC_REV, f).decode("utf-8") for f in (
+        "sample/generate.py", "model/cmdm.py", "model/rotation2xyz.py", "prepare/download_smpl_files.sh"))
     hml_api = json.loads(get(HUMANML3D_API)[0])
     hml_dir = json.loads(get(HUMANML3D_API + "/contents/HumanML3D")[0])
     rt = {
@@ -344,7 +348,8 @@ def stage(a):
         "args_json_in_archive": any(m["name"].endswith("args.json") for m in members),
         "humanml3d_repo_license_spdx": (hml_api.get("license") or {}).get("spdx_id"),
         "humanml3d_repo_ships": sorted(f"{d['name']}:{d['size']}" for d in hml_dir),
-        "bundled_spatial_norm": sorted(p.name for p in (local / "dataset/humanml_spatial_norm").iterdir()),
+        "bundled_spatial_norm": {f: sha256_bytes(blob(local, OC_REV, f"dataset/humanml_spatial_norm/{f}"))
+                                 for f in ("Mean_raw.npy", "Std_raw.npy")},
     }
     terms = {}
     for k, u in TERMS_PAGES.items():

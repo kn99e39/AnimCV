@@ -1,0 +1,235 @@
+{
+ "D_or_E_exists": false,
+ "batch": 135,
+ "bindings": {
+  "A": {
+   "path": "C:/Users/dna10/animcv-w129/inputs/S1_baseline.blend",
+   "sha256": "0803ab2bf31210fbb729bc81b76931729fdc3e12cce27b9507a5b8caf1d12402"
+  },
+  "A_w126_original": {
+   "path": "C:\\Users\\dna10\\animcv-w126\\runs\\S1_replay\\baseline\\baseline.blend",
+   "sha256": "0803ab2bf31210fbb729bc81b76931729fdc3e12cce27b9507a5b8caf1d12402"
+  },
+  "B": {
+   "path": "C:\\Users\\dna10\\animcv-w129\\results\\run\\S1\\B_S1.blend",
+   "sha256": "8899f43341ac1a7a565229a9551b1f8a79943cc038ad519e5544af89e772a33f"
+  },
+  "C": {
+   "path": "C:\\Users\\dna10\\animcv-w129\\results\\run\\S1\\C_S1.blend",
+   "sha256": "e04efb3552f9808f8ae89520284b0d94e860a986c1e6ec475ed6b07683f9ef04"
+  },
+  "Cpin": {
+   "path": "C:\\Users\\dna10\\animcv-w129\\results\\run\\S1\\Cpin_S1.blend",
+   "sha256": "3116d2ea3340d8356beb6adbf5f60f33c026ca92f47f7216137b4a00f6e31b02"
+  },
+  "S1_clip": {
+   "path": "C:/Users/dna10/animcv-w121/data/originals/64498918_Double_Kettlebell_Strict_Press_side_view_.webm",
+   "sha256": "de8feb9d515daa2bfaeed7167fdcc62028dd3f6450872c4fd81f8fb03dd6359c"
+  },
+  "W126V_accepted": {
+   "path": "C:/Users/dna10/animcv-w129/inputs/S1_W126V_accepted.blend",
+   "sha256": "7e2ab16511f4cbe111171df9af0bc2e1f7d8c09a57bd5a4feff284d34e908f40"
+  },
+  "W126V_accepted_original": {
+   "path": "C:\\Users\\dna10\\animcv-w126\\runs\\S1_replay\\accepted\\accepted_03_674ba278e9a0.blend",
+   "sha256": "7e2ab16511f4cbe111171df9af0bc2e1f7d8c09a57bd5a4feff284d34e908f40"
+  },
+  "W126V_proposal": {
+   "path": "C:\\Users\\dna10\\animcv-w126\\runs\\S1_replay\\edits\\W126V\\proposal.json",
+   "sha256": "582174bfcd3a284f9037409c945e2440b182a0c2593e618511b9effb280a9c84"
+  },
+  "W126_refs": {
+   "path": "C:\\Users\\dna10\\animcv-w126\\runs\\S1_replay\\lineage\\refs.json",
+   "sha256": "c0f1157dc7f067736059f754e23070de8ab5e425ec858e7415e2d7df17389b1b"
+  },
+  "W129_assessment": {
+   "path": "C:\\Users\\dna10\\animcv-w129\\results\\assess\\assessment.json",
+   "sha256": "df6693d22d58cb95f4e130e16e757ab9519c84fe359323560cf530da8b42791c"
+  },
+  "W129_declaration_v2": {
+   "path": "C:\\Users\\dna10\\animcv-w129\\results\\declare_v2\\declaration.json",
+   "sha256": "0c34aab0755c24a7e30a43b11a356c9f5dc0c54e5adda39a5b54b8d6e9f0b6f8"
+  },
+  "W129_engine_output": {
+   "path": "C:\\Users\\dna10\\animcv-w129\\results\\run\\S1\\model_R1\\engine_output.npz",
+   "sha256": "8a528ef1bf7976f22bd6212eddf7c5b525ee5f30e27ee01f501d565baac6a100"
+  },
+  "W129_evidence_manifest": {
+   "path": "C:\\Users\\dna10\\animcv-w129\\results\\evidence_manifest.json",
+   "sha256": "b07154ed1b20da67a247fa4d9d5a28222ecb1087cc39d172bbe0af8eca113c02"
+  },
+  "W129_preflight": {
+   "path": "C:\\Users\\dna10\\animcv-w129\\results\\preflight\\preflight.json",
+   "sha256": "46119b9c5273e0fe038809f959ef12664abc89794085b94ec8aa351b44813868"
+  },
+  "W129_projection": {
+   "path": "C:\\Users\\dna10\\animcv-w129\\results\\run\\S1\\projection.json",
+   "sha256": "e331344c8023da4b398ae3ac55c3be21d3955c486d6334c708a938fe41cf20aa"
+  },
+  "W129_raw_model_io": {
+   "path": "C:\\Users\\dna10\\animcv-w129\\results\\run\\S1\\model_R1\\raw_model_io.npz",
+   "sha256": "1ad837e417b69531b35aa3108fccd6c99e05b4f924741b56d58ceec44accfb6f"
+  },
+  "W129_run_result": {
+   "path": "C:\\Users\\dna10\\animcv-w129\\results\\run\\S1\\run_result.json",
+   "sha256": "9c88961523fa41881fd87e58d366de23138b24baca316dc33403c40f76da9a83"
+  }
+ },
+ "case_rule": {
+  "A": "all mechanical gates pass AND LEARNED_EFFECT AND Q1-Q5 pass",
+  "B": "all mechanical gates pass but NO_LEARNED_EFFECT, or any of Q1-Q5 fails",
+  "C": "the solver refuses the real data (REPRESENTATION/GEOMETRY singularity, unreachable wrist, ELBOW_FLIP) or any of M2-M8, M11 fails",
+  "D": "declaration/instrument changed, a negative control does not fail closed (M10), integrity (M9) fails, or the C prior fails provenance verification",
+  "DATA_BLOCKED": "rights, S1/A/B/C/pin or Blender unavailable, or any frozen hash mismatch before testing (preflight not OK)",
+  "precedence": "DATA_BLOCKED > D > C > B > A; a mechanical PASS alone never yields A"
+ },
+ "controls": [
+  "missing C",
+  "corrupt C (byte-modified copy)",
+  "mirrored prior (negated swivel)",
+  "mirrored geometry (reflected dump)",
+  "time-shifted prior (+1 frame)",
+  "side-swapped prior",
+  "C prior verified against B",
+  "out-of-domain channel build (spine_01)",
+  "out-of-domain frame build (171 and 200)",
+  "pin overlap request",
+  "unreachable wrist target (2x reach)",
+  "elbow flip (pi jump in a target swivel)",
+  "non-30-fps scene",
+  "numpy FK reproduction vs Blender on A/B/C"
+ ],
+ "convention": {
+  "fk": "P_b = P_parent (Rest_parent^-1 Rest_b) Basis_b, rotation channels only; numpy reproduction of Blender pose matrices verified on A/B/C before declaration (max 3.8e-5 armature units)",
+  "points": "S = upperarm_l head, E = lowerarm_l head, W = hand_l head (= lowerarm_l tail)",
+  "reference": "r = rig lateral (armature +X at REST) expressed once in the rest clavicle_l frame, then carried by the posed clavicle_l frame",
+  "side": "left only (_l bones); proper rotations only (improper/mirrored matrices refused)",
+  "space": "Blender armature space from fresh Blender dumps; arm-local = evaluated clavicle_l pose matrix (parent of upperarm_l); world = fresh readback (metres)",
+  "swivel": "psi = atan2(a.(r_p x u), r_p.u); a = unit(W-S), u = (E-S) minus its a-component, r_p = r minus its a-component"
+ },
+ "domain": {
+  "channels": [
+   "upperarm_l",
+   "lowerarm_l"
+  ],
+  "frames": [
+   172,
+   199
+  ],
+  "pin_action": [
+   132,
+   140
+  ],
+  "pin_target_m": [
+   -0.0927,
+   0.2199,
+   1.4506
+  ],
+  "pin_tolerance_m": 0.001
+ },
+ "fixed_wrist_target": "W129 B evaluated hand_l head at Action 171..200 (GT-free, reference-derived rig trajectory; not ground truth)",
+ "fresh_dump_sha256": {
+  "A": "f8081c1403d73e82952322ddc87570441c7bf791c7605f714df7ed8bbdfa73de",
+  "B": "57334e71217df71fb6026bc7c6e8c97b21a6f273e33ec2eeea37b50cbb5f7b98",
+  "C": "bc21e6026315d9c0174e697d3bbb8a9a1abcae1a8358531e6ab3a8b4b0c36e1e"
+ },
+ "instruction_blob": "38de1e2e155e39c7f168373ca9b053418497ab0c",
+ "instrument_sha256_lf": {
+  "scripts/w129_motionbricks_harness.py": "ebfa4481e823f999d34c0aba20253e0ec8edd17143ca649207ca2cd4118b3b55",
+  "scripts/w135_elbow_prior_harness.py": "2bff43082ffab08231bee8def2a2fb81bbc9bc2c37b262997e6df3ee220d8dc6",
+  "src/app/experimental_elbow_prior.py": "13fb31321a5575e4226b18bdc109f2c4a719d997c57ec52fca757c1f4b0080e9",
+  "src/app/experimental_motionbricks.py": "3172d5afb64b206828892106c983bbed3a1f5dbeabcbaad5c7f7c9aeeae290dc",
+  "src/blender/experimental_action_stage.py": "c977da7d77ed38d8fc90bcc257493edb4cbe62d39f4f84dfa53e66ddf570fb20",
+  "src/blender/experimental_motionbricks_stage.py": "ad1bd44cffbfb729a04051102604cf27672568e2e6f2548c92526fc049f06488",
+  "tests/test_experimental_elbow_prior.py": "5082b1a13f3c3a5264dbeddbc5ce063a07997f4782051a95d4dbb67c94a6602f"
+ },
+ "learned_effect_rule": "LEARNED_EFFECT iff max over interior frames of |elbow_D - elbow_E| (world, fresh readback) >= 10 mm AND max |swivel_D - swivel_E| >= 3 deg; otherwise NO_LEARNED_EFFECT",
+ "mechanical_gates": {
+  "M0": "identity/rights: preflight OK (instruction blob, W134 COMPLETE, rights permitted, every frozen full SHA-256 equal, byte copies equal)",
+  "M1": "prior provenance: the C prior is re-derivable bit-for-bit from the bound C file (verify_prior) and the solver raised no refusal for D or E",
+  "M10": "negative controls (controls stage) all fail closed",
+  "M11": "native-rate video: 240 frames written and decoded at 30.000 fps",
+  "M2": "Action: D and E each a separate .blend with exactly 1 separately named Action; 32 CONSTANT F-curves keyed 1..240; scene 30 fps, 1..240",
+  "M3": "footprint: changed stored keys vs A only upperarm_l/lowerarm_l rotation at Action 172..199; every non-left-arm world point and the object matrix bit-equal to A on all 240 integer frames and all 717 subframes; left arm bit-equal outside 172..199; no subframe change outside [172,200)",
+  "M4": "wrist tracking: |wrist_X - wrist_B| <= 1 mm (world, fresh readback) on every interior frame for X in {D,E}; entry 171->172 and exit 199->200 wrist steps differ from B's by <= 1 mm",
+  "M5": "rig validity: upperarm/lowerarm world length range <= 0.1 mm over 171..200; lowerarm_l stored key equals B's bit-for-bit on the interior (B's elbow-local flexion/hinge relation kept); no near-straight (> 175 deg) interior frame",
+  "M6": "hard pin: D and E composed onto the W126V-accepted .blend keep every Action 132..140 hand_l residual equal to W126V's and <= 1e-6 m; pin frames bit-equal; composed footprint as M3 relative to W126V",
+  "M7": "reversibility: D with A's interior keys written back (Drev) is world-bit-equal to A on every integer frame and subframe",
+  "M8": "solver neutrality: E (B's own swivel through the identical solver) equals B in world points within 1e-6 m on every frame",
+  "M9": "integrity: A, B, C, Cpin, W126V-accepted, W126 refs/proposal, S1 clip and W129 records have identical SHA-256 after the run"
+ },
+ "metrics": [
+  "arm-local elbow trajectory/steps/flicks/jerk",
+  "bend-plane normal step",
+  "swivel angle, angular velocity, acceleration",
+  "wrist world + arm-local (W129 quality/armlocal_quality)",
+  "entry/exit steps",
+  "world shoulder motion (parent-induced, identical in all branches)",
+  "elbow pointing direction (anterior/lateral/superior components)"
+ ],
+ "outcomes_inspected": false,
+ "preflight_sha256": "3a1391e3104b015d92137955c12f3c307fe71ce30b8d7aee1df8865126cf4e60",
+ "prior": {
+  "excluded": "C's wrist position/path (never a target), root/object/spine (factored out by the clavicle frame; C equals A there), right arm, timing (identity frame map)",
+  "extraction": "C's swivel psi_C(f), f = 172..199, from a fresh Blender dump of the bound C file, using only C's own S/E/W in C's own clavicle_l frame",
+  "note": "the swivel is by definition measured about C's own shoulder-wrist axis; this direction is used only to define C's elbow swivel, never as a D target",
+  "provenance": "W129 C: MotionBricks-SOMA-RP-v1 primary sample R1 (ONNX 856419dc..., NVlabs/motionbricks 54fc563), MODEL-DERIVED, not observed truth"
+ },
+ "quality_criteria": {
+  "Q1": "D arm-local elbow entry (171->172) and exit (199->200) steps each <= 2 x B's corresponding step + 10 mm",
+  "Q2": "D has 0 arm-local elbow reversal flicks (consecutive steps both > 20 mm with negative dot) in steps 171->172 .. 199->200",
+  "Q3": "D consecutive-frame swivel change <= 30 deg on every step 171->172 .. 199->200",
+  "Q4": "agent still-frame review: D judged more natural AND more faithful to the source overhead-press intent than both B and E, and D not named for a flick, wrong elbow or detour",
+  "Q5": "native-rate perceptual review of the 30 fps video performed (this agent cannot perceive video playback: declared NOT REVIEWED in advance, so Q5 cannot pass in this run)"
+ },
+ "reference_selection": {
+  "a_priori_choice": "anterior (armature -Y)",
+  "declared_rule": "choose among {anterior, lateral, superior} rig axes the one with the largest minimum axis-reference margin over B and C, frames 171..200 (uses only axis directions)",
+  "margins": {
+   "anterior": 0.1650094917923792,
+   "lateral": 0.8184230610886644,
+   "superior": 0.5249150526833981
+  },
+  "pre_declaration_observation": "input-only margin inspection of B and C on 171..200 (no swivel values, no D/E) found the anterior reference near-singular for C (min sin 0.165 < 0.259)",
+  "selected": "lateral"
+ },
+ "repo_head_at_declaration": "4d4213f493c0d3cf2008b374ffa182c84561bdd7",
+ "review_protocol": "UNBLINDED agent review of fixed-time contact sheets (entry 170-175, middle 183-188, exit 196-201) and an overview strip; D vs B vs E vs source; still frames only; written to a review JSON before assess. Native-rate playback is NOT perceived by this agent (Q5 NOT REVIEWED). No human/animator review.",
+ "rights": {
+  "agreement_html_sha256": "95ff88bc54c7507b9ad68303bbd0d27231a4063a5b16347fd6de362267095873",
+  "determination": "PERMITTED: NVIDIA Open Model Agreement grants a perpetual, worldwide, royalty-free licence to use/reproduce/prepare derivative works and states NVIDIA does not claim ownership of outputs; this run evaluates an already generated output locally and redistributes nothing",
+  "version": [
+   "Release Date: April 2, 2026",
+   "(v. March 9, 2026)"
+  ]
+ },
+ "schema": "animcv_exp_w135_declaration_v1",
+ "solver": {
+  "D": "psi_target = psi_C(f) (the learned prior, verified against the bound C file)",
+  "E": "psi_target = psi_B(f) (neutral; C withheld); expected numerically identical to B (solver neutrality M8)",
+  "branch_choice": "unique: the swivel fully determines the elbow on the circle; wrap to (-pi, pi]",
+  "fixed": "S, W (B's wrist), both bone lengths, elbow flexion angle, lowerarm_l key, timestamps, all non-left-arm channels",
+  "name": "rigid swivel about B's own shoulder-wrist axis",
+  "regularisation": "NONE: no smoothing, no blending, no endpoint correction, no weights, no iteration",
+  "rule": "for each interior frame f: G = rotation by wrap(psi_target(f) - psi_B(f)) about the armature-space axis through S_B(f) and W_B(f); upperarm_l basis' = M^T G M basis_B with M = Rot(K) Rot(Rest_clav)^T Rot(Rest_upperarm); lowerarm_l basis = B's stored key (unchanged)",
+  "singularities": {
+   "flip": "refuse if the target swivel changes by > 90.0 deg between consecutive frames 171..200",
+   "post-solve": "refuse if numpy-FK wrist/shoulder error > 1e-3 armature units (0.01 mm), length error > 1e-3, swivel error > 1e-6 rad",
+   "reach": "refuse if |S-W| outside [|L1-L2|, L1+L2]",
+   "reference": "refuse if sin(axis, reference) < sin 15 deg = 0.2588 for B or C",
+   "straight_arm": "refuse if elbow offset / upper length < sin 10 deg = 0.1736"
+  }
+ },
+ "starting_commit": "5b113ed930ab31a2cee713cd9e8a0ae1da3994bb",
+ "stop_conditions": [
+  "RIGHTS_UNRESOLVED",
+  "DATA_BLOCKED",
+  "REPRESENTATION_BLOCKED (C swivel singular)",
+  "GEOMETRY_BLOCKED (solver refusal)",
+  "INTEGRITY_FAILED",
+  "DECLARATION_INVALID",
+  "no tuning, no other reference/threshold/prior after any D/E output"
+ ],
+ "time": "2026-11-10T10:44:03Z",
+ "time_rule": "native 30 fps; Action = SOURCE - 78; interior Action 172..199 = SOURCE 250..277; frames 171 and 200 frozen; every prior value is read at the SAME Action frame id (no shift, no resampling)"
+}

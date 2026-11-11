@@ -480,3 +480,6 @@ files and was written before this Worklog. SHA-256 `b25805a4f5b07bf71e85f671d9fd
 
 - The UniMate runtime is separate because the pinned Python 3.10 / bpy 4.0 stack differs from AnimCV's 3.11 venv.
 - `torch 2.5.1+cu124` cannot run on `sm_120`, which is why the scratch env uses torch 2.7.1+cu128 (§3).
+
+AUTOMATION_BATCH_STATUS: COMPLETE
+BATCH_NUMBER: 136

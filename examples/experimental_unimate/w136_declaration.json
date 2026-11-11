@@ -1,0 +1,412 @@
+{
+ "batch": 136,
+ "bindings": {
+  "A": {
+   "path": "C:/Users/dna10/animcv-w129/inputs/S1_baseline.blend",
+   "sha256": "0803ab2bf31210fbb729bc81b76931729fdc3e12cce27b9507a5b8caf1d12402"
+  },
+  "A_w126_original": {
+   "path": "C:\\Users\\dna10\\animcv-w126\\runs\\S1_replay\\baseline\\baseline.blend",
+   "sha256": "0803ab2bf31210fbb729bc81b76931729fdc3e12cce27b9507a5b8caf1d12402"
+  },
+  "B": {
+   "path": "C:\\Users\\dna10\\animcv-w129\\results\\run\\S1\\B_S1.blend",
+   "sha256": "8899f43341ac1a7a565229a9551b1f8a79943cc038ad519e5544af89e772a33f"
+  },
+  "C": {
+   "path": "C:\\Users\\dna10\\animcv-w129\\results\\run\\S1\\C_S1.blend",
+   "sha256": "e04efb3552f9808f8ae89520284b0d94e860a986c1e6ec475ed6b07683f9ef04"
+  },
+  "Cpin": {
+   "path": "C:\\Users\\dna10\\animcv-w129\\results\\run\\S1\\Cpin_S1.blend",
+   "sha256": "3116d2ea3340d8356beb6adbf5f60f33c026ca92f47f7216137b4a00f6e31b02"
+  },
+  "S1_clip": {
+   "path": "C:/Users/dna10/animcv-w121/data/originals/64498918_Double_Kettlebell_Strict_Press_side_view_.webm",
+   "sha256": "de8feb9d515daa2bfaeed7167fdcc62028dd3f6450872c4fd81f8fb03dd6359c"
+  },
+  "W126V_accepted": {
+   "path": "C:/Users/dna10/animcv-w129/inputs/S1_W126V_accepted.blend",
+   "sha256": "7e2ab16511f4cbe111171df9af0bc2e1f7d8c09a57bd5a4feff284d34e908f40"
+  },
+  "W126V_accepted_original": {
+   "path": "C:\\Users\\dna10\\animcv-w126\\runs\\S1_replay\\accepted\\accepted_03_674ba278e9a0.blend",
+   "sha256": "7e2ab16511f4cbe111171df9af0bc2e1f7d8c09a57bd5a4feff284d34e908f40"
+  },
+  "W126V_proposal": {
+   "path": "C:\\Users\\dna10\\animcv-w126\\runs\\S1_replay\\edits\\W126V\\proposal.json",
+   "sha256": "582174bfcd3a284f9037409c945e2440b182a0c2593e618511b9effb280a9c84"
+  },
+  "W126_refs": {
+   "path": "C:\\Users\\dna10\\animcv-w126\\runs\\S1_replay\\lineage\\refs.json",
+   "sha256": "c0f1157dc7f067736059f754e23070de8ab5e425ec858e7415e2d7df17389b1b"
+  },
+  "W129_assessment": {
+   "path": "C:\\Users\\dna10\\animcv-w129\\results\\assess\\assessment.json",
+   "sha256": "df6693d22d58cb95f4e130e16e757ab9519c84fe359323560cf530da8b42791c"
+  },
+  "W129_declaration_v2": {
+   "path": "C:\\Users\\dna10\\animcv-w129\\results\\declare_v2\\declaration.json",
+   "sha256": "0c34aab0755c24a7e30a43b11a356c9f5dc0c54e5adda39a5b54b8d6e9f0b6f8"
+  },
+  "W129_engine_output": {
+   "path": "C:\\Users\\dna10\\animcv-w129\\results\\run\\S1\\model_R1\\engine_output.npz",
+   "sha256": "8a528ef1bf7976f22bd6212eddf7c5b525ee5f30e27ee01f501d565baac6a100"
+  },
+  "W129_evidence_manifest": {
+   "path": "C:\\Users\\dna10\\animcv-w129\\results\\evidence_manifest.json",
+   "sha256": "b07154ed1b20da67a247fa4d9d5a28222ecb1087cc39d172bbe0af8eca113c02"
+  },
+  "W129_preflight": {
+   "path": "C:\\Users\\dna10\\animcv-w129\\results\\preflight\\preflight.json",
+   "sha256": "46119b9c5273e0fe038809f959ef12664abc89794085b94ec8aa351b44813868"
+  },
+  "W129_projection": {
+   "path": "C:\\Users\\dna10\\animcv-w129\\results\\run\\S1\\projection.json",
+   "sha256": "e331344c8023da4b398ae3ac55c3be21d3955c486d6334c708a938fe41cf20aa"
+  },
+  "W129_raw_model_io": {
+   "path": "C:\\Users\\dna10\\animcv-w129\\results\\run\\S1\\model_R1\\raw_model_io.npz",
+   "sha256": "1ad837e417b69531b35aa3108fccd6c99e05b4f924741b56d58ceec44accfb6f"
+  },
+  "W129_run_result": {
+   "path": "C:\\Users\\dna10\\animcv-w129\\results\\run\\S1\\run_result.json",
+   "sha256": "9c88961523fa41881fd87e58d366de23138b24baca316dc33403c40f76da9a83"
+  },
+  "W135_D": {
+   "path": "C:\\Users\\dna10\\animcv-w135\\results\\run\\D_S1.blend",
+   "sha256": "2a5e441f75eeead09fc06242b93b595124b3da3a4e69c054e33e42f18e54cebe"
+  },
+  "W135_E": {
+   "path": "C:\\Users\\dna10\\animcv-w135\\results\\run\\E_S1.blend",
+   "sha256": "ac53a771ef5d3dfa80bee7df460fe0b1bd49873ff0950784bbc60a44bb1dc19f"
+  },
+  "W135_assessment": {
+   "path": "C:\\Users\\dna10\\animcv-w135\\results\\assess\\assessment.json",
+   "sha256": "b2336b8f4e35b3e8ef4abdffbe660f051e9d69bd483add7f5c3bf6665e399177"
+  },
+  "W135_declaration": {
+   "path": "C:\\Users\\dna10\\animcv-w135\\results\\declare\\declaration.json",
+   "sha256": "0c69dde0e13fb909687be8d1d0cfd07953fa51f6f645c531ab788a0a41f767fe"
+  },
+  "W135_evidence_manifest": {
+   "path": "C:\\Users\\dna10\\animcv-w135\\results\\evidence_manifest.json",
+   "sha256": "8543b5ecb95567da4a8cc204720254bc09c44004f1813fb5070aa7b4ba307c31"
+  },
+  "W135_run_result": {
+   "path": "C:\\Users\\dna10\\animcv-w135\\results\\run\\run_result.json",
+   "sha256": "4934fd071ebd53ce542388eb57b342afc001313a2d6b3f1147a689658ccbd7e0"
+  }
+ },
+ "case_rule": {
+  "A": "all mechanical gates pass AND GENERATED_EFFECT AND Q1-Q8 pass",
+  "B": "a valid source-conditioned model Action exists (all mechanical gates pass) but NO_GENERATED_EFFECT or any of Q1-Q8 fails (improvement absent, unproven or review incomplete)",
+  "C": "real inference executed but: decoder/projection refusal (RIG_PROJECTION_FAILED), conditioning fidelity M4 fails, any of M1-run, M2, M3, M5, M6, M7, M11 fails, or unusable continuity (any U arm-local wrist or elbow step in 171->172 .. 199->200 > 100 mm)",
+  "D": "declaration/instrument changed or model output preceded the declaration; a negative control does not fail closed (M10); integrity (M9) fails; the matched control Bc != B (M8)",
+  "DATA_BLOCKED": "preflight not OK: RIGHTS_UNRESOLVED / ACCESS_BLOCKED / RESOURCE_BLOCKED / DATA_BLOCKED / REPRESENTATION_BLOCKED; or CONDITIONING_BLOCKED (the official sampler cannot hold the declared context: mask refused before any sample)",
+  "precedence": "DATA_BLOCKED > D > C > B > A; a mechanical PASS, synthetic PASS or a video file alone never yields A"
+ },
+ "control": "Bc = the official PROXY_B tensor saved by the same run, decoded and imported through the identical path (expected == B, M8)",
+ "controls": [
+  "mismatched joint labels (left/right forearm swap)",
+  "missing left-arm joint",
+  "wrong facing pair",
+  "mirrored T-pose (handedness)",
+  "joint order permutation",
+  "shifted frame indices (+-1)",
+  "non-uniform scaling",
+  "rest/armature mismatch (perturbed T-pose rotation)",
+  "non-left-arm drift (perturbed spine slot)",
+  "corrupt checkpoint copy",
+  "corrupt S1 clip copy",
+  "24 fps and 20 fps",
+  "mask freeing spine_01 / right arm / frame 170 / frame 200 / nothing / keeping a support entry",
+  "channel spine_01, frames 171/200 (module + real Blender refusals)",
+  "pin-overlap request",
+  "degenerate and non-finite 6D",
+  "export of a non-B source (identity refusal, real Blender)"
+ ],
+ "domain": {
+  "channels": [
+   "upperarm_l",
+   "lowerarm_l"
+  ],
+  "frames": [
+   172,
+   199
+  ],
+  "pin_action": [
+   132,
+   140
+  ],
+  "pin_target_m": [
+   -0.0927,
+   0.2199,
+   1.4506
+  ],
+  "pin_tolerance_m": 0.001
+ },
+ "export_adapter": {
+  "check": "anatomical world matrices unchanged on all 240 frames (measured 9.54e-07, refuse > 1e-5)",
+  "helpers": "interaction / center_of_mass (zero-weight helper roots) untouched -> pruned/merged by the official exporter",
+  "object_rotation": "armature-object rotation keys moved onto pelvis (Basis = Rest^-1 R_obj Rest, rotation+location); object set to identity rotation, scale 0.01 kept",
+  "pelvis_root": "one static unskinned bone 'pelvis' at the thigh-head midpoint, parent of spine_01/thigh_l/thigh_r (keep offset)",
+  "why": "without the pelvis the official exporter keeps only the heaviest root subtree (legs dropped); without the bake the sampled 'rest' carries the frame-1 source rotation (tilted T-pose). Both were found on input-only roundtrips before declaration."
+ },
+ "fresh_dump_sha256": {
+  "A": "d893f3c5cfd21e06d84cd27ffbbc8a28e615fad5dc11322b377048bb32b76bf8",
+  "B": "0e7fac1a7de18f733bd6996ec9cdec4f1c43f91901425510187650d8da739851",
+  "C": "77ff6d996e18f870860dc8a706955e2158a2d14286c0cde7a3f4eb414213e02d",
+  "D": "2021805c47967169c6d39a3e5742c9b9f0493395afbd30ee7d2370ea5652c153",
+  "E": "50f1ecbe370350f8dbbc2c490f681a574b4fbd30627464079919f95e6711ac0b"
+ },
+ "generated_effect_rule": "GENERATED_EFFECT iff max over Action 172..199 of max(|elbow_U - elbow_Bc|, |wrist_U - wrist_Bc|) (world, fresh readback) >= 10 mm; otherwise NO_GENERATED_EFFECT",
+ "historical": "A, B, C (W129), D and E (W135) unchanged, read-only comparisons",
+ "identities": {
+  "code": {
+   "commit": "b78c7807df7cf4231d4e67f8d0ece29c5e11025b",
+   "files_sha256": {
+    "LICENSE": "f728ed5f44845b9e4d4147b18abb1fc6a5f27e9e3dfd4ac0088fba8e66c1bbfa",
+    "README.md": "3034d1cfe700e6ed3b4a65dc697ca65361b7b058ac13643ceea8795e5247d48a",
+    "data_process/rig_preprocess/README.md": "5a7d1f0656ad704051ec92f6afde8bee2908d072a65b562bba4e3920534a57da",
+    "data_process/rig_preprocess/pipeline.py": "c1b139b7f7522e99aca86492ef91c9a5488a904e419a28a619d3bd4683a369dd",
+    "data_process/utils/blender_export.py": "545098b1bb10569229810fcc25cc1cb73e6ffdb303a90e72d45a212331182463",
+    "unimate/inference/generate.py": "742b0c009ce923e6419fc56be5bf1488a072ffde09841f5691a005bd4c00bf6e",
+    "unimate/inference/motion_editing.py": "1923275533a693d83c822c15ec7616bd36a561ebf76feaa3f776212c941b3481",
+    "unimate/inference/motion_inbetweening.py": "ec02743b5a1e485f47829ea04973341e4bc17eef952672000a8452b8dccad380",
+    "unimate/inference/sample.py": "9403505f57f9fc43fc35fda77a8ca5a35753e19eb36bc1be0980318ea168bca3",
+    "unimate/utils/motion_utils.py": "382a5659db329046b392834564a4ea2f21a65f9a0f32076a9d8a2e8b601901fd"
+   },
+   "licence": "MIT",
+   "repo": "https://github.com/Friedrich-M/UniMate"
+  },
+  "model": {
+   "card": "unimate_uniml3d_f60_v3, graph attention + AdaLN text, 74.1M denoiser parameters, 150k steps, UniML3D d0f19d9",
+   "checkpoint": "unimate_uniml3d_f60_v3/checkpoints/checkpoint_step_150000.pt",
+   "checkpoint_sha256": "f991ddd87262c251f4681d18297a6163ab4f139daa28c86d5ef0a66771df7bc6",
+   "config_sha256": "1ffbd379d3667de7d701ed6f3418f1c9d1a66f35d2653776255008c07c051aaa",
+   "licence": "CC BY-NC 4.0 (weights)",
+   "repo": "Linzhan/UniMate",
+   "revision": "174fc755ec248d0c98f27759b7a95648e7f05905",
+   "stats_sha256": "0ff2b9ef3ea9a15b024ab0670e55f659478251501e5596f9011d5bca4cf67773"
+  },
+  "rig_preprocess_inputs": {
+   "annotation_sha256": "2a29ba9b80f8916a3f05b3cc9d2d111ade68d3fbd7e77be1eef402c720f11d04",
+   "clip": "S1_PROXY_B-Animation-000",
+   "clip_sha256": "8d62b42ae25e72f30357be24b0ded3dc1e3e099330ec542c19c44cf8dfed4de9",
+   "cond_sha256": "b674dea87f97fe44aa58258c835b4700a5acca62ea60def6995d0342d7ba6494",
+   "glb_sha256": "0ae006e3a66c42f6a5aac6d1c962d5c48e4e92a3ca0e03253ec9b3fc4148109d"
+  },
+  "runtime": {
+   "arch": [
+    "sm_50",
+    "sm_60",
+    "sm_61",
+    "sm_70",
+    "sm_75",
+    "sm_80",
+    "sm_86",
+    "sm_90",
+    "sm_100",
+    "sm_120"
+   ],
+   "available": true,
+   "bpy": "4.0.0",
+   "cuda": "12.8",
+   "device": "NVIDIA GeForce RTX 5080",
+   "numpy": "2.2.6",
+   "python": "3.10.22",
+   "torch": "2.7.1+cu128",
+   "transformers": "5.16.1"
+  },
+  "text_encoder": {
+   "frozen": true,
+   "gated": false,
+   "licence": "apache-2.0",
+   "repo": "google/flan-t5-base",
+   "revision": "7bcac572ce56db69c1ea7c8af255c5d7c9672fc2",
+   "safetensors_sha256": "1dfb70afdcedceb9f9fae2f9b68e004ad934361fb35b9b2bd50b45ea90790fc8"
+  }
+ },
+ "import": {
+  "builder": "unchanged W129 build_variant (refuses any other channel/frame), new opt-in Action from a byte copy of A",
+  "channels": [
+   "upperarm_l",
+   "lowerarm_l"
+  ],
+  "frames": [
+   172,
+   199
+  ],
+  "not_imported": "model root/world/torso/right-arm/legs/hand/finger output, and every frame outside 172..199",
+  "values": "decoded U basis quaternions, unit-norm, sign-canonical to A's key"
+ },
+ "inference": {
+  "cfg_scale": 3.0,
+  "checkpoint_weights": "EMA weights as loaded by the official _load_checkpoint",
+  "generated_joints": [
+   "lowerarm_l",
+   "hand_l",
+   "middle_metacarpal_l",
+   "ring_metacarpal_l",
+   "pinky_metacarpal_l",
+   "index_metacarpal_l",
+   "thumb_01_l",
+   "middle_01_l",
+   "ring_01_l",
+   "pinky_01_l",
+   "index_01_l",
+   "thumb_02_l",
+   "middle_02_l",
+   "ring_02_l",
+   "pinky_02_l",
+   "index_02_l"
+  ],
+  "mask": "scratch hook replaces the official (B,J,1,1) joint mask by a (B,J,12,T) joint x channel x time mask: generated = strict descendants of upperarm_l at window frames 16..43 (all 12 channels) + their velocity channels at frame 15; the official sampler docstring: 'or any combination as long as the mask broadcasts to (B, J, D, T)'; kept joints are named via --keep_joints (raw names); the hook refuses unless the official joint mask equals the complement of the generated joints",
+  "n_free_entries": 5424,
+  "no": "no seed/prompt/checkpoint/cfg/step sweep, no training/finetuning, no post-hoc smoothing/IK/threshold change",
+  "one_run": true,
+  "path": "official unimate.inference.sample.main --motion_edit (asset by directory, test case {'S1_PROXY_B-<clip id>': prompt}, --gt_start_frame 0, --num_repetitions 1, --batch_size 1, --only_save_motion)",
+  "prompt": "An object presses its left arm overhead.",
+  "runtime_compat": "torch 2.7.1+cu128 instead of the pinned 2.5.1+cu124 (no sm_120 kernels); TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD=1 restores torch.load's 2.5 default for the hash-verified official checkpoint; HF/transformers offline",
+  "sampler": "fixed-step Euler replacement ODE, 50 steps, t in [0,1] (official default)",
+  "seed": 10
+ },
+ "instruction_blob": "b7fd915af1d8d9d52d51454b1d27cf969df5b1c9",
+ "instrument_sha256_lf": {
+  "scripts/w129_motionbricks_harness.py": "ebfa4481e823f999d34c0aba20253e0ec8edd17143ca649207ca2cd4118b3b55",
+  "scripts/w135_elbow_prior_harness.py": "2bff43082ffab08231bee8def2a2fb81bbc9bc2c37b262997e6df3ee220d8dc6",
+  "scripts/w136_unimate_harness.py": "a9b5e981b0156de00fed020a639d5e6686bb6d094c87cf743d29f8f0f87f5d46",
+  "scripts/w136_unimate_infer.py": "803bbd0fe74b3121dc4eb6c9029795660395032088a54fbbe141be2215b00e36",
+  "src/app/experimental_elbow_prior.py": "13fb31321a5575e4226b18bdc109f2c4a719d997c57ec52fca757c1f4b0080e9",
+  "src/app/experimental_motionbricks.py": "3172d5afb64b206828892106c983bbed3a1f5dbeabcbaad5c7f7c9aeeae290dc",
+  "src/app/experimental_unimate.py": "f3829077b612cd7c24637dae46778aa6f4b04c02a76ffef93a9d89349e9d0fa9",
+  "src/blender/experimental_action_stage.py": "c977da7d77ed38d8fc90bcc257493edb4cbe62d39f4f84dfa53e66ddf570fb20",
+  "src/blender/experimental_motionbricks_stage.py": "ad1bd44cffbfb729a04051102604cf27672568e2e6f2548c92526fc049f06488",
+  "src/blender/experimental_unimate_export_stage.py": "6ed57d94b20a5cd65da6ed7cb20b862fb8ad4b22be0311f74ad514f2b4e15a86",
+  "tests/test_experimental_unimate.py": "534b91d7ba947f5dfe0dddd5c3d207ca9d12c721280c6908e91ddfb31bde1d3f"
+ },
+ "mapping": {
+  "context_drift": {
+   "calf_l": 7.945625631056163e-08,
+   "calf_r": 1.8723826957292578e-07,
+   "spine_01": 2.9168922308780987e-07,
+   "thigh_l": 8.007584222646802e-07,
+   "thigh_r": 6.721635272474713e-07
+  },
+  "coordinates": "UniMate canonical Y-up, facing +Z, scale to diameter 2 (official); non-root local rotations are frame-independent",
+  "decode": "bvh(upperarm_l) = 6D slot of lowerarm_l, bvh(lowerarm_l) = 6D slot of hand_l; L_j = cum_p^-1 new_j cum_p tq_j; Basis_j = tq_j^-1 L_j (tq = cond tpos_local_rotations = BaseRig Rest_rel, verified)",
+  "joints": "50 = 49 anatomical BaseRig bones (same names, BaseRig hierarchy) + pelvis; joint order = the official cond order (BFS)",
+  "own_vs_official_decode": {
+   "lowerarm_l": 3.3306690738754696e-16,
+   "upperarm_l": 3.3306690738754696e-16
+  },
+  "scale": [
+   0.008439522593839047,
+   0.0001699838177020574
+  ],
+  "time_identity": {
+   "lowerarm_l": {
+    "shift+1": 0.22055827041282386,
+    "shift-1": 0.22055826468099282,
+    "shift0": 2.7094953680695255e-07
+   },
+   "upperarm_l": {
+    "shift+1": 0.22078108332669244,
+    "shift-1": 0.22078116584024732,
+    "shift0": 2.5470153114381944e-07
+   }
+  }
+ },
+ "mechanical_gates": {
+  "M0": "rights/access/resource/identity preflight OK (pinned code, model revision, checkpoint + stats SHA-256, ungated pinned flan-t5-base, licence clauses, sm_120 runtime, every frozen SHA-256)",
+  "M1": "representation: the no-model roundtrip passed in preflight (export adapter world-equal <= 1e-5; 50 joints, labels/side/hierarchy/facing pair; facing cos >= 0.95; uniform scale; clip 61 frames at 30 fps; decode == B keys <= 1e-5 at shift 0 and >= 100x worse at +-1; own == official decode; non-left-arm context drift <= 1e-5; decoded-B Blender build == B <= 1e-5 m) AND in the run the official PROXY_B tensor decodes to B's keys <= 1e-5",
+  "M10": "negative controls (controls stage) all fail closed",
+  "M11": "native-rate video: 240 frames written and decoded at 30.000 fps",
+  "M2": "Action: U and Bc each a separate .blend with exactly 1 separately named Action; 32 CONSTANT F-curves keyed 1..240; scene 30 fps, 1..240",
+  "M3": "footprint: changed stored keys vs A only upperarm_l/lowerarm_l rotation at Action 172..199; every non-left-arm world point and the object matrix bit-equal to A on all 240 integer frames and all 717 subframes; left arm bit-equal outside 172..199; no subframe change outside [172,200)",
+  "M4": "conditioning: exactly one generate_samples call; kept (mask True) entries of the raw sample equal the PROXY_B tensor <= 1e-4 (denormalised); the free set is exactly the declared support (validate_mask)",
+  "M5": "rig validity: upperarm/lowerarm world length range <= 0.1 mm over 171..200 for U; all imported quaternions finite and unit; no decoder refusal",
+  "M6": "hard pin: U composed onto the W126V-accepted .blend keeps every Action 132..140 hand_l residual equal to W126V's and <= 1e-6 m; pin frames bit-equal; composed footprint as M3 relative to W126V",
+  "M7": "reversibility: U with A's interior keys written back (Urev) is world-bit-equal to A on every integer frame and subframe",
+  "M8": "matched no-generator control: Bc (PROXY_B through the identical decode/import path) equals B in world points within 1e-5 m on every frame",
+  "M9": "integrity: every frozen SHA-256 (S1 clip, A, B, C, Cpin, W126V, W126 refs/proposal, W129 and W135 records, W135 D/E) unchanged after the run"
+ },
+ "metrics": [
+  "arm-local wrist (W129 armlocal_quality) and elbow (W135 elbow_metrics) steps, flicks, jerk, swivel",
+  "world wrist path (W129 quality: deviation from A, progress, hinge)",
+  "U vs Bc / B / D differences",
+  "world shoulder motion (parent-induced, identical in all branches)",
+  "source-2D torso-camera comparison"
+ ],
+ "model_output_exists": false,
+ "observations": {
+  "source_2d": "MMPose COCO-17 detections of the authentic S1 video (W126 observations_predictions.npz): left elbow/wrist detections exist with confidence ~0.4-0.6 on a SELF-OCCLUDED far arm -> recorded as detector HYPOTHESES",
+  "unknown": "the true 3D motion of the occluded left arm (no ground truth exists); the right arm is unkeyed at rig rest in A/B",
+  "used_for": "Q5 only (2D comparison after a torso-only affine camera fit); never as a model input"
+ },
+ "outcomes_inspected": false,
+ "pre_declaration_disclosures": [
+  "export adapter (pelvis root + object-rotation bake) chosen after input-only roundtrips of B showed the official exporter drops the legs and samples a tilted rest",
+  "check_scale tolerance set to 1e-3 after the real (input-only) offsets showed a 1.7e-4 float32 spread on 3-4 cm finger bones",
+  "window 156..215 chosen so the footprint has 16 frames of context on both sides; the official stage 4 keeps only the first 200 frames of a clip, so the export is restricted to the window"
+ ],
+ "preflight_sha256": "67ab4959dc1656cd2554c5087a420efa0951a2530827f982bf938cbed08c6f9f",
+ "proxy": {
+  "conditioning_content": "the model sees PROXY_B everywhere except the generated support; B's interior left arm is NOT visible to the model (masked, incl. the 171->172 velocity of the generated joints)",
+  "label": "PROXY_B",
+  "what": "the frozen W129 B Action (endpoint slerp of A's 171/200 left-arm keys; A everywhere else) over the window, exported by the declared adapter and preprocessed by the official rig_preprocess; UniMate files call it 'gt' -- it is a GT-free animation hypothesis, never measured 3D ground truth and never a video observation"
+ },
+ "quality_criteria": {
+  "Q1": "boundary continuity: U arm-local (clavicle_l frame) wrist AND elbow entry (171->172) and exit (199->200) steps each <= 2 x B's corresponding step + 10 mm",
+  "Q2": "no reversal flicks (consecutive steps both > 20 mm with negative dot) of the arm-local wrist or elbow in steps 171->172 .. 199->200",
+  "Q3": "interior smoothness: U arm-local wrist peak step (171->172 .. 199->200) <= 2 x B's peak + 10 mm",
+  "Q4": "rig plausibility: no interior frame near-straight (> 175 deg) and no interior frame bending opposite to A's dominant hinge normal (W129 quality)",
+  "Q5": "source-2D fidelity: affine camera fitted ONLY on unedited torso joints (both shoulders, both hips; A readback, Action 156..215, valid detections) has RMS <= 20 px, AND U's interior mean 2D left-wrist error to the MMPose detection <= B's (detections on the self-occluded far arm are labelled hypotheses, not observed truth)",
+  "Q6": "press intent: U's world wrist net rise (Z at 199 minus Z at 172) >= 0.5 x B's net rise (B's rise > 0)",
+  "Q7": "agent still-frame review: U judged more natural AND more faithful to the source overhead press than B, and U not named for a flick, wrong elbow or detour",
+  "Q8": "native-rate perceptual review of the 30 fps video performed (this agent cannot perceive playback: declared NOT REVIEWED in advance, so Q8 cannot pass in this run)"
+ },
+ "repo_head_at_declaration": "2f3f97f2ed568de2fe742ee261b3fe7a78b98f88",
+ "review_protocol": "UNBLINDED agent review of fixed-time contact sheets (entry 170-175, middle 183-188, exit 196-201, overview) with source crop, A, B, C, D, E, U; still frames only; written to a review JSON before assess. Native-rate playback is NOT perceived by this agent (Q8 NOT REVIEWED). No human/animator review.",
+ "rig_preprocess": {
+  "command": "python -m data_process.rig_preprocess run --input S1_PROXY_B.glb --annotate rule --save_clips --keep_intermediate (review stop) ; then --profile general --save_clips --keep_intermediate --annotation <unchanged reviewed file>",
+  "face_pair": [
+   "thigh_r",
+   "thigh_l"
+  ],
+  "facing_cos": 1.0,
+  "labels": "offline deterministic rule labels; 0 of 50 flagged; reviewed by the agent (annotation + preview) and gated mechanically; no LLM / external API"
+ },
+ "rights": {
+  "commercial": "NOT GRANTED (CC BY-NC 4.0 weights); training-data provenance (Truebones ZOO allegations, Mixamo terms, Objaverse-XL per-object licences) explicitly unresolved by the licensor",
+  "determination": "PERMITTED_NONCOMMERCIAL_RESEARCH_EVALUATION",
+  "files_sha256": {
+   "fetched_config.json": "1ffbd379d3667de7d701ed6f3418f1c9d1a66f35d2653776255008c07c051aaa",
+   "hf_LICENSE": "40e6800e2b27ed556a89a342e6570cce73fcfd8463aa16d45e113bc20a2e987e",
+   "hf_README.md": "783ef607d465a9437e772bf2af262fca9ceb40dafc0f25e39be9e12a79ef8fed",
+   "t5_README.md": "b6fb54f6831f3677f537cdb83d6f822e8705d203c605a9ec4c8192bda5a89828",
+   "t5_api.json": "1473a68e7df733d22bd7cb9afe40b36ab231a3650d4b7f78839748cdbc330be5",
+   "unimate_api.json": "2e9ec0a83641a6f884c30c51c39af5f8d02f05189bacff7929d940599d60096f"
+  },
+  "intended_use": "private, local, non-commercial technical research evaluation on one machine; no redistribution of weights, no public distribution of model outputs, no training/finetuning, no production or commercial use",
+  "note": "documentary reading by the agent, not legal advice and not a human licensing decision"
+ },
+ "schema": "animcv_exp_w136_declaration_v1",
+ "starting_commit": "b641905b475ebed63c49fa6c59fe6b40b82d44f0",
+ "stop_conditions": [
+  "RIGHTS_UNRESOLVED",
+  "ACCESS_BLOCKED",
+  "RESOURCE_BLOCKED",
+  "DATA_BLOCKED",
+  "REPRESENTATION_BLOCKED",
+  "CONDITIONING_BLOCKED",
+  "RIG_PROJECTION_FAILED",
+  "INTEGRITY_FAILED",
+  "DECLARATION_INVALID",
+  "no tuning or second run after any model output"
+ ],
+ "time": "2026-11-11T08:44:55Z",
+ "time_rule": "native 30 fps; Action = SOURCE - 78; model window = Action 156..215 (SOURCE 234..293), feature frame i <-> Action 156+i; the export holds poses 156..216 (velocity of frame 215 needs pose 216); footprint Action 172..199 = SOURCE 250..277 = window frames 16..43; frames 171 and 200 frozen",
+ "unusable_step_mm": 100.0
+}

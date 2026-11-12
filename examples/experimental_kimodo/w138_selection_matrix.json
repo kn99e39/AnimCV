@@ -1,0 +1,329 @@
+{
+ "schema": "animcv_exp_w138_selection_matrix_v1",
+ "batch": 138,
+ "time": "2026-11-12T21:59:50.122786+00:00",
+ "starting_commit": "df9eddc1eb84b5de79f2eaab848b62b4a203e21f",
+ "instruction_blob": "8129b0b504cfdca11c313ffcd6c3a53d75e2bd32",
+ "model_output_exists": false,
+ "weights_downloaded": false,
+ "intended_use": "private, local, non-commercial technical research evaluation on one machine in the Republic of Korea; one inference; no redistribution of weights or model outputs; no training/finetuning; no production or commercial use",
+ "rule": {
+  "predicates": [
+   "E1c_code_rights",
+   "E1w_weight_rights",
+   "E2_access",
+   "E3_resources",
+   "E4_conditioning",
+   "E5_recoverability"
+  ],
+  "preferences": [
+   "P1_vendor_benchmarked_partial_motion_in_declared_text_mode",
+   "P2_per_frame_non_autoregressive_whole_window",
+   "P3_native_30fps"
+  ],
+  "stop_of_predicate": {
+   "E1c_code_rights": "RIGHTS_UNRESOLVED",
+   "E1w_weight_rights": "RIGHTS_UNRESOLVED",
+   "E2_access": "ACCESS_BLOCKED",
+   "E3_resources": "RESOURCE_BLOCKED",
+   "E4_conditioning": "CONDITIONING_BLOCKED",
+   "E5_recoverability": "REPRESENTATION_BLOCKED"
+  },
+  "text": " (frozen here, before any model output; it has no branch that reads a model result)\n  A candidate is ELIGIBLE iff all six predicates are VERIFIED_TRUE:\n    E1c code rights     an affirmative licence file in the official repository at the pinned commit covers running the\n                        code for a private, local, non-commercial research evaluation;\n    E1w weight rights   the rights holder's own weight-scoped terms (not a code licence, not a third-party mirror label)\n                        permit that use at the execution location;\n    E2  access          every artifact whose bytes can influence the declared inference is public and ungated at a\n                        pinned revision, and NO gated artifact is requested, obtained or substituted.  If the vendor's\n                        default runtime loads a gated component, E2 holds only for a vendor-documented AND\n                        vendor-benchmarked mode in which the vendor's own code discards that component's output, the\n                        component being left out only through a vendor-documented loader parameter;\n    E3  resources       the declared inference fits this machine (16 GB VRAM, bounded disk);\n    E4  conditioning    a vendor-documented native partial-motion / keyframe conditioning can hold source-bound context\n                        outside the edit interior and leave the interior free, without asserting any 3D observation\n                        inside the interior and without unrestricted body edits being imported;\n    E5  recoverability  the model returns per-frame joint rotations on a skeleton for which a closed-form mapping to the\n                        BaseRig ``upperarm_l`` / ``lowerarm_l`` channels already exists (W129), with no new interface.\n  Among ELIGIBLE candidates the selection is the UNIQUE maximum of the preference tuple\n    (P1 native partial-motion conditioning benchmarked by the vendor in the declared text mode,\n     P2 per-frame, frame-indexed, non-autoregressive whole-window generation (no temporal tokenisation), which the\n        Batch's exact 30-fps frame correspondence and two-sided bounded gap require,\n     P3 native 30 fps).\n  No eligible candidate, or a tie at the maximum -> QUALIFICATION_BLOCKED.  At most one candidate is ever selected; an\n  eligible-but-not-selected candidate is NOT run.\n\n"
+ },
+ "gated_text_encoder": {
+  "repository": "meta-llama/Meta-Llama-3-8B-Instruct",
+  "class": "NOT_GRANTED",
+  "authenticated_head_status": 403,
+  "x_error_code": "GatedRepo",
+  "anonymous_head_status": 401
+ },
+ "matrix": {
+  "Kimodo": {
+   "code_repo": "https://github.com/nv-tlabs/kimodo",
+   "pinned_commit": "e1c219c99b4b94ba48be1fb6a1cbc64ecee4c954",
+   "code_licence_files": [
+    "LICENSE"
+   ],
+   "github_license": "Apache-2.0",
+   "hf_repo": "nvidia/Kimodo-SOMA-RP-v1.2",
+   "hf_revision": "0e3c89024d896064b6851201373f7834784a386b",
+   "gated": false,
+   "card_license": "nvidia-open-model-license",
+   "weight_file": "model.safetensors",
+   "weight_lfs_sha256": "fdcef624140a12c0a4840192ce0b75cafb4e73228a893da3864b4a990d3e919e",
+   "weight_bytes": 1133177724,
+   "task": "text- and/or constraint-conditioned kinematic motion diffusion (full-body keyframes, end-effectors, 2D root path/waypoints)",
+   "input_modality": "text (optional) + kinematic constraints as joint rotations/root positions on the SOMA skeleton; no video, no 2D keypoints",
+   "skeleton": "SOMA: somaskel30 inside the model, somaskel77 in the public I/O",
+   "fps_window": "30 fps; up to 10 s (300 frames) per prompt",
+   "output": "local/global joint rotation matrices, joint positions, root positions (NPZ / Python dict)",
+   "training_data": "Bones Rigplay 1 (proprietary optical mocap, 700 h); card: provenance for all datasets = Yes",
+   "clause_topics": {
+    "code_licence": true,
+    "weight_licence": true,
+    "text_gate": true,
+    "no_text_mode": true,
+    "resources": true,
+    "conditioning": true,
+    "output": true,
+    "per_frame": true
+   },
+   "predicates": {
+    "E1c_code_rights": "VERIFIED_TRUE",
+    "E1w_weight_rights": "VERIFIED_TRUE",
+    "E2_access": "VERIFIED_TRUE",
+    "E3_resources": "VERIFIED_TRUE",
+    "E4_conditioning": "VERIFIED_TRUE",
+    "E5_recoverability": "VERIFIED_TRUE"
+   },
+   "status": "ELIGIBLE",
+   "blocking": [],
+   "modes": {
+    "text_conditioned": "ACCESS_BLOCKED (gated Llama 3 base; existing credential not granted)",
+    "no_text_constraints_only": "VERIFIED_BY_SOURCE",
+    "declared_mode": "no_text_constraints_only"
+   },
+   "preferences": {
+    "P1_vendor_benchmarked_partial_motion_in_declared_text_mode": true,
+    "P2_per_frame_non_autoregressive_whole_window": true,
+    "P3_native_30fps": true
+   },
+   "notes": {
+    "temporal_conditioning": "frame-indexed constraints over one generated clip: `fullbody` (all 30 SOMA joint positions + smoothed root + heading at the listed frames), end-effector subsets, root 2D; vendor guidance: sparse, fewer than 20 keyframes per constraint type",
+    "hard_preservation": "constraints are soft (network) unless the vendor's optional post-processing is enabled; AnimCV-side preservation never depends on the model (only two arm channels at Action 172..199 are imported)",
+    "rig_recoverability": "SOMA joint names equal the W129 MotionBricks SOMA joints; W129's closed-form BaseRig<->SOMA Mapping applies; numeric no-model roundtrip is the harness preflight gate",
+    "dependencies": "PyTorch (sm_120 build), kimodo package (Apache-2.0), optional C++ `motion_correction` extension for post-processing (fetches pybind11 and Eigen), LLM2Vec + gated Llama 3 8B ONLY for text",
+    "rights_caveats": [
+     "NVIDIA Open Model License s2.1: rights terminate if a Guardrail (incl. an authentication mechanism) 'contained in the Model' is bypassed. The gated repository is Meta's Llama 3 base on Hugging Face, not a mechanism contained in the Kimodo checkpoint; the declared mode never requests it. Documentary reading by the agent, flagged for human review.",
+     "s2.3 requires use consistent with NVIDIA's Trustworthy AI terms (page fetched and hashed, not analysed clause by clause)",
+     "training data is proprietary to the licensor (Bones Rigplay 1); the card states provenance for all datasets"
+    ],
+    "access_judgement": "E2 holds ONLY for the vendor's no-text (constraints-only) mode: the vendor code sets the text feature of an empty prompt to zero with zero length, the encoder returns a (B,1,4096) feature, so a null encoder passed through the documented `text_encoder=` parameter yields the identical denoiser input and no Llama weight is requested. Text-conditioned Kimodo remains ACCESS_BLOCKED. This reading is the agent's and is recorded for human review."
+   }
+  },
+  "ARDY": {
+   "code_repo": "https://github.com/nv-tlabs/ardy",
+   "pinned_commit": "e706e27acc88070918308a10922b8f7174d0825e",
+   "code_licence_files": [
+    "LICENSE"
+   ],
+   "github_license": "Apache-2.0",
+   "hf_repo": "nvidia/ARDY-SOMA-RP-30FPS-Horizon60",
+   "hf_revision": "244215084b22fcd29ab743017330e87411fe168a",
+   "gated": false,
+   "card_license": "nvidia-open-model-agreement",
+   "weight_file": "denoiser.safetensors",
+   "weight_lfs_sha256": "f548632f58e9ea1d2f717a1415cae3c1b86dadb521a2549e3e7ea60780bd8dc5",
+   "weight_bytes": 626861352,
+   "task": "autoregressive (streaming) text- and constraint-conditioned motion diffusion with a learned motion tokenizer",
+   "input_modality": "text (optional) + history poses + kinematic constraints on the SOMA skeleton; no video",
+   "skeleton": "SOMA 30 joints",
+   "fps_window": "30 fps; 60-frame generation horizon, 4 frames per token, up to 8 s history",
+   "output": "global root translation + joint rotations",
+   "training_data": "Bones Rigplay 1 (proprietary optical mocap)",
+   "clause_topics": {
+    "code_licence": true,
+    "weight_licence": true,
+    "text_gate": true,
+    "no_text_mode": true,
+    "conditioning": true,
+    "output": true,
+    "autoregressive_tokenised": true
+   },
+   "predicates": {
+    "E1c_code_rights": "VERIFIED_TRUE",
+    "E1w_weight_rights": "VERIFIED_TRUE",
+    "E2_access": "VERIFIED_TRUE",
+    "E3_resources": "VERIFIED_TRUE",
+    "E4_conditioning": "VERIFIED_TRUE",
+    "E5_recoverability": "VERIFIED_TRUE"
+   },
+   "status": "ELIGIBLE",
+   "blocking": [],
+   "modes": {
+    "text_conditioned": "ACCESS_BLOCKED (gated Llama 3 base; existing credential not granted)",
+    "no_text_constraints_only": "VERIFIED_BY_SOURCE",
+    "declared_mode": "no_text_constraints_only"
+   },
+   "preferences": {
+    "P1_vendor_benchmarked_partial_motion_in_declared_text_mode": true,
+    "P2_per_frame_non_autoregressive_whole_window": false,
+    "P3_native_30fps": true
+   },
+   "notes": {
+    "temporal_conditioning": "autoregressive steps with history poses and future constraints inside a 60-frame horizon; body motion is a latent of a learned tokenizer at 4 frames per token",
+    "hard_preservation": "soft; optional post-processing",
+    "rig_recoverability": "SOMA 30 (as Kimodo)",
+    "dependencies": "as Kimodo plus the motion tokenizer",
+    "access_judgement": "same reading as Kimodo (official `text_encoder=False`, empty prompt zeroed, vendor 'Without text' benchmark rows); NOT exercised in this Batch because at most one candidate is selected"
+   }
+  },
+  "MotionLab": {
+   "code_repo": "https://github.com/Diouo/MotionLab",
+   "pinned_commit": "8b2f7b35ae57bb0a7ef5985e6479148f5adcb11d",
+   "code_licence_files": [],
+   "github_license": null,
+   "hf_repo": "nielsr/motionlab",
+   "hf_revision": "485f04aa44b8d682070fe6370d2b86f9b899d9e1",
+   "gated": false,
+   "card_license": null,
+   "weight_file": "motionflow.ckpt (Google Drive folder 1ph3otOlYqINvwFuvrt92nvzypZDs4haj; not on the HF repo)",
+   "weight_lfs_sha256": null,
+   "weight_bytes": null,
+   "task": "unified motion generation/editing (text, hint/trajectory, in-between, style, source-motion editing)",
+   "input_modality": "text / trajectory hints / source motion in the SMPL-based HumanML3D-MotionFix format",
+   "skeleton": "SMPL 22 joints (6D rotations + translation)",
+   "fps_window": "HumanML3D-format clips (20 fps upstream convention; not re-verified)",
+   "output": "SMPL-parameter motion",
+   "training_data": "HumanML3D (AMASS-derived) + MotionFix",
+   "clause_topics": {
+    "restricted_assets": true,
+    "demo_needs_dataset": true,
+    "conditioning": true
+   },
+   "predicates": {
+    "E1c_code_rights": "VERIFIED_FALSE",
+    "E1w_weight_rights": "VERIFIED_FALSE",
+    "E2_access": "NOT_VERIFIED",
+    "E3_resources": "NOT_VERIFIED",
+    "E4_conditioning": "NOT_VERIFIED",
+    "E5_recoverability": "NOT_VERIFIED"
+   },
+   "status": "RIGHTS_UNRESOLVED",
+   "blocking": [
+    "E1c_code_rights",
+    "E1w_weight_rights",
+    "E2_access",
+    "E3_resources",
+    "E4_conditioning",
+    "E5_recoverability"
+   ],
+   "modes": {},
+   "preferences": {},
+   "notes": {
+    "rights": "no licence file in the official repository and no GitHub-detected licence: no affirmative grant for the code; the checkpoints are on a Google Drive folder without terms; the Hugging Face repo `nielsr/motionlab` is a third-party upload without a licence and without `motionflow.ckpt`",
+    "dependencies": "SMPL / SMPL-H body-model files and an AMASS-derived HumanML3D + MotionFix dataset are required by the documented setup; the demo builds its inputs from the dataset loader",
+    "unverified": "runtime path, FPS/window, partial-observation semantics and rig recoverability were not examined once rights failed"
+   }
+  },
+  "ProjFlow": {
+   "code_repo": "https://github.com/Akihisa-Watanabe/ProjFlow",
+   "pinned_commit": "9550501a439964a73063505b7a52e574ae11a43c",
+   "code_licence_files": [],
+   "github_license": null,
+   "hf_repo": "Akihisa-Watanabe/ProjFlow",
+   "hf_revision": "ffaba8dd6ef2b182140497b09bd08936f7378dc1",
+   "gated": false,
+   "card_license": "mit",
+   "weight_file": "checkpoints/t2m/ACMDM_Raw_Flow_S_PatchSize22/model/latest.tar",
+   "weight_lfs_sha256": "8a452a0a9cd404ece3e1beb2c9a50dcf8842672ccc3fb5b6f7a59919a0d6ec8f",
+   "weight_bytes": 625371739,
+   "task": "training-free projection sampler enforcing exact linear spatial constraints on an ACMDM flow-matching prior (inpainting, 2D-to-3D lifting)",
+   "input_modality": "text + exact joint-position constraints (3D or projected 2D) on the HumanML3D 22-joint absolute-coordinate representation",
+   "skeleton": "HumanML3D/T2M 22 joints, absolute joint coordinates (positions only, no rotations)",
+   "fps_window": "HumanML3D convention (20 fps, up to 196 frames; not re-verified)",
+   "output": "joint positions (T, 22, 3)",
+   "training_data": "HumanML3D (AMASS-derived)",
+   "clause_topics": {
+    "weights_hosted_by_author": true,
+    "weight_licence": true,
+    "conditioning": true,
+    "positions_only": true
+   },
+   "predicates": {
+    "E1c_code_rights": "VERIFIED_FALSE",
+    "E1w_weight_rights": "VERIFIED_TRUE",
+    "E2_access": "VERIFIED_TRUE",
+    "E3_resources": "NOT_VERIFIED",
+    "E4_conditioning": "VERIFIED_TRUE",
+    "E5_recoverability": "NOT_VERIFIED"
+   },
+   "status": "RIGHTS_UNRESOLVED",
+   "blocking": [
+    "E1c_code_rights",
+    "E3_resources",
+    "E5_recoverability"
+   ],
+   "modes": {},
+   "preferences": {},
+   "notes": {
+    "rights": "weights: MIT on the first author's own Hugging Face repository (weight-scoped, rights holder). Code: the official GitHub repository has no licence file and no detected licence, so there is no affirmative grant to run or modify it; this is unresolved, not a finding that use is forbidden. Needs a human decision or an author statement.",
+    "technical": "exact joint-position constraints incl. inpainting and 2D-to-3D lifting on the HumanML3D 22-joint absolute-coordinate representation (positions only); W131's HumanML3D<->BaseRig adapter and 30<->20 fps map would apply; not exercised",
+    "training_data": "HumanML3D, derived from AMASS (non-commercial research terms) - recorded, not judged"
+   }
+  },
+  "GEM-X": {
+   "code_repo": "https://github.com/NVlabs/GEM-X",
+   "pinned_commit": "4aef1452e5df171deff4f293c08e643eb450981e",
+   "code_licence_files": [
+    "LICENSE"
+   ],
+   "github_license": "Apache-2.0",
+   "hf_repo": "nvidia/GEM-X",
+   "hf_revision": "b111f2dcf3ebcf57965fd53499cb645dfa5ba25c",
+   "gated": false,
+   "card_license": "nvidia-open-model-license",
+   "weight_file": "motion_native77_e774_s292175.ckpt",
+   "weight_lfs_sha256": "c7790f4587e518bcea40cb8281c9be2233d37f6caa668835462542760dcf82aa",
+   "weight_bytes": 187134331,
+   "task": "monocular-video human body pose / motion ESTIMATION on SOMA (plus hand pose)",
+   "input_modality": "RGB video: Body Pose image features + 77-point 2D keypoint observations + camera/timing conditions",
+   "skeleton": "SOMA 77",
+   "fps_window": "30 Hz; clips up to 60 s",
+   "output": "SOMA body parameters in camera and world coordinates",
+   "training_data": "not reviewed",
+   "clause_topics": {
+    "code_licence": true,
+    "weight_licence": true,
+    "video_estimator": true
+   },
+   "predicates": {
+    "E1c_code_rights": "VERIFIED_TRUE",
+    "E1w_weight_rights": "VERIFIED_TRUE",
+    "E2_access": "NOT_VERIFIED",
+    "E3_resources": "NOT_VERIFIED",
+    "E4_conditioning": "VERIFIED_FALSE",
+    "E5_recoverability": "NOT_VERIFIED"
+   },
+   "status": "CONDITIONING_BLOCKED",
+   "blocking": [
+    "E2_access",
+    "E3_resources",
+    "E4_conditioning",
+    "E5_recoverability"
+   ],
+   "modes": {},
+   "preferences": {},
+   "notes": {
+    "incompatibility": "a video motion estimator: its only conditioning is RGB-derived image features and 2D keypoints for the whole body; it has no motion/keyframe input, cannot take the frozen source-bound reference with an UNKNOWN interior, and would re-estimate every joint from pixels (a pose-estimation iteration, which this Batch excludes)",
+    "unverified": "detector, SOMA asset and ViTPose terms; resources; rig mapping"
+   }
+  }
+ },
+ "selection": {
+  "selected": "Kimodo",
+  "status": "SELECTED",
+  "eligible": [
+   "ARDY",
+   "Kimodo"
+  ],
+  "preference_tuple": {
+   "ARDY": [
+    true,
+    false,
+    true
+   ],
+   "Kimodo": [
+    true,
+    true,
+    true
+   ]
+  },
+  "not_selected_eligible": [
+   "ARDY"
+  ],
+  "reason": null
+ },
+ "stop": null
+}

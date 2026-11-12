@@ -319,6 +319,13 @@ Permanent rules (they override any conflicting habit):
   skipped/failed, CASE/verdict, negative findings, unresolved uncertainties, reproduction, changed files, resource and
   environment constraints. Do not copy the full Batch prompt into it. Do NOT write Next Work Recommendation, Next
   Architecture Decision, Recommended Next Experiment, Proposed Next Batch or Next Implementation Plan.
+- An earlier attempt of this same Batch may have been interrupted (usage limit, shutdown). Check
+  `git log --grep="^{trailer}: {batch}$"`. If commits of this Batch already exist, this run is a RESUMPTION:
+  treat those commits and everything they freeze (declarations, selection rules, pre-outcome instruments, recorded
+  hashes) as binding and immutable; do not redo, re-decide, amend or revert them; read them and the evidence directory
+  they reference, verify recorded hashes, then continue from the first step not yet committed. Re-run a step only if
+  its evidence is missing or fails its recorded hash, and say so in the Worklog. The Worklog must state that the Batch
+  was resumed, from which commit, and why.
 - This Batch runs entirely against the documents of its starting commit {start}. The remote branch may advance while
   you work (e.g. ChatGPT committing central-document updates agreed with the user); those updates apply from the NEXT
   Batch. Never pull, merge or rebase them into this checkout, and do not re-read or follow them.

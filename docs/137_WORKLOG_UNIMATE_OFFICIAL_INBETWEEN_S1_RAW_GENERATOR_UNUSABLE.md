@@ -443,3 +443,6 @@ A re-run of `declare` gets a new timestamp and therefore a new SHA; the official
 
 - The UniMate runtime stays separate from the AnimCV venv (Python 3.10 / bpy 4.0 vs 3.11).
 - torch 2.7.1+cu128 is needed for `sm_120` (as W136).
+
+AUTOMATION_BATCH_STATUS: COMPLETE
+BATCH_NUMBER: 137

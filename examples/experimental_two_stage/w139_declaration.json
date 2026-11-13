@@ -679,7 +679,7 @@
   "scripts/w136_unimate_infer.py": "803bbd0fe74b3121dc4eb6c9029795660395032088a54fbbe141be2215b00e36",
   "scripts/w137_unimate_inbetween_harness.py": "171fb64acdb120443513b05688e17bd456b109970407849e257bc5896aa572f3",
   "scripts/w137_unimate_inbetween_infer.py": "ede49a6998186cf01ee646319ab54cba757c9b7f19810de5b01416a7056a7361",
-  "scripts/w139_two_stage_harness.py": "82a05a47054b72196377c753f677e3b8e6af3bcfdad2a650294e10d21937b556",
+  "scripts/w139_two_stage_harness.py": "3aba761a16a114bef44b9d554fbb0ecaae3e4035a430ce0d66a990c6e2e0108a",
   "scripts/w139_two_stage_infer.py": "f1f090f17fde2f72ef3040a3a8c84d552f86d964e4a2c3019920df168f7cfefc",
   "src/app/experimental_elbow_prior.py": "13fb31321a5575e4226b18bdc109f2c4a719d997c57ec52fca757c1f4b0080e9",
   "src/app/experimental_motionbricks.py": "3172d5afb64b206828892106c983bbed3a1f5dbeabcbaad5c7f7c9aeeae290dc",
@@ -739,7 +739,8 @@
   "the 6 W139 design choices were revised after an adversarial design review (passive-null information criteria, seed 11 for the native reference, camera-free intent terms, W129 B in the superiority set, agent review reported-only, K0 inside W139) before any output",
   "PROXY_A/PROXY_B/PROXY_C are re-built by W139 (PROXY_B must equal W136's features); W136/W137 files are only read",
   "DEV DRY RUNS before this declaration (C:/Users/dna10/animcv-w139/dev): preflight/declare/controls try-runs and --dev-stub runs of the whole run stage with a WEIGHT-FREE stub network (no pretrained network evaluated). They exposed instrument defects that were fixed (float32/float64 normalisation, flick units, integrity bindings, native isolation, blinding, stub labelling). The stub runs also computed quality/intent/acceptability for the FROZEN historical branches A, B, D(=W129 C), U, T with these thresholds; no Stage-2 output of the pretrained model existed or was seen",
-  "an independent adversarial code review (3 reviewers) was run on the instruments before this declaration"
+  "an independent adversarial code review (3 reviewers) was run on the instruments before this declaration",
+  "SUPERSEDED declaration v1 (sha256 39f21e28b9e37141b800068db7553243b21bda4ac379a26dd3e94fa54ff4b8e0, commit 65ae489): the official run stage refused it BEFORE any inference because its committed-blob check compared the CRLF working-tree bytes with the LF git blob (core.autocrlf); fixed by comparing the LF-normalised bytes; no model output, run directory or outcome existed; no rule, threshold, run or mask changed"
  ],
  "preflight_sha256": "76ac3acbd518a6f10cf6bb1fa883a92df2b6bd0d4ecc1bc1c2bee77c714b4ffb",
  "provenance": {
@@ -764,7 +765,7 @@
   "official_motion_edit_keep_stage1_arm": "exact passthrough of the Stage-1 arm: no Stage-2 effect on the imported channels by construction",
   "w136_mask_k0": "discards all Stage-1 interior content; kept only as the negative control K0"
  },
- "repo_head_at_declaration": "a0785f4d051268c1a11153e8f1725fc659fafe7e",
+ "repo_head_at_declaration": "96fe811d1806bd50893ab6d1b851c02678273c38",
  "rights": {
   "commercial": "NOT GRANTED (UniMate weights CC BY-NC 4.0; a human-owned decision)",
   "determination": "PERMITTED_NONCOMMERCIAL_RESEARCH_EVALUATION",
@@ -908,7 +909,7 @@
   "P2_DROP_MM": 100.0,
   "UNUSABLE_STEP_MM": 100.0
  },
- "time": "2026-11-13T00:33:19Z",
+ "time": "2026-11-13T00:35:31Z",
  "time_rule": "native 30 fps; Action = SOURCE - 78; window Action 156..215, feature frame i <-> Action 156+i; interior 172..199 = frames 16..43; 171 and 200 frozen; the 61st exported pose (216) only feeds frame 59's velocity",
  "video": {
   "codec": "mp4v (no ffmpeg/H.264 available)",

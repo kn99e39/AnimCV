@@ -671,7 +671,11 @@ def stage_declare(a):
              "fixed (float32/float64 normalisation, flick units, integrity bindings, native isolation, blinding, stub labelling). The stub runs also "
              "computed quality/intent/acceptability for the FROZEN historical branches A, B, D(=W129 C), U, T with these thresholds; no Stage-2 "
              "output of the pretrained model existed or was seen",
-             "an independent adversarial code review (3 reviewers) was run on the instruments before this declaration"],
+             "an independent adversarial code review (3 reviewers) was run on the instruments before this declaration",
+             "SUPERSEDED declaration v1 (sha256 39f21e28b9e37141b800068db7553243b21bda4ac379a26dd3e94fa54ff4b8e0, commit 65ae489): the official run "
+             "stage refused it BEFORE any inference because its committed-blob check compared the CRLF working-tree bytes with the LF git blob "
+             "(core.autocrlf); fixed by comparing the LF-normalised bytes; no model output, run directory or outcome existed; no rule, threshold, "
+             "run or mask changed"],
          "instrument_sha256_lf": {f: lf_sha(f) for f in INSTRUMENTS}}
     sha = dump(out / "declaration.json", d)
     print(json.dumps({"declaration_sha256": sha, "K_S": TS.K_S, "runs": list(RUNS), "power": pf["injected_signal_ratio"]}, indent=1))
@@ -873,8 +877,15 @@ def _verify_bound(a, d, pf, pdir, stub):
     rel = "examples/experimental_two_stage/w139_declaration.json"
     info = {"committed_blob_sha256": _git_bytes_sha(f"HEAD:{rel}"),
             "path_clean": subprocess.run(["git", "-C", str(ROOT), "status", "--porcelain", "--", rel], capture_output=True, text=True).stdout.strip() == ""}
-    if not stub and (info["committed_blob_sha256"] != a.declaration_sha or not info["path_clean"]):
-        raise SystemExit(f"STOP DECLARATION_INVALID: committed declaration blob != --declaration-sha ({info})")
+    import hashlib
+    wt = (ROOT / rel).read_bytes() if (ROOT / rel).is_file() else b""
+    info["working_file_sha256"] = hashlib.sha256(wt).hexdigest()
+    info["working_file_lf_sha256"] = hashlib.sha256(wt.replace(b"
+", b"
+")).hexdigest()   # core.autocrlf stores LF blobs
+    if not stub and (info["working_file_sha256"] != a.declaration_sha or info["committed_blob_sha256"] != info["working_file_lf_sha256"]
+                     or not info["path_clean"]):
+        raise SystemExit(f"STOP DECLARATION_INVALID: committed declaration != --declaration-sha ({info})")
     if M.sha256_file(a.preflight) != d["preflight_sha256"]:
         raise SystemExit("STOP INTEGRITY_FAILED: preflight differs from the declared one")
     for k, h in d["fresh_readback_sha256"].items():

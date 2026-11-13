@@ -1,0 +1,32 @@
+{
+ "amendment": 1,
+ "change": "GT is read with DP.read_groundtruth_dedup: every sample of a duplicated timestamp is removed (no arbitrary pick); everything else (W140 association rule, 50 ms bracket gap, metrics, gates) unchanged. The neighbours of the removed samples are 30 ms apart, inside the 50 ms rule. Also: evaluate/visualize gain the amendment arguments.",
+ "declaration_sha256": "6dd621bbb9c9fb4a442220271edd9824def4985abdd54d8ea15fb5402585ffbc",
+ "estimates_exist": true,
+ "gt_scores_seen": false,
+ "instrument_sha256_lf": {
+  "scripts/w140_colmap_estimate.py": "a1dfce956ef0955bf2deb81cab576e84967055acc5a75070b8eedfbdfa6efad4",
+  "scripts/w141_colmap_masked_estimate.py": "8062956d1ca6c8f46ceba021f96d943f9584aeb51810306c1a96c8b69d98c288",
+  "scripts/w141_dynamic_camera_harness.py": "2aca8b0d07d1ad1b7a624e37367b6450652c0cdcae0e00593276b0b53a65a527",
+  "scripts/w141_segment_people.py": "16f67945e6112925e55a9e08095447925afcdc3c2390401f55bd08e284c2418f",
+  "scripts/w141_synthetic_dynamic_scene.py": "98e3ae5a8b16829907968ea146465043b6871c785b3b936b1176149672ecf295",
+  "src/app/experimental_camera_pose.py": "29438219da9d171b0fbe2285585461d149e01e7f3bcb310e8a0bf2e3227fa147",
+  "src/app/experimental_dynamic_camera_pose.py": "4988a327b3ba271d557d589fea3b829cc672d1bf245649eb58fcb7ee1fb6bcc9",
+  "tests/test_w141_dynamic_camera_pose.py": "a885d4881dd1e904acf9763518409d9bd94c24744ace421d8e7c8e902d54aaf5"
+ },
+ "previous_instrument_sha256_lf": {
+  "scripts/w140_colmap_estimate.py": "a1dfce956ef0955bf2deb81cab576e84967055acc5a75070b8eedfbdfa6efad4",
+  "scripts/w141_colmap_masked_estimate.py": "8062956d1ca6c8f46ceba021f96d943f9584aeb51810306c1a96c8b69d98c288",
+  "scripts/w141_dynamic_camera_harness.py": "cafd027dbacc3d4fa41ddec1c76ba35f222b168cfdd59e4292e5e40d2a514abf",
+  "scripts/w141_segment_people.py": "16f67945e6112925e55a9e08095447925afcdc3c2390401f55bd08e284c2418f",
+  "scripts/w141_synthetic_dynamic_scene.py": "98e3ae5a8b16829907968ea146465043b6871c785b3b936b1176149672ecf295",
+  "src/app/experimental_camera_pose.py": "29438219da9d171b0fbe2285585461d149e01e7f3bcb310e8a0bf2e3227fa147",
+  "src/app/experimental_dynamic_camera_pose.py": "8e3a18b9fdd83cc6d52f718e8fe900e21c8b1f5fcf47f6aed03bc7241643e5e9",
+  "tests/test_w141_dynamic_camera_pose.py": "1295f6d49f4dc1cb0f6a764f02bd443e7209439f7085fdc4c5db0be0b3042b42"
+ },
+ "repo_head": "c992226a1186c712d9fb13d9796732edc095e9d4",
+ "schema": "animcv_exp_w141_declaration_amendment_v1",
+ "time": "2026-11-13T15:01:35+0900",
+ "trigger": "the first evaluate run stopped in the W140 GT reader before computing any score: the official fr3 walking_static groundtruth.txt has one duplicated timestamp (1341846251.4587, two samples ~1 mm apart); CP.read_groundtruth refuses non-strictly-increasing timestamps",
+ "unchanged": "estimates (frozen, SHA-256 in estimate_result.json), masks, inputs, gates, thresholds, alignment, metrics"
+}

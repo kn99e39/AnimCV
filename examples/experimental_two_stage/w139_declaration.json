@@ -1,0 +1,941 @@
+{
+ "batch": 139,
+ "bindings": {
+  "A": {
+   "path": "C:/Users/dna10/animcv-w129/inputs/S1_baseline.blend",
+   "sha256": "0803ab2bf31210fbb729bc81b76931729fdc3e12cce27b9507a5b8caf1d12402"
+  },
+  "A_w126_original": {
+   "path": "C:\\Users\\dna10\\animcv-w126\\runs\\S1_replay\\baseline\\baseline.blend",
+   "sha256": "0803ab2bf31210fbb729bc81b76931729fdc3e12cce27b9507a5b8caf1d12402"
+  },
+  "B": {
+   "path": "C:\\Users\\dna10\\animcv-w129\\results\\run\\S1\\B_S1.blend",
+   "sha256": "8899f43341ac1a7a565229a9551b1f8a79943cc038ad519e5544af89e772a33f"
+  },
+  "C": {
+   "path": "C:\\Users\\dna10\\animcv-w129\\results\\run\\S1\\C_S1.blend",
+   "sha256": "e04efb3552f9808f8ae89520284b0d94e860a986c1e6ec475ed6b07683f9ef04"
+  },
+  "Cpin": {
+   "path": "C:\\Users\\dna10\\animcv-w129\\results\\run\\S1\\Cpin_S1.blend",
+   "sha256": "3116d2ea3340d8356beb6adbf5f60f33c026ca92f47f7216137b4a00f6e31b02"
+  },
+  "S1_clip": {
+   "path": "C:/Users/dna10/animcv-w121/data/originals/64498918_Double_Kettlebell_Strict_Press_side_view_.webm",
+   "sha256": "de8feb9d515daa2bfaeed7167fdcc62028dd3f6450872c4fd81f8fb03dd6359c"
+  },
+  "W126V_accepted": {
+   "path": "C:/Users/dna10/animcv-w129/inputs/S1_W126V_accepted.blend",
+   "sha256": "7e2ab16511f4cbe111171df9af0bc2e1f7d8c09a57bd5a4feff284d34e908f40"
+  },
+  "W126V_accepted_original": {
+   "path": "C:\\Users\\dna10\\animcv-w126\\runs\\S1_replay\\accepted\\accepted_03_674ba278e9a0.blend",
+   "sha256": "7e2ab16511f4cbe111171df9af0bc2e1f7d8c09a57bd5a4feff284d34e908f40"
+  },
+  "W126V_proposal": {
+   "path": "C:\\Users\\dna10\\animcv-w126\\runs\\S1_replay\\edits\\W126V\\proposal.json",
+   "sha256": "582174bfcd3a284f9037409c945e2440b182a0c2593e618511b9effb280a9c84"
+  },
+  "W126_refs": {
+   "path": "C:\\Users\\dna10\\animcv-w126\\runs\\S1_replay\\lineage\\refs.json",
+   "sha256": "c0f1157dc7f067736059f754e23070de8ab5e425ec858e7415e2d7df17389b1b"
+  },
+  "W129_assessment": {
+   "path": "C:\\Users\\dna10\\animcv-w129\\results\\assess\\assessment.json",
+   "sha256": "df6693d22d58cb95f4e130e16e757ab9519c84fe359323560cf530da8b42791c"
+  },
+  "W129_declaration_v2": {
+   "path": "C:\\Users\\dna10\\animcv-w129\\results\\declare_v2\\declaration.json",
+   "sha256": "0c34aab0755c24a7e30a43b11a356c9f5dc0c54e5adda39a5b54b8d6e9f0b6f8"
+  },
+  "W129_engine_output": {
+   "path": "C:\\Users\\dna10\\animcv-w129\\results\\run\\S1\\model_R1\\engine_output.npz",
+   "sha256": "8a528ef1bf7976f22bd6212eddf7c5b525ee5f30e27ee01f501d565baac6a100"
+  },
+  "W129_evidence_manifest": {
+   "path": "C:\\Users\\dna10\\animcv-w129\\results\\evidence_manifest.json",
+   "sha256": "b07154ed1b20da67a247fa4d9d5a28222ecb1087cc39d172bbe0af8eca113c02"
+  },
+  "W129_preflight": {
+   "path": "C:\\Users\\dna10\\animcv-w129\\results\\preflight\\preflight.json",
+   "sha256": "46119b9c5273e0fe038809f959ef12664abc89794085b94ec8aa351b44813868"
+  },
+  "W129_projection": {
+   "path": "C:\\Users\\dna10\\animcv-w129\\results\\run\\S1\\projection.json",
+   "sha256": "e331344c8023da4b398ae3ac55c3be21d3955c486d6334c708a938fe41cf20aa"
+  },
+  "W129_raw_model_io": {
+   "path": "C:\\Users\\dna10\\animcv-w129\\results\\run\\S1\\model_R1\\raw_model_io.npz",
+   "sha256": "1ad837e417b69531b35aa3108fccd6c99e05b4f924741b56d58ceec44accfb6f"
+  },
+  "W129_run_result": {
+   "path": "C:\\Users\\dna10\\animcv-w129\\results\\run\\S1\\run_result.json",
+   "sha256": "9c88961523fa41881fd87e58d366de23138b24baca316dc33403c40f76da9a83"
+  },
+  "W135_D": {
+   "path": "C:\\Users\\dna10\\animcv-w135\\results\\run\\D_S1.blend",
+   "sha256": "2a5e441f75eeead09fc06242b93b595124b3da3a4e69c054e33e42f18e54cebe"
+  },
+  "W135_E": {
+   "path": "C:\\Users\\dna10\\animcv-w135\\results\\run\\E_S1.blend",
+   "sha256": "ac53a771ef5d3dfa80bee7df460fe0b1bd49873ff0950784bbc60a44bb1dc19f"
+  },
+  "W135_MB_agreement": {
+   "path": "C:\\Users\\dna10\\animcv-w135\\rights\\nvidia_open_model_agreement.html",
+   "sha256": "95ff88bc54c7507b9ad68303bbd0d27231a4063a5b16347fd6de362267095873"
+  },
+  "W135_assessment": {
+   "path": "C:\\Users\\dna10\\animcv-w135\\results\\assess\\assessment.json",
+   "sha256": "b2336b8f4e35b3e8ef4abdffbe660f051e9d69bd483add7f5c3bf6665e399177"
+  },
+  "W135_declaration": {
+   "path": "C:\\Users\\dna10\\animcv-w135\\results\\declare\\declaration.json",
+   "sha256": "0c69dde0e13fb909687be8d1d0cfd07953fa51f6f645c531ab788a0a41f767fe"
+  },
+  "W135_evidence_manifest": {
+   "path": "C:\\Users\\dna10\\animcv-w135\\results\\evidence_manifest.json",
+   "sha256": "8543b5ecb95567da4a8cc204720254bc09c44004f1813fb5070aa7b4ba307c31"
+  },
+  "W135_run_result": {
+   "path": "C:\\Users\\dna10\\animcv-w135\\results\\run\\run_result.json",
+   "sha256": "4934fd071ebd53ce542388eb57b342afc001313a2d6b3f1147a689658ccbd7e0"
+  },
+  "W136:assess/assessment.json": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\assess\\assessment.json",
+   "sha256": "ed158590c9a9252a13533d62a4b2c530fc9cc0465bd0699c3b089fb183deb5df"
+  },
+  "W136:controls/controls.json": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\controls\\controls.json",
+   "sha256": "44be7c0fe6f2675bc6d9615b28ea7d4804a9c90331d54d4a6338640c30bf5362"
+  },
+  "W136:declare/declaration.json": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\declare\\declaration.json",
+   "sha256": "47259fbfd27a2e3fd762f8ebe362e2c92f616acde5b81cad5ea6de16bf616196"
+  },
+  "W136:preflight/R0_S1.blend": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\preflight\\R0_S1.blend",
+   "sha256": "523544bcb339cafe0c5032f792b3adbea979ba888b6cf6de289e37dbdf679117"
+  },
+  "W136:preflight/features/features.npz": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\preflight\\features\\features.npz",
+   "sha256": "f6bc7516fa6dab0b1837122538f84d2c6d7a2363eafcc3ddb4744cc92e70ea58"
+  },
+  "W136:preflight/preflight.json": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\preflight\\preflight.json",
+   "sha256": "67ab4959dc1656cd2554c5087a420efa0951a2530827f982bf938cbed08c6f9f"
+  },
+  "W136:preflight/readback_A.json": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\preflight\\readback_A.json",
+   "sha256": "f2b4ed448c40335212e1a60f1fed2a1e40d53789d721854ef19e433e4d553be3"
+  },
+  "W136:preflight/readback_B.json": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\preflight\\readback_B.json",
+   "sha256": "721ab7a08c3d4c5d511eddef571577759264c1d62eda6af08e47810b9cdafd64"
+  },
+  "W136:preflight/readback_C.json": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\preflight\\readback_C.json",
+   "sha256": "0925c190caf7b814d75b69e78f6342f000bf5da566229d5efa69e8527c38ab86"
+  },
+  "W136:preflight/readback_D.json": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\preflight\\readback_D.json",
+   "sha256": "d67dc3748876733cf443cbd1dd35e257a4889e4c5eb9610e60d070fff159bfa6"
+  },
+  "W136:preflight/readback_E.json": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\preflight\\readback_E.json",
+   "sha256": "7f9c58c306f548e7938c47493c402638e495075f0c505257a074664cd4425b7b"
+  },
+  "W136:preflight/readback_Pin.json": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\preflight\\readback_Pin.json",
+   "sha256": "787d3bb8c102c316f9b9d361af630b0d1c62787e2e446efe3ad5700d50eb90b9"
+  },
+  "W136:preflight/rig/S1_PROXY_B.glb": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\preflight\\rig\\S1_PROXY_B.glb",
+   "sha256": "42ca579a30074b22319a8dbbe1b33787cfe0437559d12e32aaec322bdff028af"
+  },
+  "W136:preflight/rig/annotation.json": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\preflight\\rig\\annotation.json",
+   "sha256": "2a29ba9b80f8916a3f05b3cc9d2d111ade68d3fbd7e77be1eef402c720f11d04"
+  },
+  "W136:preflight/rig/cond.npy": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\preflight\\rig\\cond.npy",
+   "sha256": "b674dea87f97fe44aa58258c835b4700a5acca62ea60def6995d0342d7ba6494"
+  },
+  "W136:preflight/rig/motions/S1_PROXY_B-Animation-000.npz": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\preflight\\rig\\motions\\S1_PROXY_B-Animation-000.npz",
+   "sha256": "8d62b42ae25e72f30357be24b0ded3dc1e3e099330ec542c19c44cf8dfed4de9"
+  },
+  "W136:preflight/rig/summary.json": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\preflight\\rig\\summary.json",
+   "sha256": "6e22d781157db855f98b2ec22ce989afb62c374600cb5c46ea06c72012528e54"
+  },
+  "W136:review/visual_review_S1.json": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\review\\visual_review_S1.json",
+   "sha256": "bea298b212df937f1947027f15e6de632f08e22c8ea3957ca13f9589693f5cc0"
+  },
+  "W136:run/Bc_S1.blend": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\run\\Bc_S1.blend",
+   "sha256": "12e00d64a96f609ad9e6e6f7818bdf7afb39fd9d574b479763d9c2fea336eab3"
+  },
+  "W136:run/U_S1.blend": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\run\\U_S1.blend",
+   "sha256": "e0fc3fe3a0485f5de97c84f9f3363fad0e0675dc09f9b7effd5eef69aaa432d3"
+  },
+  "W136:run/Upin_S1.blend": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\run\\Upin_S1.blend",
+   "sha256": "5809d1c84b8ecebd6ea25480e7a76aa1310b50371efef22710f65fede518246e"
+  },
+  "W136:run/Urev_S1.blend": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\run\\Urev_S1.blend",
+   "sha256": "8b0b7cbabdac7b378fa8936e361c5a3132a45579daa1ccff4fade89dc97451ba"
+  },
+  "W136:run/abcdeu_S1_30fps.mp4": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\run\\abcdeu_S1_30fps.mp4",
+   "sha256": "e9d78b6b3042031c69d1f9711058700b2daa30c6fc72e773652dec5663bd9e7d"
+  },
+  "W136:run/dump_U.json": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\run\\dump_U.json",
+   "sha256": "e0074b972f8e7003fdec7132b8b6e5244948c05e5ff574815d2b5f7b50ebce2e"
+  },
+  "W136:run/model/infer_record.json": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\run\\model\\infer_record.json",
+   "sha256": "bbc63ec36e5e21e27242e408400a9d15e8891961317404649cecee8d9dbf652d"
+  },
+  "W136:run/model/official/motion_edit/motions/S1_PROXY_B-Animation-000-gt_rep_0-0.npy": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\run\\model\\official\\motion_edit\\motions\\S1_PROXY_B-Animation-000-gt_rep_0-0.npy",
+   "sha256": "fe50b40eee46da4849f465510f462bc7612f2492efc664ee6dabd8ae6be62d05"
+  },
+  "W136:run/model/official/motion_edit/motions/S1_PROXY_B-Animation-000-rep_0-0.npy": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\run\\model\\official\\motion_edit\\motions\\S1_PROXY_B-Animation-000-rep_0-0.npy",
+   "sha256": "e68d14f591cba7076d28048c22f9630f399e65299e2a4493d6dc6f851d76f3fb"
+  },
+  "W136:run/model/raw_model_io.npz": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\run\\model\\raw_model_io.npz",
+   "sha256": "14e80250f79af5d3bdee6f3c8efa5792c61bddfdd6d5f45ee4b60affaaac4d0a"
+  },
+  "W136:run/readback_U.json": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\run\\readback_U.json",
+   "sha256": "64805793b011ebc085a259cc0b8837cc19d4bf7f256af75b862007b529c1e9a3"
+  },
+  "W136:run/run_result.json": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\run\\run_result.json",
+   "sha256": "348f5b889f27efbad5181f6b106a1e4d1f03b324f02f1c53ab34625ba49e8dcc"
+  },
+  "W136_U_raw_model_io": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\run\\model\\raw_model_io.npz",
+   "sha256": "14e80250f79af5d3bdee6f3c8efa5792c61bddfdd6d5f45ee4b60affaaac4d0a"
+  },
+  "W136_evidence_manifest": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\evidence_manifest.json",
+   "sha256": "b25805a4f5b07bf71e85f671d9fde289e5f7a50513ab8701922be2f7b827a91f"
+  },
+  "W137:assess/assessment.json": {
+   "path": "C:\\Users\\dna10\\animcv-w137\\results\\assess\\assessment.json",
+   "sha256": "0d582a0ca98503430ae1192cc1a59eddcef9f96aaaa8f6b99adb4d7b767f086e"
+  },
+  "W137:declare/declaration.json": {
+   "path": "C:\\Users\\dna10\\animcv-w137\\results\\declare\\declaration.json",
+   "sha256": "9dc6d74eda54bc4cad2ac279456fd33fcaaa2a802314681262fc9f6f93b4a0d7"
+  },
+  "W137:preflight/readback_A.json": {
+   "path": "C:\\Users\\dna10\\animcv-w137\\results\\preflight\\readback_A.json",
+   "sha256": "f2b4ed448c40335212e1a60f1fed2a1e40d53789d721854ef19e433e4d553be3"
+  },
+  "W137:preflight/readback_B.json": {
+   "path": "C:\\Users\\dna10\\animcv-w137\\results\\preflight\\readback_B.json",
+   "sha256": "721ab7a08c3d4c5d511eddef571577759264c1d62eda6af08e47810b9cdafd64"
+  },
+  "W137:preflight/readback_C.json": {
+   "path": "C:\\Users\\dna10\\animcv-w137\\results\\preflight\\readback_C.json",
+   "sha256": "0925c190caf7b814d75b69e78f6342f000bf5da566229d5efa69e8527c38ab86"
+  },
+  "W137:preflight/readback_Pin.json": {
+   "path": "C:\\Users\\dna10\\animcv-w137\\results\\preflight\\readback_Pin.json",
+   "sha256": "787d3bb8c102c316f9b9d361af630b0d1c62787e2e446efe3ad5700d50eb90b9"
+  },
+  "W137:preflight/readback_U.json": {
+   "path": "C:\\Users\\dna10\\animcv-w137\\results\\preflight\\readback_U.json",
+   "sha256": "64805793b011ebc085a259cc0b8837cc19d4bf7f256af75b862007b529c1e9a3"
+  },
+  "W137:run/T_S1.blend": {
+   "path": "C:\\Users\\dna10\\animcv-w137\\results\\run\\T_S1.blend",
+   "sha256": "95f25850fd5bef24b031a99bfba351a8285133cd8ba82dfe22384ff1ec2f0ab6"
+  },
+  "W137:run/dump_T.json": {
+   "path": "C:\\Users\\dna10\\animcv-w137\\results\\run\\dump_T.json",
+   "sha256": "c6e1f5c4cd7fa516c1a8b58a5e23db6bf58ea64b8c65560d9354072103ffaca6"
+  },
+  "W137:run/model/raw_model_io.npz": {
+   "path": "C:\\Users\\dna10\\animcv-w137\\results\\run\\model\\raw_model_io.npz",
+   "sha256": "68e636c0870a8bfc680d6c838a0cfa0c18c25dc68c85afce55e5b4bb6f632654"
+  },
+  "W137:run/readback_T.json": {
+   "path": "C:\\Users\\dna10\\animcv-w137\\results\\run\\readback_T.json",
+   "sha256": "7d5945a9dcfd11bae177933f74c37ff8f741ccaea003e9cbace04b62e046e841"
+  },
+  "W137:run/run_result.json": {
+   "path": "C:\\Users\\dna10\\animcv-w137\\results\\run\\run_result.json",
+   "sha256": "e0b83668ddbfb06ba963c5432142543a037aaac15be8cdf5447c8ddd3eaec28b"
+  },
+  "W137_evidence_manifest": {
+   "path": "C:\\Users\\dna10\\animcv-w137\\results\\evidence_manifest.json",
+   "sha256": "8561d239f6a95aa849da92555d35c9d1e38ae79768ac0a997f6bd53c9a5b7a19"
+  }
+ },
+ "branch": "Dual_Stage_Generator",
+ "bridge": {
+  "gates": "time identity vs the condition's own stored keys; own==official decode; context drift; Blender roundtrip == condition readback <= 1e-5 m; cond numeric fields equal across A/B/C; x1 differences confined to G; PROXY_B == W136 features",
+  "preflight_results": {
+   "cond_equality": {
+    "A": {
+     "differing_fields": [],
+     "object_type": [
+      "S1_PROXY_B",
+      "S1_PROXY_A"
+     ],
+     "ok": true
+    },
+    "C": {
+     "differing_fields": [],
+     "object_type": [
+      "S1_PROXY_B",
+      "S1_PROXY_C"
+     ],
+     "ok": true
+    }
+   },
+   "g_only": {
+    "A-B": {
+     "max_abs_on_G": 9.72342300415039,
+     "max_abs_on_keep": 0.0,
+     "n_differing_on_G": 4634
+    },
+    "A-C": {
+     "max_abs_on_G": 13.871023178100586,
+     "max_abs_on_keep": 0.0,
+     "n_differing_on_G": 4625
+    },
+    "C-B": {
+     "max_abs_on_G": 6.745490550994873,
+     "max_abs_on_keep": 0.0,
+     "n_differing_on_G": 4639
+    },
+    "ok": true
+   },
+   "grounding": {
+    "A": {
+     "left_arm_chain_min_y": 0.9813943064439924,
+     "min_y_joint": "foot_r"
+    },
+    "B": {
+     "left_arm_chain_min_y": 0.9813943064439924,
+     "min_y_joint": "foot_r"
+    },
+    "C": {
+     "left_arm_chain_min_y": 0.8444032392142936,
+     "min_y_joint": "foot_r"
+    }
+   },
+   "proxyB_vs_W136": {
+    "bit_equal_float64": true,
+    "max_abs": 0.0
+   },
+   "world_maps": {
+    "A": {
+     "R": [
+      [
+       -0.42032196272159805,
+       -1.3799292376827427e-08,
+       0.9073750314251899
+      ],
+      [
+       0.907375031425063,
+       5.225047557121355e-07,
+       0.4203219627215469
+      ],
+      [
+       -4.799079149008621e-07,
+       0.9999999999998636,
+       -2.0709909137108493e-07
+      ]
+     ],
+     "bones": [
+      "spine_01",
+      "spine_02",
+      "spine_03",
+      "spine_04",
+      "spine_05",
+      "neck_01",
+      "neck_02",
+      "clavicle_l",
+      "clavicle_r",
+      "upperarm_l",
+      "upperarm_r",
+      "lowerarm_l",
+      "lowerarm_r",
+      "hand_l",
+      "hand_r",
+      "thigh_l",
+      "thigh_r",
+      "calf_l",
+      "calf_r",
+      "foot_l",
+      "foot_r"
+     ],
+     "n_points": 1260,
+     "rms_m": 2.625236258079498e-06,
+     "s": 1.1849017196144846,
+     "t": [
+      -0.2247152760220984,
+      -0.020398202645609237,
+      0.04016413008957165
+     ]
+    },
+    "B": {
+     "R": [
+      [
+       -0.42032193271602963,
+       2.814823732816402e-09,
+       0.9073750453246228
+      ],
+      [
+       0.9073750453244958,
+       5.305803144471125e-07,
+       0.420321932715969
+      ],
+      [
+       -4.802522044392157e-07,
+       0.999999999999859,
+       -2.2556864399319955e-07
+      ]
+     ],
+     "bones": [
+      "spine_01",
+      "spine_02",
+      "spine_03",
+      "spine_04",
+      "spine_05",
+      "neck_01",
+      "neck_02",
+      "clavicle_l",
+      "clavicle_r",
+      "upperarm_l",
+      "upperarm_r",
+      "lowerarm_l",
+      "lowerarm_r",
+      "hand_l",
+      "hand_r",
+      "thigh_l",
+      "thigh_r",
+      "calf_l",
+      "calf_r",
+      "foot_l",
+      "foot_r"
+     ],
+     "n_points": 1260,
+     "rms_m": 2.632338246116604e-06,
+     "s": 1.1849017684172936,
+     "t": [
+      -0.22471529331073353,
+      -0.020398187399143855,
+      0.04016410661529002
+     ]
+    },
+    "C": {
+     "R": [
+      [
+       -0.42032162421540753,
+       1.1191347611525151e-07,
+       0.9073751882308162
+      ],
+      [
+       0.9073751882307172,
+       5.351447750355186e-07,
+       0.4203216242152959
+      ],
+      [
+       -4.38537436853663e-07,
+       0.9999999999998508,
+       -3.2648043221381714e-07
+      ]
+     ],
+     "bones": [
+      "spine_01",
+      "spine_02",
+      "spine_03",
+      "spine_04",
+      "spine_05",
+      "neck_01",
+      "neck_02",
+      "clavicle_l",
+      "clavicle_r",
+      "upperarm_l",
+      "upperarm_r",
+      "lowerarm_l",
+      "lowerarm_r",
+      "hand_l",
+      "hand_r",
+      "thigh_l",
+      "thigh_r",
+      "calf_l",
+      "calf_r",
+      "foot_l",
+      "foot_r"
+     ],
+     "n_points": 1260,
+     "rms_m": 2.637395128553488e-06,
+     "s": 1.1849018215414246,
+     "t": [
+      -0.22471530344117652,
+      -0.02039810965166665,
+      0.04016407723003934
+     ]
+    }
+   }
+  },
+  "steps": "Blender Action -> W136 export adapter (world-pose preserving, static pelvis) -> official rig_preprocess (rule annotation, reviewed annotation reused, general profile) -> official compute_unimate_motion_feats -> official normalisation"
+ },
+ "budget": {
+  "disk_gb_max": 5,
+  "gpu_wall_min_max": 60,
+  "model_processes_max": 12,
+  "retry": "at most one logged infrastructure retry per run with no parameter change",
+  "vram_peak_gb_max_per_process": 2.0
+ },
+ "conditions": {
+  "D": "W129 C_S1.blend (Stage 1 direct, frozen)",
+  "S2A": "PROXY_A (original AnimCV reference) -> Stage 2 -> Action",
+  "S2B": "PROXY_B (W129 slerp) -> Stage 2 -> Action",
+  "S2C": "PROXY_C (W129 MotionBricks) -> Stage 2 -> Action",
+  "references": "A, W129 B (plain slerp), W136 U and W137 T (NON-EQUIVALENT: different masks/domains)"
+ },
+ "control_rule": {
+  "K0_primary": "K0B (PROXY_B, k_s=0) and K0C (PROXY_C, k_s=0): identical eps sha and raw outputs equal on valid joints within 1e-05 (normalised) -> Stage-1 content cannot reach the output by any other path; failure -> BLOCKED",
+  "K0_secondary": "K0B vs frozen W136 U raw output <= 0.0001 normalised and decoded wrist/elbow <= 1.0 mm: reported (WARNING, not BLOCKED, unless the primary pair also fails); x1 equality with W136's x1_known reported separately",
+  "eps": "every seed-10 run has the same eps sha; NREF (seed 11) eps sha differs and |corr(eps_NREF, eps_seed10)| < EPS_CORR_MAX = 0.03 on the 36,000 valid entries, else the native control is INVALID (reported; no reseed)",
+  "noise_floor": "S2B_rep: a separate-process replicate of S2B; max |S2B - S2B_rep| (normalised G entries; decoded wrist/elbow mm) is the floor",
+  "sampler": "per run: scheduled_sampler_calls == 1, generate_samples calls == 1, network forward calls == 100 (50 steps x CFG 2), per-state mask sha recorded; K1 (k_s=50 copy) is a synthetic test only",
+  "x1": "for every primary run x1_known_used is bit-equal to the official x1_known (no injection); S2A/S2B/S2C tensors are bit-equal on kept valid entries pairwise (BRIDGE_LEAK otherwise) and equal the offline float64-normalised bridge tensors within X1_OFFLINE_TOL = 1e-05 (float32 rounding); K0 primary additionally requires K0B/S2B/S2B_rep and K0C/S2C to receive identical x1 and K0C's x1 to differ from K0B's on G"
+ },
+ "edit_authority": {
+  "channels": [
+   "upperarm_l",
+   "lowerarm_l"
+  ],
+  "frames": [
+   172,
+   199
+  ],
+  "pin_action": [
+   132,
+   140
+  ],
+  "pin_target_m": [
+   -0.0927,
+   0.2199,
+   1.4506
+  ],
+  "pin_tolerance_m": 0.001,
+  "same_for_all_conditions": true
+ },
+ "features_npy_sha256": {
+  "A": "be37f51c5093df31762886e39d31c01c7600beb2886ff1d9ddfe3ea37b25de68",
+  "B": "e3367d13a1b6ab359660a9e7b76caad4f790dcbe1fea09b9265e9498a4a716df",
+  "C": "24250be014faddb43203015cd803db86d46d525b89b8e5338c238fbd8d1898ee"
+ },
+ "fresh_dump_sha256": {
+  "A": "0190b2e8f76664a4008fb3b001d2cf84b973d6c1867599140ab40811b8f82177",
+  "B": "16628b9f4d95eecf59dcc7a03f0e2e4f8d17619df348fe7462348df37025e618",
+  "C": "2a84e5ca3f07ac2d97f49d9b4157b816884d2d4c3da8f4a0d85397777ed93f88",
+  "T": "2bf3621f126210c2d040b0fc444a04f91d460dbc58f28b8b00ddd82817776d94",
+  "U": "035ae58e5a67780ad8a700c6f3f215ac5723511e9a93dd4940aba3077723bfae"
+ },
+ "fresh_readback_sha256": {
+  "A": "f2b4ed448c40335212e1a60f1fed2a1e40d53789d721854ef19e433e4d553be3",
+  "B": "721ab7a08c3d4c5d511eddef571577759264c1d62eda6af08e47810b9cdafd64",
+  "C": "0925c190caf7b814d75b69e78f6342f000bf5da566229d5efa69e8527c38ab86",
+  "Pin": "787d3bb8c102c316f9b9d361af630b0d1c62787e2e446efe3ad5700d50eb90b9",
+  "T": "7d5945a9dcfd11bae177933f74c37ff8f741ccaea003e9cbace04b62e046e841",
+  "U": "64805793b011ebc085a259cc0b8837cc19d4bf7f256af75b862007b529c1e9a3"
+ },
+ "human_decisions": [
+  "2026-11-13: user directed W139 to run in parallel on Dual_Stage_Generator while W138 continues on arch/single_frame_first; the spec's W138-COMPLETE gate and branch line are superseded by that explicit decision",
+  "commits on Dual_Stage_Generator are local only (no push; a push would create a remote branch)"
+ ],
+ "identities": {
+  "bridge_assets": {
+   "A": {
+    "asset": "S1_PROXY_A",
+    "clip": "S1_PROXY_A-Animation-000",
+    "features_sha256": "c5284888c68bd8f13740785cc11927f820615f4d17ad71a80bb8b5e88198c57a",
+    "rig_sha256": {
+     "annotation.json": "d4c83f86d4e25581aa21f86f8718e5f86aceb4b818ce0c07ed53bc0822ec5d39",
+     "cond.npy": "67444a33fb2a3f8e167b28975c3563200a8ff550469784d32db10f3a4f67d4e8",
+     "motions/S1_PROXY_A-Animation-000.npz": "1d123d24aea1834443e313c39a52150b4493009000bec571d2128bab26b7efaf",
+     "summary.json": "bde26def89a238c17e12f6f65076e43a23c3f95da755a6cce39cac2351bca25b"
+    }
+   },
+   "B": {
+    "asset": "S1_PROXY_B",
+    "clip": "S1_PROXY_B-Animation-000",
+    "features_sha256": "f6bc7516fa6dab0b1837122538f84d2c6d7a2363eafcc3ddb4744cc92e70ea58",
+    "rig_sha256": {
+     "annotation.json": "2a29ba9b80f8916a3f05b3cc9d2d111ade68d3fbd7e77be1eef402c720f11d04",
+     "cond.npy": "b674dea87f97fe44aa58258c835b4700a5acca62ea60def6995d0342d7ba6494",
+     "motions/S1_PROXY_B-Animation-000.npz": "8d62b42ae25e72f30357be24b0ded3dc1e3e099330ec542c19c44cf8dfed4de9",
+     "summary.json": "a5da5510da7df7576dd1a02c395443fd65aad9b49ec1c87e463d86f7a319f75c"
+    }
+   },
+   "C": {
+    "asset": "S1_PROXY_C",
+    "clip": "S1_PROXY_C-Animation-000",
+    "features_sha256": "ffd3042e65cb8a75cf6219568381ef2b6c730cd04f2d35c2971a34c9c0e6b9c2",
+    "rig_sha256": {
+     "annotation.json": "117ebb3767cc620f5488601d3ad37a206898351cfee39b01ee9303ed204b5d59",
+     "cond.npy": "7661ccaeb1423297526e6f50f9554176a527697204c1a7c469e372a089b99d13",
+     "motions/S1_PROXY_C-Animation-000.npz": "e6a6b82c4f6d616a51e12b657351577f03bf679b08eee4130bd894a97a2c23cf",
+     "summary.json": "9aa16568861116a3958a7df55bceef2969804e9f40e1d08934ce92b5ad490665"
+    }
+   }
+  },
+  "runtime": {
+   "arch": [
+    "sm_50",
+    "sm_60",
+    "sm_61",
+    "sm_70",
+    "sm_75",
+    "sm_80",
+    "sm_86",
+    "sm_90",
+    "sm_100",
+    "sm_120"
+   ],
+   "available": true,
+   "cuda": "12.8",
+   "cudnn": 90701,
+   "device": "NVIDIA GeForce RTX 5080",
+   "numpy": "2.2.6",
+   "python": "3.10.22",
+   "torch": "2.7.1+cu128"
+  },
+  "stage1": {
+   "action": "W129 C_S1.blend e04efb35...",
+   "engine_output_sha256": "8a528ef1bf7976f22bd6212eddf7c5b525ee5f30e27ee01f501d565baac6a100",
+   "model": "NVlabs MotionBricks-SOMA-RP-v1 (mmm_v6_soma_fp32.onnx 856419dc...), code 54fc563, W129 R1 output",
+   "projection": "W129 closed-form SOMA->BaseRig left-arm mapping",
+   "re_run": false
+  },
+  "stage2": {
+   "code": {
+    "commit": "b78c7807df7cf4231d4e67f8d0ece29c5e11025b",
+    "extra_sha256": {
+     "unimate/inference/motion_expansion.py": "39b8e9f4a990eed5a4c438d1193751bcafb7bdf1ea90c975c5d2f2008108030c",
+     "unimate/models/denoiser/blocks/common.py": "cc4877922a76d9c33ebc8fd5fe95a7b67d0d20f23fb5fdf638b71dcf24141699",
+     "unimate/models/denoiser/graph_adaln.py": "71111d8af77c748b797cc5f2ad23d225960c104928ee353dcc1df676457b74df",
+     "unimate/models/flow/transport.py": "d803efb8be70ae4405e7f1bb9acb7a03a93b8a639a935cf39402228a8fcace6e"
+    },
+    "files_sha256": {
+     "LICENSE": "f728ed5f44845b9e4d4147b18abb1fc6a5f27e9e3dfd4ac0088fba8e66c1bbfa",
+     "README.md": "3034d1cfe700e6ed3b4a65dc697ca65361b7b058ac13643ceea8795e5247d48a",
+     "data_process/rig_preprocess/README.md": "5a7d1f0656ad704051ec92f6afde8bee2908d072a65b562bba4e3920534a57da",
+     "data_process/rig_preprocess/pipeline.py": "c1b139b7f7522e99aca86492ef91c9a5488a904e419a28a619d3bd4683a369dd",
+     "data_process/utils/blender_export.py": "545098b1bb10569229810fcc25cc1cb73e6ffdb303a90e72d45a212331182463",
+     "unimate/inference/generate.py": "742b0c009ce923e6419fc56be5bf1488a072ffde09841f5691a005bd4c00bf6e",
+     "unimate/inference/motion_editing.py": "1923275533a693d83c822c15ec7616bd36a561ebf76feaa3f776212c941b3481",
+     "unimate/inference/motion_inbetweening.py": "ec02743b5a1e485f47829ea04973341e4bc17eef952672000a8452b8dccad380",
+     "unimate/inference/sample.py": "9403505f57f9fc43fc35fda77a8ca5a35753e19eb36bc1be0980318ea168bca3",
+     "unimate/utils/motion_utils.py": "382a5659db329046b392834564a4ea2f21a65f9a0f32076a9d8a2e8b601901fd"
+    },
+    "repo": "Friedrich-M/UniMate"
+   },
+   "model": {
+    "checkpoint_sha256": "f991ddd87262c251f4681d18297a6163ab4f139daa28c86d5ef0a66771df7bc6",
+    "config_sha256": "1ffbd379d3667de7d701ed6f3418f1c9d1a66f35d2653776255008c07c051aaa",
+    "licence": "CC BY-NC 4.0",
+    "repo": "Linzhan/UniMate",
+    "revision": "174fc755ec248d0c98f27759b7a95648e7f05905",
+    "stats_sha256": "0ff2b9ef3ea9a15b024ab0670e55f659478251501e5596f9011d5bca4cf67773"
+   },
+   "text_encoder": {
+    "repo": "google/flan-t5-base",
+    "revision": "7bcac572ce56db69c1ea7c8af255c5d7c9672fc2",
+    "safetensors_sha256": "1dfb70afdcedceb9f9fae2f9b68e004ad934361fb35b9b2bd50b45ea90790fc8"
+   }
+  }
+ },
+ "import": "decoded upperarm_l/lowerarm_l basis (unchanged W136 decode_basis) at 172..199 via the unchanged W129 build_variant on a byte copy of A; Xpin on W126V-accepted; Xrev restores A's keys",
+ "information_rule": {
+  "I1_visibility": "implementation check on NON-DISCARDED evaluations only (the per-run recorded-state checks -- every state j<=K_S equals the scheduled interpolant on keep|G bit-exactly, j>K_S on keep -- are PREREQUISITES, failure = BLOCKED); the network input at Euler step K_S (first evaluation whose output is not overwritten on G) equals state K_S; cross-run state K_S difference equals t_s (x1_C - x1_B) on G within 1e-06 and 0 on kept valid entries; the input-layer token embeddings of step K_S differ on G cells and agree (<= 1e-5) elsewhere. Steps 0..K_S-1 are reported as computed-and-discarded and are never evidence.",
+  "I2_learned_reading": "gamma = <dx1hat_K_S, dx1>/|dx1|^2 on G (x1hat = x + (1-t) v, the network's own clean-data estimate at the first free evaluation) >= 0.75; passive state-blind null = t_s = 0.5, context-only regeneration ~0, perfect denoiser 1",
+  "I3_network_response": "network term N = dout - t_s dx1 on G with ||N|| >= 0.25 ||t_s dx1|| AND decoded (hybrid FK, PROXY_C context, world map C) max wrist/elbow |out_C - null_C| over Action 172..199 >= 10.0 mm AND >= 10.0 x the S2B/S2B_rep decoded noise floor AND ||N|| >= 10 x feature noise floor x sqrt(|G|); null_C = out_B + t_s (x1_C - x1_B) on G",
+  "learned_path": "I1 AND I2 AND I3; direction reported as AMPLIFIES / WASHES_OUT / ORTHOGONAL from cos(N, dx1) (+-0.1)",
+  "reported_not_ruled": "beta = <dout, dx1>/|dx1|^2 (passive null 0.5), gamma at steps K_S+5, 40, 49; the same decomposition for A vs B; Stage-1 content split into MotionBricks endpoint-correction ramp vs uncorrected remainder (preflight, no model); S2C-S2B effects at correction-dominated frames are attributed to 'Stage 1 incl. endpoint correction'"
+ },
+ "instrument_sha256_lf": {
+  "scripts/w129_motionbricks_harness.py": "ebfa4481e823f999d34c0aba20253e0ec8edd17143ca649207ca2cd4118b3b55",
+  "scripts/w135_elbow_prior_harness.py": "2bff43082ffab08231bee8def2a2fb81bbc9bc2c37b262997e6df3ee220d8dc6",
+  "scripts/w136_unimate_harness.py": "a9b5e981b0156de00fed020a639d5e6686bb6d094c87cf743d29f8f0f87f5d46",
+  "scripts/w136_unimate_infer.py": "803bbd0fe74b3121dc4eb6c9029795660395032088a54fbbe141be2215b00e36",
+  "scripts/w137_unimate_inbetween_harness.py": "171fb64acdb120443513b05688e17bd456b109970407849e257bc5896aa572f3",
+  "scripts/w137_unimate_inbetween_infer.py": "ede49a6998186cf01ee646319ab54cba757c9b7f19810de5b01416a7056a7361",
+  "scripts/w139_two_stage_harness.py": "82a05a47054b72196377c753f677e3b8e6af3bcfdad2a650294e10d21937b556",
+  "scripts/w139_two_stage_infer.py": "f1f090f17fde2f72ef3040a3a8c84d552f86d964e4a2c3019920df168f7cfefc",
+  "src/app/experimental_elbow_prior.py": "13fb31321a5575e4226b18bdc109f2c4a719d997c57ec52fca757c1f4b0080e9",
+  "src/app/experimental_motionbricks.py": "3172d5afb64b206828892106c983bbed3a1f5dbeabcbaad5c7f7c9aeeae290dc",
+  "src/app/experimental_two_stage.py": "5915ce624892236bfbc825294e9e482fb0caabbea06ef92fd6e91959dbfcb36c",
+  "src/app/experimental_two_stage_sampler.py": "0937efb6b96f29d5d6201847cea65ba1f6523798ea5ca8e4e0514f7607177d7e",
+  "src/app/experimental_unimate.py": "f3829077b612cd7c24637dae46778aa6f4b04c02a76ffef93a9d89349e9d0fa9",
+  "src/app/experimental_unimate_inbetween.py": "ffd904861878c13c9c8976a90eb974d4b7efa31d98218ccbf245a93b4e78991c",
+  "src/blender/experimental_action_stage.py": "c977da7d77ed38d8fc90bcc257493edb4cbe62d39f4f84dfa53e66ddf570fb20",
+  "src/blender/experimental_motionbricks_stage.py": "ad1bd44cffbfb729a04051102604cf27672568e2e6f2548c92526fc049f06488",
+  "src/blender/experimental_unimate_export_stage.py": "6ed57d94b20a5cd65da6ed7cb20b862fb8ad4b22be0311f74ad514f2b4e15a86",
+  "tests/test_experimental_two_stage.py": "9747d27b9b63ec51a286836dca26aaa4e1c21b9437788a712e3eb130a00d515f",
+  "tests/test_experimental_unimate.py": "534b91d7ba947f5dfe0dddd5c3d207ca9d12c721280c6908e91ddfb31bde1d3f",
+  "tests/test_experimental_unimate_inbetween.py": "233b9a9f26cc2bc385d4bd1d9e4a67f8664a015fa54adb3210de83617ed6041f"
+ },
+ "judgment_rule": {
+  "BLOCKED": "a prerequisite failed: preflight not OK, declaration/instrument/committed-blob/preflight/controls binding, a negative control not failing closed, K0 primary, eps identity / sampler-call / recorded-state gates of the PRIMARY runs (K0B, K0C, S2B, S2B_rep, S2A, S2C), x1 official/offline/BRIDGE_LEAK gates, or any mechanical contract gate of S2A/S2B/S2C (footprint, Action census, rig validity, hard pin, reversibility, bridge roundtrip, projection consistency), integrity after the run, native-rate videos",
+  "NOT_YET_SUPPORTED": "prerequisites OK but learned_path is false (no learned Stage-1 information path beyond passive carry-through)",
+  "PARTIALLY_SUPPORTED": "learned_path true but METRIC_SUPERIORITY false, OR METRIC_SUPERIORITY true without a human native-rate review (sub-label METRIC_SUPERIORITY_INDICATED; perceptual acceptance PENDING)",
+  "SUPPORTED": "learned_path AND METRIC_SUPERIORITY AND a human native-rate review (not available in this batch)",
+  "human_review": "hard-coded false in assess for this batch (no human native-rate review is planned): SUPPORTED is unattainable",
+  "native_control": "run AFTER the primary result is written, isolated (its failure is recorded as FAILED); status INFORMATIVE / CONTROL_UNINFORMATIVE (admissibility) / INVALID (noise independence, sampler or state gates); reported separately; it scopes the interpretation (Stage-2 capability) and never by itself changes the judgment",
+  "scope": "any judgment applies ONLY to MotionBricks(W129, frozen) -> this bridge -> UniMate v3 through the NON-OFFICIAL scheduled-replacement sampler at t_s = 0.5 (no t_s sweep), one clip (S1), one seed; not to UniMate's official modes and not to the general Two-Stage architecture"
+ },
+ "mechanical_gates": {
+  "M11": "videos decode at 30.000 fps with every frame",
+  "M12": "hybrid FK (own proxy + generated arm slots) mapped by the condition's world map == X readback <= 1e-4 m",
+  "M2": "one named Action, 32 CONSTANT F-curves keyed 1..240, 30 fps",
+  "M3": "changed keys only upperarm_l/lowerarm_l at 172..199; non-arm world points/object matrix bit-equal to A on 240 frames + subframes; 171/200 bit-equal",
+  "M5": "upper/lower world length range <= 0.1 mm; unit finite quaternions",
+  "M6": "Xpin residuals at 132..140 equal W126V's, <= 1e-6 m; pin frames bit-equal",
+  "M7": "Xrev world-bit-equal to A",
+  "M8": "bridge roundtrip (preflight R0) for X",
+  "M9": "frozen identities unchanged after the run"
+ },
+ "metrics": [
+  "arm-local wrist/elbow entry/exit/peak/flicks, flex, hinge (W129/W135) for A, B, D, S2A, S2B, S2C, U, T",
+  "P1/P2 intent, fidelity proxy (deviation from A), deviation from B, world shoulder step (inherited)",
+  "raw vs projected: per condition official FK of the raw sample (own integrated root) vs hybrid (own PROXY_X + generated arm slots), world map of that condition, W137 attribution/body/raw rule",
+  "inherited defects: non-arm world points bit-equal across all candidates (by M3); root/torso identical by construction",
+  "contact: NOT SUPPORTABLE (no hand-object contact model)"
+ ],
+ "model_output_exists": false,
+ "native_control": {
+  "N0": "k_s=0, x1 = N_ref* (W136 mask)",
+  "NIB": "official --inbetween frame mask (window 0..15, 44..59 kept), x1 = N_ref* (injected); DISCLOSED LEAK: kept frame 15 includes its velocity channels, which encode N_ref*'s hidden frame-16 positions (as W137) -> an official-mode reference with a one-frame velocity leak, not a leak-free completion",
+  "NL": "k_s=25, x1 = N_B: hidden local rotations slerped between kept frames 15 and 44 -> FK -> official features (built twice incl. a NaN-poisoned copy; must be identical)",
+  "NREF": "seed 11, empty keep mask, k_s=0 (unconstrained 50-step Euler generation; independent noise)",
+  "admissibility": "re-encode RIC vs FK <= 1e-4; neck_02-above-pelvis height >= 0.5 x its frame-0 value on every frame; hidden-interval (window 15..44) wrist path >= 100 mm in world scale (C map s); poison check identical; else CONTROL_UNINFORMATIVE",
+  "hidden": "the W136 free set G of N_ref* (left-arm descendants, frames 16..43 + velocity at 15)",
+  "metrics": "FK wrist/elbow error vs N_ref* over window 16..43 (world scale), decoded upperarm/lowerarm angle error, boundary steps vs N_ref*'s own, flicks, RIC-FK gap; NL refinement gain = error(N_B init) - error(NL)",
+  "re_encode": "official decode -> FK(tpos_offsets, integrated root) -> official features; 61st pose = repeat of the 60th, then frame 59's velocity channels restored from the raw sample (no pose 60 exists)",
+  "x1_injection": "disclosed hook: x1_known replaced by the normalised features (normalisation verified on the official tensor)"
+ },
+ "outcomes_inspected": false,
+ "pre_declaration_disclosures": [
+  "input-only exploration (no model): native_prep on the frozen W136 PROXY_B features: re-encode RIC==FK to 1e-15, idempotent to 9e-16; the B-analogue builder reproduces PROXY_B on G to 9e-7 (i.e. it is built exactly as B); NaN-poisoned build identical",
+  "the 6 W139 design choices were revised after an adversarial design review (passive-null information criteria, seed 11 for the native reference, camera-free intent terms, W129 B in the superiority set, agent review reported-only, K0 inside W139) before any output",
+  "PROXY_A/PROXY_B/PROXY_C are re-built by W139 (PROXY_B must equal W136's features); W136/W137 files are only read",
+  "DEV DRY RUNS before this declaration (C:/Users/dna10/animcv-w139/dev): preflight/declare/controls try-runs and --dev-stub runs of the whole run stage with a WEIGHT-FREE stub network (no pretrained network evaluated). They exposed instrument defects that were fixed (float32/float64 normalisation, flick units, integrity bindings, native isolation, blinding, stub labelling). The stub runs also computed quality/intent/acceptability for the FROZEN historical branches A, B, D(=W129 C), U, T with these thresholds; no Stage-2 output of the pretrained model existed or was seen",
+  "an independent adversarial code review (3 reviewers) was run on the instruments before this declaration"
+ ],
+ "preflight_sha256": "76ac3acbd518a6f10cf6bb1fa883a92df2b6bd0d4ecc1bc1c2bee77c714b4ffb",
+ "provenance": {
+  "A_arm": "GT-free video-derived hypothesis (W102/W105 via W126 replay); the far left arm's 3D is UNKNOWN",
+  "B_arm": "deterministic endpoint slerp (no model)",
+  "C_arm": "MotionBricks model output INCLUDING its deterministic endpoint correction (31-54 deg ramps); a hypothesis, never an observation",
+  "inherited_hard_context": "the right arm (rig rest = UNKNOWN), the synthetic static pelvis, the source-derived torso/shoulder popping (up to 244 mm/frame) are fed to Stage 2 as kept context in every condition; recorded as an inherited distribution-mismatch factor, never as observed truth"
+ },
+ "quality_rule": {
+  "acceptable": "usability_floor AND P1 AND P2 AND non_inferiority",
+  "agent_review": "NOMINALLY blinded (letters from an os.urandom secret sealed in SEALED_blind_key/; the reviewing agent has filesystem access, so this is not a strong blind); review JSON written before the key is opened; REPORTED ONLY, never decisive",
+  "fidelity_proxy": "mean interior world wrist distance to A (the GT-free source-derived reconstruction; agreement with a hypothesis, NOT fidelity to ground truth; Q5 2D camera is INVALID and source 2D fidelity is UNKNOWN)",
+  "human_review": "none planned: perceptual acceptance PENDING; Q8 NOT REVIEWED",
+  "intent": "camera-free press intent on the fresh world readback: P1 hand_l head above upperarm_l head on every interior frame (frozen historical values: A, B pass; W129 C, U, T fail); P2 min interior wrist z >= z(171) - 100.0 mm. Thresholds set after seeing only frozen historical branches, never any W139 output",
+  "non_inferiority": "every arm-local wrist/elbow entry, exit, peak step <= 2 x W129 B's + 10 mm (Q1/Q3 form)",
+  "superiority": "S2C metric-superior to X in {S2A, S2B, D, W129 B} iff S2C acceptable AND (X not acceptable OR S2C fidelity_proxy <= X's - 20.0 mm); METRIC_SUPERIORITY iff superior to all four",
+  "usability_floor": "arm-local wrist (W129 armlocal_quality) and elbow (W135 elbow_metrics) peak steps (which include entry 171->172 and exit 199->200) <= 100.0 mm, zero wrist and elbow reversal flicks, no near-straight (>175 deg) or hinge-opposite interior frame"
+ },
+ "rejected_alternatives": {
+  "official_inbetween_frames_16_43": "discards all Stage-1 interior content (W137): no information transfer",
+  "official_inbetween_sparse_stage1_keyframes": "fully official and hook-free, but (a) at kept interior keyframes every joint incl. the imported upperarm_l/lowerarm_l slots is an exact Stage-1 copy (copy confound: Stage 2 has zero effect there) and (b) at free frames the WHOLE body is regenerated, a larger scratch domain matching W137's failure mode; rejected as the primary path before any output; not run",
+  "official_motion_edit_keep_stage1_arm": "exact passthrough of the Stage-1 arm: no Stage-2 effect on the imported channels by construction",
+  "w136_mask_k0": "discards all Stage-1 interior content; kept only as the negative control K0"
+ },
+ "repo_head_at_declaration": "a0785f4d051268c1a11153e8f1725fc659fafe7e",
+ "rights": {
+  "commercial": "NOT GRANTED (UniMate weights CC BY-NC 4.0; a human-owned decision)",
+  "determination": "PERMITTED_NONCOMMERCIAL_RESEARCH_EVALUATION",
+  "intended_use": "private, local, non-commercial technical research evaluation on one machine; no redistribution of weights or outputs, no training/finetuning, no production or commercial use; the chained result inherits UniMate's CC BY-NC 4.0 terms",
+  "motionbricks": {
+   "caveat": "agreement text fetched 2026-11-10 (W135); the version in force at the W129 download was not archived; W139 does not re-run MotionBricks",
+   "clauses_present": {
+    "NVIDIA does not claim ownership to any outputs generated using the Works or Derivative Works": true,
+    "Works are commercially usable": true
+   },
+   "code": "Apache-2.0 (NVlabs/motionbricks 54fc563)",
+   "determination_W135": "PERMITTED (local use, no redistribution)",
+   "sha256_ok": true,
+   "weights_agreement_file": "C:\\Users\\dna10\\animcv-w135\\rights\\nvidia_open_model_agreement.html"
+  }
+ },
+ "runs": {
+  "K0B": {
+   "k_s": 0,
+   "mask": "w136",
+   "official_mode": "motion_edit",
+   "proxy": "B",
+   "seed": 10,
+   "x1": "official clip of PROXY_B"
+  },
+  "K0C": {
+   "k_s": 0,
+   "mask": "w136",
+   "official_mode": "motion_edit",
+   "proxy": "C",
+   "seed": 10,
+   "x1": "official clip of PROXY_C"
+  },
+  "N0": {
+   "k_s": 0,
+   "mask": "w136",
+   "official_mode": "motion_edit",
+   "proxy": "B",
+   "seed": 10,
+   "x1": "nref_star"
+  },
+  "NIB": {
+   "k_s": 0,
+   "mask": "official",
+   "official_mode": "inbetween",
+   "proxy": "B",
+   "seed": 10,
+   "x1": "nref_star"
+  },
+  "NL": {
+   "k_s": 25,
+   "mask": "w136",
+   "official_mode": "motion_edit",
+   "proxy": "B",
+   "seed": 10,
+   "x1": "nB_init"
+  },
+  "NREF": {
+   "k_s": 0,
+   "mask": "empty",
+   "official_mode": "motion_edit",
+   "proxy": "B",
+   "seed": 11,
+   "x1": "official clip of PROXY_B"
+  },
+  "S2A": {
+   "k_s": 25,
+   "mask": "w136",
+   "official_mode": "motion_edit",
+   "proxy": "A",
+   "seed": 10,
+   "x1": "official clip of PROXY_A"
+  },
+  "S2B": {
+   "k_s": 25,
+   "mask": "w136",
+   "official_mode": "motion_edit",
+   "proxy": "B",
+   "seed": 10,
+   "x1": "official clip of PROXY_B"
+  },
+  "S2B_rep": {
+   "k_s": 25,
+   "mask": "w136",
+   "official_mode": "motion_edit",
+   "proxy": "B",
+   "seed": 10,
+   "x1": "official clip of PROXY_B"
+  },
+  "S2C": {
+   "k_s": 25,
+   "mask": "w136",
+   "official_mode": "motion_edit",
+   "proxy": "C",
+   "seed": 10,
+   "x1": "official clip of PROXY_C"
+  }
+ },
+ "schema": "animcv_exp_w139_declaration_v1",
+ "stage2_conditioning": {
+  "K_S": 25,
+  "batch_size": 1,
+  "cfg": 3.0,
+  "derivation": "state K_S on G = (1-t_s) eps + t_s x_stage1 = the linear ICPlan training marginal; first non-discarded evaluation at t_s; k_s=0 is behaviourally identical to the official function (synthetic test)",
+  "keep_mask": "W136 joint x time mask (validated; 5424 free valid entries); G = (~keep)[valid joints]",
+  "label": "NON-OFFICIAL SAMPLER PROCEDURE built on the official replacement primitive (flow SDEdit)",
+  "module": "app.experimental_two_stage_sampler.scheduled_inbetween_sample_ode (verbatim copy of official inbetween_sample_ode + per-state mask); patched as the module attribute unimate.inference.motion_inbetweening.inbetween_sample_ode only inside the scratch runner",
+  "n_steps": 50,
+  "official_path": "unimate.inference.sample.main --motion_edit (asset + pinned clip, gt_start_frame 0) with the W136 mask hook",
+  "power_pre_output": {
+   "A_vs_B": {
+    "G": 1.0772748124630314,
+    "slot19_rot6d": 0.8944893185532984,
+    "slot21_rot6d": 0.8631955840845894
+   },
+   "C_vs_B": {
+    "G": 0.9705944977555077,
+    "slot19_rot6d": 1.2389526833998818,
+    "slot21_rot6d": 0.8093570238204237
+   }
+  },
+  "prompt": "An object presses its left arm overhead.",
+  "schedule": "state j (0 = initial replacement, i+1 = after Euler step i) uses keep | (G if j <= K_S); integer index",
+  "seed": 10,
+  "t_s": 0.5,
+  "t_s_rationale": "config t_sampling = logit_normal(0,1) has its mode at t = 0.5 (the network is best trained there); single prospectively fixed value, no sweep",
+  "weights": "EMA"
+ },
+ "thresholds": {
+  "CROSS_TOL": 1e-06,
+  "EPS_CORR_MAX": 0.03,
+  "FIDELITY_MARGIN_MM": 20.0,
+  "FLICK_MIN_MM": 20.0,
+  "GAMMA_MIN": 0.75,
+  "K0_PAIR_TOL": 1e-05,
+  "K0_W136_MM": 1.0,
+  "K0_W136_TOL": 0.0001,
+  "NET_MM_MIN": 10.0,
+  "NET_RATIO_MIN": 0.25,
+  "NOISE_FACTOR": 10.0,
+  "P2_DROP_MM": 100.0,
+  "UNUSABLE_STEP_MM": 100.0
+ },
+ "time": "2026-11-13T00:33:19Z",
+ "time_rule": "native 30 fps; Action = SOURCE - 78; window Action 156..215, feature frame i <-> Action 156+i; interior 172..199 = frames 16..43; 171 and 200 frozen; the 61st exported pose (216) only feeds frame 59's velocity",
+ "video": {
+  "codec": "mp4v (no ffmpeg/H.264 available)",
+  "extra": [
+   "blinded S2A/S2B/S2C/D video + sheets (letters keyed by run_result sha)",
+   "interior loop Action 164..207 at 30 fps"
+  ],
+  "names": {
+   "A": "A original reference (no-op)",
+   "B": "B W129 slerp (no model)",
+   "D": "D Stage-1 MotionBricks direct (W129 C)",
+   "S2A": "S2A reference -> UniMate",
+   "S2B": "S2B slerp -> UniMate",
+   "S2C": "S2C MotionBricks -> UniMate (two-stage)",
+   "T": "T W137 (NON-EQUIVALENT ref)",
+   "U": "U W136 (NON-EQUIVALENT ref)"
+  },
+  "order": [
+   "A",
+   "B",
+   "D",
+   "S2A",
+   "S2B",
+   "S2C",
+   "U",
+   "T"
+  ]
+ },
+ "x1_offline_sha256": "c43f5004fba58bcc6612367ed9585dbb20afac7fc3a343ec80c5597ed60a2abb"
+}

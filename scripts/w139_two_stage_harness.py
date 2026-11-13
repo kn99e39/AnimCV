@@ -880,9 +880,7 @@ def _verify_bound(a, d, pf, pdir, stub):
     import hashlib
     wt = (ROOT / rel).read_bytes() if (ROOT / rel).is_file() else b""
     info["working_file_sha256"] = hashlib.sha256(wt).hexdigest()
-    info["working_file_lf_sha256"] = hashlib.sha256(wt.replace(b"
-", b"
-")).hexdigest()   # core.autocrlf stores LF blobs
+    info["working_file_lf_sha256"] = hashlib.sha256(wt.replace(b"\r\n", b"\n")).hexdigest()   # core.autocrlf stores LF blobs
     if not stub and (info["working_file_sha256"] != a.declaration_sha or info["committed_blob_sha256"] != info["working_file_lf_sha256"]
                      or not info["path_clean"]):
         raise SystemExit(f"STOP DECLARATION_INVALID: committed declaration != --declaration-sha ({info})")

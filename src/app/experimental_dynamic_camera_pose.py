@@ -157,6 +157,30 @@ def read_images_txt(path):
 
 
 # ------------------------------------------------------------------------------------------------ evaluation ---
+def read_groundtruth_dedup(path):
+    """W140 GT reader semantics, except that samples sharing a DUPLICATED timestamp are all removed (no arbitrary pick).
+
+    W141 amendment 1 (before any GT score): the official fr3 walking_static groundtruth.txt contains one timestamp twice
+    with two slightly different poses, which CP.read_groundtruth refuses.  Removing every sample of a duplicated timestamp
+    leaves the W140 bracket-gap rule (<= 50 ms) to decide association.  Returns (array, info)."""
+    rows = CP.read_tum_list(path, 8)
+    a = np.asarray([[float(v) for v in r] for r in rows])
+    ts, counts = np.unique(a[:, 0], return_counts=True)
+    dup = set(ts[counts > 1].tolist())
+    keep = np.asarray([t not in dup for t in a[:, 0]], bool)
+    info = {"n_raw": int(len(a)), "duplicated_timestamps": sorted(dup), "n_removed": int((~keep).sum()),
+            "removed_rows": a[~keep].tolist()}
+    a = a[keep]
+    if not np.isfinite(a).all():
+        raise CP.CamStop("MALFORMED", "non-finite GT")
+    if np.any(np.diff(a[:, 0]) <= 0):
+        raise CP.CamStop("MALFORMED", "GT timestamps not strictly increasing after duplicate removal (out-of-order samples)")
+    qn = np.linalg.norm(a[:, 4:8], axis=1)
+    if np.any(np.abs(qn - 1) > 1e-2):
+        raise CP.CamStop("MALFORMED", f"GT quaternion norm off by {np.abs(qn - 1).max():.3g}")
+    return a, info
+
+
 def chordal_rotation(Rg, Re):
     """R minimising sum ||R Re_i - Rg_i||_F (orientation-based gauge rotation)."""
     M = np.einsum("nij,nkj->ik", np.asarray(Rg, float), np.asarray(Re, float))

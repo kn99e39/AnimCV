@@ -297,6 +297,19 @@ def test_scale_ambiguity_preserved():
     assert ev["full_sim3"]["sim3"]["scale"] == pytest.approx(0.01) and "SCALE_AMBIGUOUS" in ev["scale_status"]
 
 
+def test_gt_duplicate_timestamps_removed_not_picked(tmp_path):
+    p = tmp_path / "groundtruth.txt"
+    rows = ["# c", "1.00 0 0 0 0 0 0 1", "1.01 0 0 0 0 0 0 1", "1.02 1 0 0 0 0 0 1", "1.02 2 0 0 0 0 0 1", "1.03 0 0 0 0 0 0 1"]
+    p.write_text("\n".join(rows) + "\n")
+    with pytest.raises(CP.CamStop):
+        CP.read_groundtruth(p)                            # W140 reader refuses (unchanged)
+    a, info = DP.read_groundtruth_dedup(p)
+    assert a[:, 0].tolist() == [1.00, 1.01, 1.03] and info["n_removed"] == 2 and info["duplicated_timestamps"] == [1.02]
+    p.write_text("\n".join(rows[:3] + ["1.005 0 0 0 0 0 0 1"]) + "\n")
+    with pytest.raises(CP.CamStop):
+        DP.read_groundtruth_dedup(p)                      # genuinely out-of-order GT is still refused
+
+
 # ------------------------------------------------------------------------------------------------ gates ---
 def _ev(cov, ate, rot, bate=0.02, brot=1.0):
     return {"coverage_estimated": cov, "full_sim3": {"ate": {"rmse": ate}, "rot": {"median_deg": rot}},

@@ -348,7 +348,7 @@ def visualize(a, ROOT, W141, SYN_DYN, BLENDER, SEQS, RUNS):
 
 def viewport(name, seq, e, pf, E, out, ROOT, BLENDER, W141):
     data = W141 / "data" / "extracted" / f"rgbd_dataset_freiburg3_{seq}" / "groundtruth.txt"
-    gt = CP.read_groundtruth(data)
+    gt = DP.read_groundtruth_dedup(data)[0]
     est = load(E / name / "estimate.json")
     cam = load(Path(pf["inputs"][seq]["dir"]) / "camera.json")
     sim = e["full_sim3"]["sim3"]

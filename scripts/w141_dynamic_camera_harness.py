@@ -140,10 +140,21 @@ def run(cmd, log):
 
 
 def check_declaration(a):
+    """Verify the declaration and its frozen instruments.  With --amendment, the instruments must instead match the
+    amendment's hashes; the amendment must bind this declaration's SHA-256 and state that no GT score had been seen."""
     if sha(a.declaration) != a.declaration_sha:
         raise SystemExit("STOP INTEGRITY_FAILED: declaration changed")
     d = load(a.declaration)
-    bad = [f for f, h in d["instrument_sha256_lf"].items() if lf_sha(f) != h]
+    want = d["instrument_sha256_lf"]
+    if getattr(a, "amendment", None):
+        if sha(a.amendment) != a.amendment_sha:
+            raise SystemExit("STOP INTEGRITY_FAILED: amendment changed")
+        am = load(a.amendment)
+        if am.get("declaration_sha256") != a.declaration_sha or am.get("gt_scores_seen") is not False:
+            raise SystemExit("STOP DECLARATION_INVALID: amendment does not bind this declaration before GT scores")
+        want = am["instrument_sha256_lf"]
+        d["amendments"] = [am]
+    bad = [f for f, h in want.items() if lf_sha(f) != h]
     if bad:
         raise SystemExit(f"STOP DECLARATION_INVALID: instruments changed {bad}")
     return d
@@ -597,7 +608,10 @@ def stage_evaluate(a):
     for k, p in gts.items():
         if sha(p) != want_gt[k]:
             raise SystemExit(f"STOP GT identity {k}")
-    gt = {k: CP.read_groundtruth(p) for k, p in gts.items()}
+    gt, res["gt_sanitation"] = {}, {}
+    for k, p in gts.items():                         # amendment 1: duplicated GT timestamps removed (all samples of each)
+        gt[k], res["gt_sanitation"][k] = DP.read_groundtruth_dedup(p)
+    res["amendments"] = d.get("amendments", [])
     seg = load(SYN_DYN / "gt" / "segments.json")
     boxes = load(SYN_DYN / "gt" / "static_boxes.json")
     w140_contract_ok = load(W140 / "results" / "preflight" / "preflight.json")["oracle_contract"]["ok"]
@@ -722,13 +736,39 @@ def stage_visualize(a):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("stage", choices=("preflight", "declare", "estimate", "evaluate", "visualize"))
+    ap.add_argument("stage", choices=("preflight", "declare", "estimate", "amend", "evaluate", "visualize"))
     ap.add_argument("--out-dir", required=True)
-    for k in ("preflight", "declaration", "declaration-sha", "estimate-dir", "eval-dir"):
+    for k in ("preflight", "declaration", "declaration-sha", "estimate-dir", "eval-dir", "amendment", "amendment-sha"):
         ap.add_argument("--" + k)
+    ap.add_argument("--skip-viewport", action="store_true")
     a = ap.parse_args()
     return {"preflight": stage_preflight, "declare": stage_declare, "estimate": stage_estimate, "evaluate": stage_evaluate,
-            "visualize": stage_visualize}[a.stage](a)
+            "visualize": stage_visualize, "amend": stage_amend}[a.stage](a)
+
+
+def stage_amend(a):
+    """Write a declaration amendment (only allowed while no W141 evaluation exists)."""
+    d = load(a.declaration)
+    if sha(a.declaration) != a.declaration_sha:
+        raise SystemExit("STOP declaration changed")
+    if (W141 / "results" / "evaluate" / "evaluation.json").exists():
+        raise SystemExit("STOP: an evaluation already exists; amendments are only allowed before GT scores")
+    out = new_dir(a.out_dir)
+    am = {"schema": "animcv_exp_w141_declaration_amendment_v1", "amendment": 1, "time": now(), "declaration_sha256": a.declaration_sha,
+          "estimates_exist": True, "gt_scores_seen": False, "repo_head": git("rev-parse", "HEAD"),
+          "trigger": "the first evaluate run stopped in the W140 GT reader before computing any score: the official fr3 walking_static "
+                     "groundtruth.txt has one duplicated timestamp (1341846251.4587, two samples ~1 mm apart); CP.read_groundtruth refuses "
+                     "non-strictly-increasing timestamps",
+          "change": "GT is read with DP.read_groundtruth_dedup: every sample of a duplicated timestamp is removed (no arbitrary pick); "
+                    "everything else (W140 association rule, 50 ms bracket gap, metrics, gates) unchanged. The neighbours of the removed "
+                    "samples are 30 ms apart, inside the 50 ms rule. Also: evaluate/visualize gain the amendment arguments.",
+          "unchanged": "estimates (frozen, SHA-256 in estimate_result.json), masks, inputs, gates, thresholds, alignment, metrics",
+          "previous_instrument_sha256_lf": d["instrument_sha256_lf"],
+          "instrument_sha256_lf": {f: lf_sha(f) for f in INSTRUMENTS}}
+    CP.dump(out / "amendment1.json", am)
+    print(json.dumps({"amendment_sha256": sha(out / "amendment1.json"),
+                      "changed": [f for f in INSTRUMENTS if am["instrument_sha256_lf"][f] != d["instrument_sha256_lf"][f]]}, indent=1))
+    return 0
 
 
 if __name__ == "__main__":

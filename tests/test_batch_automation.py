@@ -283,6 +283,11 @@ def test_M3_unfinished_batch_is_not_published_even_if_remote_moved(env):
     assert run(env["clone"], "rev-list", "--merges", f"{start}..HEAD").stdout == ""
 
 
+def test_executor_prompt_carries_resumption_rule():
+    text = ba.EXECUTOR_PROMPT.format(batch=7, blob="b", start="s", branch=BRANCH, python="p", trailer=ba.TRAILER)
+    assert f'--grep="^{ba.TRAILER}: 7$"' in text and "RESUMPTION" in text and "immutable" in text
+
+
 # L
 def test_L_wrong_branch_or_dirty_or_diverged_clone_is_never_repaired(env):
     env["publish"](instruction(7)); calls = []

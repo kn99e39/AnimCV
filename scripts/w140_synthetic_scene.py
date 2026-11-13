@@ -51,7 +51,7 @@ def texture(seed, n=1024):
         for _ in range(int(2.2 * (n / size) ** 2 * 0.35)):
             x, y = rng.integers(0, n - size, 2)
             w_, h_ = rng.integers(max(2, size // 3), size + 1, 2)
-            img[y:y + h_, x:x + w_, :3] = rng.uniform(0.0, 1.0, 3)
+            img[y:y + h_, x:x + w_, :3] = rng.uniform(0.15, 0.85, 3)   # never fully saturated: only oracle markers are
     im = bpy.data.images.new(f"tex{seed}", n, n)
     im.pixels.foreach_set(img.ravel())
     im.pack()

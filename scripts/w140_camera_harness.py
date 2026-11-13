@@ -53,7 +53,7 @@ FR1 = {"fx": 517.3, "fy": 516.5, "cx": 318.6, "cy": 255.3, "dist": [0.2624, -0.9
 CALIB_ROW = "Freiburg 1 RGB 517.3 516.5 318.6 255.3 0.2624 -0.9531 -0.0054 0.0026 1.1633"
 LICENCE_CLAUSE = "licensed under a Creative Commons 4.0 Attribution License (CC BY 4.0)"
 GT_CLAUSE = "give the position of the optical center of the color camera with respect to the world origin as defined by the motion capture system"
-SYN_DIR = DATA / "synthetic_v2"
+SYN_DIR = DATA / "synthetic_v3"
 INSTRUMENTS = ["src/app/experimental_camera_pose.py", "scripts/w140_colmap_estimate.py", "scripts/w140_synthetic_scene.py",
                "scripts/w140_camera_harness.py", "tests/test_experimental_camera_pose.py"]
 DATASETS = ("synthetic", "xyz", "rpy")
@@ -112,8 +112,8 @@ def marker_centroids(img, colour):
     """Centroid of pure-colour marker pixels (FLAT Workbench render)."""
     import cv2  # noqa: F401
     b, g, r = img[..., 0].astype(int), img[..., 1].astype(int), img[..., 2].astype(int)
-    targets = {"red": (r > 200) & (g < 60) & (b < 60), "green": (g > 200) & (r < 60) & (b < 60), "blue": (b > 200) & (r < 60) & (g < 60),
-               "yellow": (r > 200) & (g > 200) & (b < 60)}
+    targets = {"red": (r > 245) & (g < 30) & (b < 30), "green": (g > 245) & (r < 30) & (b < 30), "blue": (b > 245) & (r < 30) & (g < 30),
+               "yellow": (r > 245) & (g > 245) & (b < 30)}
     m = targets[colour]
     ys, xs = np.nonzero(m)
     if len(xs) < 5:
@@ -312,7 +312,11 @@ def stage_declare(a):
          "pre_declaration_disclosures": [
              "synthetic scene v1 was re-rendered as v2 before any estimation because its UV mapping tiled each texture ~12x on walls "
              "(repetitive pattern); v2 maps one texture copy per face; v1 kept on disk",
-             "dev smoke runs of the estimator on the first 25 and first 70 synthetic frames (C:/Users/dna10/animcv-w140/dev) to exercise "
+             "synthetic scene v2 was re-rendered as v3 before any GT-scored estimation because the first official preflight's oracle "
+             "projection contract FAILED (median 174 px): random texture rectangles contained near-saturated colours that contaminated the "
+             "marker-centroid detection (projection itself matched the rendered markers). v3 limits texture colours to [0.15, 0.85] and the "
+             "detector uses strict saturated thresholds; preflight re-run (first preflight kept at results/preflight_v2scene)",
+             "dev smoke runs of the estimator on the first 25 and first 70 frames of synthetic v2 (C:/Users/dna10/animcv-w140/dev) to exercise "
              "code paths: 25 frames (stationary + tiny translation) gave no initial pair (all LOST, expected degeneracy); 70 frames registered "
              "70/70 with 0.16 px mean reprojection error; NO GT-based score was computed or seen; configuration unchanged afterwards"],
          "instrument_sha256_lf": {f: lf_sha(f) for f in INSTRUMENTS}}

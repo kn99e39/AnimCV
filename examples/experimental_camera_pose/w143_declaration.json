@@ -1,0 +1,331 @@
+{
+ "branch": "Dual_Stage_Generator",
+ "budget": {
+  "downloads": "sitting_static archive only",
+  "parallel": 3,
+  "primary_estimation_h_max": 2.0,
+  "scratch_gb_max": 10.0,
+  "training": "none"
+ },
+ "candidate": {
+  "may_consume": [
+   "RGB frames",
+   "timestamps",
+   "approved intrinsics",
+   "frozen W141 RGB person keep masks (held-out: same frozen mechanism)",
+   "frozen SfM estimate.json for the 6DoF availability decision"
+  ],
+  "module_doc": "W143 (EXPERIMENTAL, opt-in, scratch only): DECOUPLED camera orientation / translation observability / 6DoF availability.\n\nBuilds on, and never modifies, W142 (``app.experimental_background_rotation``: SIFT, matching, rotation-only RANSAC,\nhomography / essential / GRIC, rotation averaging, regimes) and W140 (``app.experimental_camera_pose``: conventions).\nNOT integrated into Production, FramePose, MotionGraph, the S1 calibration, root motion or the Generator.\n\nW142 coupled four questions into one GRIC decision.  W143 answers them separately, per edge (frame pair):\n  1. GEOMETRIC MODEL FIT        which of rotation-only / homography / essential explains the matches best (W142 GRIC, kept\n                                only as a descriptive label);\n  2. ROTATION MEASUREMENT       is the rotation-only estimate a valid ORIENTATION measurement?  Decided from image evidence\n                                independent of (1): rotation support of the background consensus set, its rotational\n                                residual, agreement with the rotation implied by the homography, and multi-span cycle\n                                consistency.  Its translation-induced bias is bounded by residual / f and reported;\n  3. TRANSLATION OBSERVABILITY  direction only, and only when the essential model wins, decomposes with cheirality, the\n                                rotation-compensated parallax is >= PARALLAX_MIN_PX and another span from the same frame\n                                confirms the direction.  A homography preference alone never implies translation;\n  4. FULL 6DoF AVAILABILITY     only from a frozen SfM reconstruction whose own quality evidence passes (model coverage,\n                                landmarks, reprojection; per-frame observed landmarks).  Never from a translation label.\n\nConventions (W140/W142): optical OpenCV axes, R_WC, scalar-last quaternions; per-edge M_ij = R_CjCi; W143 orientation is\nexpressed in the optical frame of its reference camera; an SfM 6DoF pose is expressed in that SfM model's own gauge with\nSCALE_AMBIGUOUS translation.  The two gauges are never mixed into one trajectory.\n\nStates\n  orientation   ORIENTATION_ESTIMATED | ORIENTATION_UNSUPPORTED\n  translation   TRANSLATION_ESTIMATED_SCALE_AMBIGUOUS (SfM only) | TRANSLATION_DIRECTION_ONLY | TRANSLATION_UNRESOLVED |\n                TRANSLATION_INSUFFICIENT_EVIDENCE      (value null unless SCALE_AMBIGUOUS SfM; never a measured zero)\n  camera        FULL_6DOF_AVAILABLE | ORIENTATION_ONLY_AVAILABLE | CAMERA_MOTION_UNRESOLVED\n",
+  "never": [
+   "GT",
+   "depth",
+   "IMU",
+   "oracle masks",
+   "W142 post-hoc results"
+  ],
+  "params": {
+   "AGREE_RH_MAX_DEG": 0.5,
+   "CONSENSUS_P90_MAX_PX": 1.5,
+   "CYCLE_MAX_DEG": 0.5,
+   "DIR_CONFIRM_DEG": 20.0,
+   "MIN_INLIERS": 30,
+   "PARALLAX_MIN_PX": 2.0,
+   "SFM_FRAME_MIN_OBS": 100,
+   "SFM_MODEL_MAX_REPROJ_PX": 2.0,
+   "SFM_MODEL_MIN_LANDMARKS": 1000,
+   "SFM_MODEL_MIN_REG_FRAC": 0.5,
+   "SUPPORT_RATIO_MIN": 0.8
+  },
+  "w142_functions_reused_unchanged": "SIFT features, mutual ratio matching, spans, rotation-only RANSAC + Kabsch, homography, essential + refinement, GRIC, robust chordal rotation averaging, +-0.5 s windows"
+ },
+ "datasets": {
+  "held_out": "sitting_static: never used for design; GT read only after freezing",
+  "known": "walking_static (W141 inputs/masks); W142 outcomes already known -> not evidence of generalisation",
+  "moving_control": "walking_xyz",
+  "s1": "GT-free observation, NOMINAL_UNCALIBRATED",
+  "synthetic": "W142 A1-A3 renders and RGB masks, W141 A4"
+ },
+ "estimates_exist": false,
+ "evaluation": {
+  "edge_accounting": "W143 accepted / rejected edges cross-tabulated with the W142 state of the same pair; relative-rotation error vs GT per category; bias-indicator calibration (fraction of accepted edges with GT error <= indicator + 0.05 deg)",
+  "gt_association": "real: W141 rule incl. duplicate-timestamp removal; synthetic: exact timestamp match",
+  "orientation": "W142 protocol unchanged: one evaluation-only chordal rotation alignment over the condition's valid associated frames; relative consecutive and ~1 s errors without alignment; constant-camera baseline on the same frames; coverage over all selected frames",
+  "translation": "edge direction claims vs GT direction; frames with TRANSLATION_DIRECTION_ONLY vs GT window displacement; no pseudo-ATE",
+  "w142_comparison": "W142 (historical; frozen run on sitting_static) vs W143 on the common valid frames, each re-aligned there"
+ },
+ "gate_values": {
+  "nondeterioration_deg": 0.25,
+  "notyet_cov_gain": 0.2,
+  "real_cov": 0.8,
+  "real_med_deg": 3.0,
+  "sit_false_dir_disp_m": 0.01,
+  "sit_false_dir_frac": 0.1,
+  "sit_meaningful_rot_deg": 1.0,
+  "spike_deg": 2.0,
+  "syn_A1_max_deg": 0.5,
+  "syn_A2_med_deg": 1.0,
+  "syn_A3_dir_err_deg": 30.0,
+  "syn_A3_med_deg": 1.0,
+  "syn_A4_med_deg": 1.0,
+  "syn_A4_seg_dir_frac": 0.5,
+  "syn_cov": 0.8,
+  "syn_false_dir_frac": 0.01,
+  "xyz_full6dof_frac": 0.95,
+  "xyz_near_static_frac": 0.2
+ },
+ "gates": {
+  "classification": "SUPPORTED: all four gates pass. NOT_YET_SUPPORTED: walking_static and sitting_static both fail AND W143 walking_static coverage gain over W142 < 0.2 (or accuracy deteriorates). PARTIALLY_SUPPORTED otherwise. BLOCKED: prerequisite failure. S1 reported, not gated.",
+  "sitting_static (held-out)": "coverage >= 0.8; aligned median < 3.0; IF GT rotation range on valid frames >= 1.0 deg then aligned and 1 s medians below the constant baseline; frames with TRANSLATION_DIRECTION_ONLY whose GT +-0.5 s displacement < 0.01 m <= 0.1 of frames; no numeric translation without valid SfM",
+  "synthetic": "A1: coverage >= 0.8, max aligned < 0.5 deg; A2: coverage, median < 1.0; A1/A2 DIRECTION_OBSERVED edge fraction <= 0.01; A3: coverage, median < 1.0, direction claims (if any) median error < 30.0 deg; A4: coverage, median < 1.0, frames 20-69 TRANSLATION_DIRECTION_ONLY >= 0.5; no numeric translation without valid SfM; 0 keypoints on excluded pixels",
+  "walking_static": "coverage >= 0.8; aligned median < 3.0; aligned median and 1 s relative median below the constant baseline; W143 median on W142-common frames <= W142 + 0.25 deg; no numeric translation without valid SfM",
+  "walking_xyz": "FULL_6DOF_AVAILABLE >= 0.95 of frames; NEAR_STATIC frames <= 0.2; 0 SfM-valid frames downgraded"
+ },
+ "gt_scores_seen_w143": false,
+ "historical": {
+  "ok": true,
+  "w140_evaluation_ok": true,
+  "w141_evaluation_ok": true,
+  "w142": {
+   "estimate_result.json": true,
+   "evaluation.json": true,
+   "evidence_manifest.json": true,
+   "posthoc.json": true,
+   "routing.json": true
+  },
+  "w142_declaration_ok": true,
+  "w142_estimates_frozen": {
+   "s1_none": true,
+   "s1_rgbmask": true,
+   "sfm_syn_A1_rgbmask": true,
+   "sfm_syn_A2_rgbmask": true,
+   "sfm_syn_A3_rgbmask": true,
+   "syn_A1_none": true,
+   "syn_A1_oracle": true,
+   "syn_A1_rgbmask": true,
+   "syn_A2_none": true,
+   "syn_A2_oracle": true,
+   "syn_A2_rgbmask": true,
+   "syn_A3_none": true,
+   "syn_A3_oracle": true,
+   "syn_A3_rgbmask": true,
+   "syn_A4_none": true,
+   "syn_A4_oracle": true,
+   "syn_A4_rgbmask": true,
+   "walking_static_areactrl": true,
+   "walking_static_none": true,
+   "walking_static_rgbmask": true,
+   "walking_xyz_none": true,
+   "walking_xyz_rgbmask": true
+  },
+  "w142_instruments_unchanged": {
+   "scripts/w140_colmap_estimate.py": true,
+   "scripts/w141_colmap_masked_estimate.py": true,
+   "scripts/w141_segment_people.py": true,
+   "scripts/w141_synthetic_dynamic_scene.py": true,
+   "scripts/w142_background_rotation_estimate.py": true,
+   "scripts/w142_harness.py": true,
+   "src/app/experimental_background_rotation.py": true,
+   "src/app/experimental_camera_pose.py": true,
+   "src/app/experimental_dynamic_camera_pose.py": true,
+   "tests/test_w142_background_rotation.py": true
+  }
+ },
+ "inputs": {
+  "s1": {
+   "dir": "C:\\Users\\dna10\\animcv-w142\\results\\preflight\\input_s1",
+   "gt": null,
+   "manifest_sha256": "a0a85c7ab87cb799f5d464da7a5ec3ffd7728a580ad41996d2941deaaec4c5d4",
+   "ok": true,
+   "source": "W142 preflight record (W141 inputs for real data and A4)"
+  },
+  "sitting_static": {
+   "dir": "C:\\Users\\dna10\\animcv-w143\\results\\preflight\\input_sitting_static",
+   "gt": "C:\\Users\\dna10\\animcv-w143\\data\\extracted\\rgbd_dataset_freiburg3_sitting_static\\groundtruth.txt",
+   "manifest_sha256": "ca34e6c140d836ce994790bac928f25826a00e3a255b6bcc5856cd73f75cbcde",
+   "n": 300,
+   "n_total_rgb": 707,
+   "ok": true
+  },
+  "syn_A1": {
+   "dir": "C:\\Users\\dna10\\animcv-w142\\results\\preflight\\input_syn_A1",
+   "gt": "C:\\Users\\dna10\\animcv-w142\\data\\scene_A1\\gt\\camera_gt.txt",
+   "manifest_sha256": "0bd28a41b57fa164c4c3b35b86a410459c119e93895152fb0b7d1c26401e6552",
+   "ok": true,
+   "source": "W142 preflight record (W141 inputs for real data and A4)"
+  },
+  "syn_A2": {
+   "dir": "C:\\Users\\dna10\\animcv-w142\\results\\preflight\\input_syn_A2",
+   "gt": "C:\\Users\\dna10\\animcv-w142\\data\\scene_A2\\gt\\camera_gt.txt",
+   "manifest_sha256": "dc7bc0b36dcbc7c3a1fbd0cb20f50968716d8c616153caf24758cea150535e5e",
+   "ok": true,
+   "source": "W142 preflight record (W141 inputs for real data and A4)"
+  },
+  "syn_A3": {
+   "dir": "C:\\Users\\dna10\\animcv-w142\\results\\preflight\\input_syn_A3",
+   "gt": "C:\\Users\\dna10\\animcv-w142\\data\\scene_A3\\gt\\camera_gt.txt",
+   "manifest_sha256": "cf6e3ab3bc5525346fb7c33923e139dd82704527b8d62adc75704bce2f43d92b",
+   "ok": true,
+   "source": "W142 preflight record (W141 inputs for real data and A4)"
+  },
+  "syn_A4": {
+   "dir": "C:\\Users\\dna10\\animcv-w141\\results\\preflight\\input_syn_dynamic",
+   "gt": "C:\\Users\\dna10\\animcv-w141\\data\\synthetic_dynamic\\gt\\camera_gt.txt",
+   "manifest_sha256": "fb5b8d80d3ade521ef478743e0d46fbca621db54fef1d4a43683957dba3fa166",
+   "ok": true,
+   "source": "W142 preflight record (W141 inputs for real data and A4)"
+  },
+  "walking_static": {
+   "dir": "C:\\Users\\dna10\\animcv-w141\\results\\preflight\\input_walking_static",
+   "gt": null,
+   "manifest_sha256": "8a44a1955e2780e9980599ac011e0fce4fab2276a5405eaf3da64daa29112edc",
+   "ok": true,
+   "source": "W142 preflight record (W141 inputs for real data and A4)"
+  },
+  "walking_xyz": {
+   "dir": "C:\\Users\\dna10\\animcv-w141\\results\\preflight\\input_walking_xyz",
+   "gt": null,
+   "manifest_sha256": "bcfcbdb71b9a0740830740d4af3e12dca7d1e1545f81507289262c8f93bd250d",
+   "ok": true,
+   "source": "W142 preflight record (W141 inputs for real data and A4)"
+  }
+ },
+ "instrument_sha256_lf": {
+  "scripts/w140_colmap_estimate.py": "a1dfce956ef0955bf2deb81cab576e84967055acc5a75070b8eedfbdfa6efad4",
+  "scripts/w141_colmap_masked_estimate.py": "8062956d1ca6c8f46ceba021f96d943f9584aeb51810306c1a96c8b69d98c288",
+  "scripts/w141_segment_people.py": "16f67945e6112925e55a9e08095447925afcdc3c2390401f55bd08e284c2418f",
+  "scripts/w142_background_rotation_estimate.py": "4ac207738e5cb66d6af30981b3ba41b7b7ba6322379151bd829fd8f9aa2be2d9",
+  "scripts/w142_harness.py": "427619553facee92ee5ebbdb80c37e382459bb51e9398601ecf959219a818b73",
+  "scripts/w143_decoupled_estimate.py": "53632c490d3b13fd63b964ac57dfe3db135462771e9f2db67411bab0817a5b40",
+  "scripts/w143_harness.py": "93936a55c45e141ef83e8f3908722a7344fd07f832a164b220c4f3464966d425",
+  "scripts/w143_mechanism.py": "4e6011054d2eb0f951fd3ddf32376486f66f0d3f4a2b08d0c6e349a535a63b7b",
+  "src/app/experimental_background_rotation.py": "e2afbc1a9ae8cb45660072b229d9458f7d327e311d2c574e0bc2217d65d4f3dc",
+  "src/app/experimental_camera_pose.py": "29438219da9d171b0fbe2285585461d149e01e7f3bcb310e8a0bf2e3227fa147",
+  "src/app/experimental_decoupled_camera_state.py": "1f798879586c5a0f07e9a51efa09a896eff47037b3e87569c71a072812f937af",
+  "src/app/experimental_dynamic_camera_pose.py": "4988a327b3ba271d557d589fea3b829cc672d1bf245649eb58fcb7ee1fb6bcc9",
+  "tests/test_w143_decoupled_camera_state.py": "c048c52b112bf838a9fe7e2a16886c5062a2f1a37360669c8e5624dcfc57b122"
+ },
+ "masks": {
+  "s1": {
+   "declared_sha256": "20eef4bd2b0c5e34778bba2d7629106c0073a48e6abe240c3b3b5375d6bccc49",
+   "dir": "C:\\Users\\dna10\\animcv-w142\\results\\preflight\\masks\\s1\\keep_rgbmask",
+   "dir_sha256": "20eef4bd2b0c5e34778bba2d7629106c0073a48e6abe240c3b3b5375d6bccc49",
+   "ok": true
+  },
+  "sitting_static": {
+   "dir": "C:\\Users\\dna10\\animcv-w143\\results\\preflight\\masks\\sitting_static\\keep_rgbmask",
+   "dir_sha256": "728f2b4a2e459e00946f7fc4581d8cf63a4df0be679b5aaa69dba999a1d295c0",
+   "frames_with_person": 300,
+   "mechanism": "frozen W141 segmentation (Mask R-CNN COCO_V1, score>=0.5, mask>=0.5) + 15 px disk dilation",
+   "ok": true,
+   "raw_frac_mean": 0.2569134006076389,
+   "raw_frac_median": 0.25829752604166667,
+   "raw_frac_p90": 0.264974609375,
+   "segment_s": 183.05504369999835
+  },
+  "syn_A1": {
+   "declared_sha256": "3b1c0bd78747a558a074125e81dd03548c5cdeb089082af58e8d9d06a4352a9a",
+   "dir": "C:\\Users\\dna10\\animcv-w142\\results\\preflight\\masks\\syn_A1\\keep_rgbmask",
+   "dir_sha256": "3b1c0bd78747a558a074125e81dd03548c5cdeb089082af58e8d9d06a4352a9a",
+   "ok": true
+  },
+  "syn_A2": {
+   "declared_sha256": "7ae1a75b9b8fade2af56e214464af97fa298208b42b683c05ee017a0e1fdef51",
+   "dir": "C:\\Users\\dna10\\animcv-w142\\results\\preflight\\masks\\syn_A2\\keep_rgbmask",
+   "dir_sha256": "7ae1a75b9b8fade2af56e214464af97fa298208b42b683c05ee017a0e1fdef51",
+   "ok": true
+  },
+  "syn_A3": {
+   "declared_sha256": "bdfce82ff289668dce6c580d9587860b83dc46bb4c5ff413638510f685575d8b",
+   "dir": "C:\\Users\\dna10\\animcv-w142\\results\\preflight\\masks\\syn_A3\\keep_rgbmask",
+   "dir_sha256": "bdfce82ff289668dce6c580d9587860b83dc46bb4c5ff413638510f685575d8b",
+   "ok": true
+  },
+  "syn_A4": {
+   "declared_sha256": "bd05df2e8aff0b42c85efa29d658f87fdce4c84ce820d9527285c8d628e97d1f",
+   "dir": "C:\\Users\\dna10\\animcv-w141\\results\\preflight\\masks\\syn_dynamic\\keep_rgbmask",
+   "dir_sha256": "bd05df2e8aff0b42c85efa29d658f87fdce4c84ce820d9527285c8d628e97d1f",
+   "ok": true
+  },
+  "walking_static": {
+   "declared_sha256": "c87e159c4f17b5e69b837d53bd50a3d352043464aa10be9796c2df5f7093f11c",
+   "dir": "C:\\Users\\dna10\\animcv-w141\\results\\preflight\\masks\\walking_static\\keep_rgbmask",
+   "dir_sha256": "c87e159c4f17b5e69b837d53bd50a3d352043464aa10be9796c2df5f7093f11c",
+   "ok": true
+  },
+  "walking_xyz": {
+   "declared_sha256": "19796f2309e93d841c1754ada649209eb0f47b7c2a51bf2aa4276ef5a73b8653",
+   "dir": "C:\\Users\\dna10\\animcv-w141\\results\\preflight\\masks\\walking_xyz\\keep_rgbmask",
+   "dir_sha256": "19796f2309e93d841c1754ada649209eb0f47b7c2a51bf2aa4276ef5a73b8653",
+   "ok": true
+  }
+ },
+ "mechanism_findings_used_for_design": [
+  "synthetic correspondences: GRIC prefers a homography over pure rotation under residual radial distortion, rolling shutter and planar translation, while intrinsic errors of 1-2 % / 5 px did not flip it; under distortion the rotation-only estimate stays accurate (0.04 deg) -> homography preference alone does not make a rotation measurement unusable",
+  "the W142 cheirality failures at millimetre baselines are genuine essential-decomposition ill-conditioning (2-6 points in front at 5-10 mm; recoverPose distance cut-off ruled out); essential-derived rotation is therefore not used for orientation in W143",
+  "translation of 10-30 mm at 1-5 m depth biases the rotation-only estimate by 0.16-0.42 deg and is rejected by the support / residual criteria; 2 mm is accepted with 0.04 deg error; planar 30 mm translation is rejected (residual) although its bias indicator (0.17 deg) under-states its error (0.52 deg): the indicator is not a guaranteed bound",
+  "GT-free W142 walking_static statistics: 71 % of W142 'planar-ambiguous' edges and 92 % of rotation-only edges pass the support and residual criteria (W142 did not store the homography-agreement or cycle quantities)"
+ ],
+ "mechanism_investigation_sha256": "3aa08801fced1e8a3a1d1919a619472be49212160bfa0c6b1a260b5ed1974c35",
+ "pre_declaration_disclosures": [
+  "Cycle validation design change from a synthetic unit test (no data output): naive median triangle scoring also rejected innocent partners of one corrupted edge, so cycle validation became greedy worst-first removal with a tie-break preferring the edge with more triangle evidence.",
+  "Phase 1 mechanism script (synthetic correspondences + GT-free historical W142 statistics) was run before this declaration; its output is bound by SHA-256. No W143 estimator was run on any real or synthetic image set before this declaration.",
+  "The known-case (walking_static) W142 GT outcomes, including the POST-HOC forced rotation-only result, were known when the thresholds were chosen; thresholds were set from the RANSAC threshold (1.5 px), a majority-support rule (0.8) and synthetic controls, not by searching on walking_static GT. The held-out sitting_static frames, masks and GT were not inspected (GT hashed only)."
+ ],
+ "preflight_sha256": "810102319a5fdfbce9d40c3a0ff824d01a8a575ab724bebb94b1c5b3591a6827",
+ "relationship_to_w142_posthoc": "The W142 POST-HOC forced rotation-only diagnostic (all rotation-only edges with >= 30 inliers, no validation) is NOT a validated method and is not the W143 candidate. W143 accepts a rotation-only measurement only if it passes support, consensus-residual, homography-agreement and cycle checks, and reports a residual-based bias indicator; translation and 6DoF decisions are separate",
+ "repo_head_at_declaration": "e67b88eba7cc67298e32824e5f8663be8675e32c",
+ "runs": {
+  "frozen_sfm": [
+   "sfm_sitting_static_rgbmask",
+   "sfm_s1_rgbmask"
+  ],
+  "frozen_w142_on_held_out": "w142_sitting_static_rgbmask",
+  "n_official_executions": 11,
+  "w143": [
+   "w143_syn_A1",
+   "w143_syn_A2",
+   "w143_syn_A3",
+   "w143_syn_A4",
+   "w143_walking_static",
+   "w143_walking_xyz",
+   "w143_sitting_static",
+   "w143_s1"
+  ]
+ },
+ "schema": "animcv_exp_w143_declaration_v1",
+ "sfm_sources": {
+  "s1": "NEW:sfm_s1_rgbmask",
+  "sitting_static": "NEW:sfm_sitting_static_rgbmask",
+  "syn_A1": "C:\\Users\\dna10\\animcv-w142\\results\\estimate\\sfm_syn_A1_rgbmask\\estimate.json",
+  "syn_A2": "C:\\Users\\dna10\\animcv-w142\\results\\estimate\\sfm_syn_A2_rgbmask\\estimate.json",
+  "syn_A3": "C:\\Users\\dna10\\animcv-w142\\results\\estimate\\sfm_syn_A3_rgbmask\\estimate.json",
+  "syn_A4": "C:\\Users\\dna10\\animcv-w141\\results\\estimate\\syn_rgbmask\\estimate.json",
+  "walking_static": "C:\\Users\\dna10\\animcv-w141\\results\\estimate\\walking_static_B\\estimate.json",
+  "walking_xyz": "C:\\Users\\dna10\\animcv-w141\\results\\estimate\\walking_xyz_B\\estimate.json"
+ },
+ "sitting_static": {
+  "archive_bytes": 443506009,
+  "archive_sha256": "6239d4b7f6edcab719b51c76434acdc238d03dad666758b51e6046992a7c3914",
+  "authentication": "official HTTPS URL; byte size equals the server Content-Length; downloaded SHA-256 recorded as identity",
+  "calibration_row_present": true,
+  "clauses_present": {
+   "Ground-truth trajectory length: 0.259m": true,
+   "Two persons sit at a desk, talk, and gesticulate a little bit. The Asus Xtion sensor has been kept in place manually.": true
+  },
+  "docs": "official TUM pages saved in W141 scratch (sha in the W141 preflight)",
+  "expected_bytes": 443506009,
+  "extracted_entries": [
+   "groundtruth.txt",
+   "rgb",
+   "rgb.txt"
+  ],
+  "groundtruth_txt_sha256": "13b03e2568833bb0a5ca901df587a882549b155682fff722eb94d726a3a4451c",
+  "gt_access": "only hashed here; read exclusively by the evaluate stage after all W143 outputs are frozen",
+  "licence_clause_present": true,
+  "ok": true,
+  "rgb_txt_sha256": "d5c41e27cfdce2ad1b5ed6dd5339f65782435849e9db748a490b1c5d4e8b97e3",
+  "server_last_modified": "Tue, 07 Aug 2012 18:50:04 GMT",
+  "url": "https://cvg.cit.tum.de/rgbd/dataset/freiburg3/rgbd_dataset_freiburg3_sitting_static.tgz"
+ },
+ "time": "2026-11-13T17:09:25+0900"
+}

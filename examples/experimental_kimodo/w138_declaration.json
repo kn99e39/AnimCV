@@ -1,0 +1,836 @@
+{
+ "adherence_mean_max_m": 0.05,
+ "anchors": {
+  "K_vs_U_and_K_vs_T": "IMPROVED_OVER_X iff K's arm-local wrist AND elbow max(entry, exit, peak) steps are each lower than X's AND K's total wrist+elbow flicks <= X's (X = W136 U, W137 T); reported findings, they do not raise the CASE",
+  "unusable_diagnostic": "100 mm arm-local step = explicit unusable-continuity diagnostic (W136/W137), not an optimisation target"
+ },
+ "attribution_rule": "arm-local (clavicle_l frame) wrist/elbow motion is identical in the raw and the projected views by construction (same upperarm_l/lowerarm_l local rotations, same bone lengths), so any arm-local failure is attributed to the RAW GENERATOR's arm rotations. World-trajectory differences raw vs projected are attributed to PARENT CONTEXT (split into shoulder translation and parent orientation). If the projected world/arm-local continuity fails but the raw world continuity is usable AND raw-minus-projected > 100 mm at a failing frame, the failure is attributed to FROZEN-PARENT PROJECTION; if both fail, to the RAW GENERATOR; if neither or the evidence conflicts, UNKNOWN. (W138: projected = PROXY_B 77-joint locals with only LeftArm/LeftForeArm local rotations from the raw output, Kimodo FK, model space.)",
+ "batch": 138,
+ "batch_issue_commit": "df9eddc1eb84b5de79f2eaab848b62b4a203e21f",
+ "bindings": {
+  "A": {
+   "path": "C:/Users/dna10/animcv-w129/inputs/S1_baseline.blend",
+   "sha256": "0803ab2bf31210fbb729bc81b76931729fdc3e12cce27b9507a5b8caf1d12402"
+  },
+  "A_w126_original": {
+   "path": "C:\\Users\\dna10\\animcv-w126\\runs\\S1_replay\\baseline\\baseline.blend",
+   "sha256": "0803ab2bf31210fbb729bc81b76931729fdc3e12cce27b9507a5b8caf1d12402"
+  },
+  "B": {
+   "path": "C:\\Users\\dna10\\animcv-w129\\results\\run\\S1\\B_S1.blend",
+   "sha256": "8899f43341ac1a7a565229a9551b1f8a79943cc038ad519e5544af89e772a33f"
+  },
+  "C": {
+   "path": "C:\\Users\\dna10\\animcv-w129\\results\\run\\S1\\C_S1.blend",
+   "sha256": "e04efb3552f9808f8ae89520284b0d94e860a986c1e6ec475ed6b07683f9ef04"
+  },
+  "Cpin": {
+   "path": "C:\\Users\\dna10\\animcv-w129\\results\\run\\S1\\Cpin_S1.blend",
+   "sha256": "3116d2ea3340d8356beb6adbf5f60f33c026ca92f47f7216137b4a00f6e31b02"
+  },
+  "S1_clip": {
+   "path": "C:/Users/dna10/animcv-w121/data/originals/64498918_Double_Kettlebell_Strict_Press_side_view_.webm",
+   "sha256": "de8feb9d515daa2bfaeed7167fdcc62028dd3f6450872c4fd81f8fb03dd6359c"
+  },
+  "W126V_accepted": {
+   "path": "C:/Users/dna10/animcv-w129/inputs/S1_W126V_accepted.blend",
+   "sha256": "7e2ab16511f4cbe111171df9af0bc2e1f7d8c09a57bd5a4feff284d34e908f40"
+  },
+  "W126V_accepted_original": {
+   "path": "C:\\Users\\dna10\\animcv-w126\\runs\\S1_replay\\accepted\\accepted_03_674ba278e9a0.blend",
+   "sha256": "7e2ab16511f4cbe111171df9af0bc2e1f7d8c09a57bd5a4feff284d34e908f40"
+  },
+  "W126V_proposal": {
+   "path": "C:\\Users\\dna10\\animcv-w126\\runs\\S1_replay\\edits\\W126V\\proposal.json",
+   "sha256": "582174bfcd3a284f9037409c945e2440b182a0c2593e618511b9effb280a9c84"
+  },
+  "W126_refs": {
+   "path": "C:\\Users\\dna10\\animcv-w126\\runs\\S1_replay\\lineage\\refs.json",
+   "sha256": "c0f1157dc7f067736059f754e23070de8ab5e425ec858e7415e2d7df17389b1b"
+  },
+  "W129_assessment": {
+   "path": "C:\\Users\\dna10\\animcv-w129\\results\\assess\\assessment.json",
+   "sha256": "df6693d22d58cb95f4e130e16e757ab9519c84fe359323560cf530da8b42791c"
+  },
+  "W129_declaration_v2": {
+   "path": "C:\\Users\\dna10\\animcv-w129\\results\\declare_v2\\declaration.json",
+   "sha256": "0c34aab0755c24a7e30a43b11a356c9f5dc0c54e5adda39a5b54b8d6e9f0b6f8"
+  },
+  "W129_engine_output": {
+   "path": "C:\\Users\\dna10\\animcv-w129\\results\\run\\S1\\model_R1\\engine_output.npz",
+   "sha256": "8a528ef1bf7976f22bd6212eddf7c5b525ee5f30e27ee01f501d565baac6a100"
+  },
+  "W129_evidence_manifest": {
+   "path": "C:\\Users\\dna10\\animcv-w129\\results\\evidence_manifest.json",
+   "sha256": "b07154ed1b20da67a247fa4d9d5a28222ecb1087cc39d172bbe0af8eca113c02"
+  },
+  "W129_preflight": {
+   "path": "C:\\Users\\dna10\\animcv-w129\\results\\preflight\\preflight.json",
+   "sha256": "46119b9c5273e0fe038809f959ef12664abc89794085b94ec8aa351b44813868"
+  },
+  "W129_projection": {
+   "path": "C:\\Users\\dna10\\animcv-w129\\results\\run\\S1\\projection.json",
+   "sha256": "e331344c8023da4b398ae3ac55c3be21d3955c486d6334c708a938fe41cf20aa"
+  },
+  "W129_raw_model_io": {
+   "path": "C:\\Users\\dna10\\animcv-w129\\results\\run\\S1\\model_R1\\raw_model_io.npz",
+   "sha256": "1ad837e417b69531b35aa3108fccd6c99e05b4f924741b56d58ceec44accfb6f"
+  },
+  "W129_run_result": {
+   "path": "C:\\Users\\dna10\\animcv-w129\\results\\run\\S1\\run_result.json",
+   "sha256": "9c88961523fa41881fd87e58d366de23138b24baca316dc33403c40f76da9a83"
+  },
+  "W135_D": {
+   "path": "C:\\Users\\dna10\\animcv-w135\\results\\run\\D_S1.blend",
+   "sha256": "2a5e441f75eeead09fc06242b93b595124b3da3a4e69c054e33e42f18e54cebe"
+  },
+  "W135_E": {
+   "path": "C:\\Users\\dna10\\animcv-w135\\results\\run\\E_S1.blend",
+   "sha256": "ac53a771ef5d3dfa80bee7df460fe0b1bd49873ff0950784bbc60a44bb1dc19f"
+  },
+  "W135_assessment": {
+   "path": "C:\\Users\\dna10\\animcv-w135\\results\\assess\\assessment.json",
+   "sha256": "b2336b8f4e35b3e8ef4abdffbe660f051e9d69bd483add7f5c3bf6665e399177"
+  },
+  "W135_declaration": {
+   "path": "C:\\Users\\dna10\\animcv-w135\\results\\declare\\declaration.json",
+   "sha256": "0c69dde0e13fb909687be8d1d0cfd07953fa51f6f645c531ab788a0a41f767fe"
+  },
+  "W135_evidence_manifest": {
+   "path": "C:\\Users\\dna10\\animcv-w135\\results\\evidence_manifest.json",
+   "sha256": "8543b5ecb95567da4a8cc204720254bc09c44004f1813fb5070aa7b4ba307c31"
+  },
+  "W135_run_result": {
+   "path": "C:\\Users\\dna10\\animcv-w135\\results\\run\\run_result.json",
+   "sha256": "4934fd071ebd53ce542388eb57b342afc001313a2d6b3f1147a689658ccbd7e0"
+  },
+  "W136:assess/assessment.json": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\assess\\assessment.json",
+   "sha256": "ed158590c9a9252a13533d62a4b2c530fc9cc0465bd0699c3b089fb183deb5df"
+  },
+  "W136:controls/controls.json": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\controls\\controls.json",
+   "sha256": "44be7c0fe6f2675bc6d9615b28ea7d4804a9c90331d54d4a6338640c30bf5362"
+  },
+  "W136:declare/declaration.json": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\declare\\declaration.json",
+   "sha256": "47259fbfd27a2e3fd762f8ebe362e2c92f616acde5b81cad5ea6de16bf616196"
+  },
+  "W136:preflight/R0_S1.blend": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\preflight\\R0_S1.blend",
+   "sha256": "523544bcb339cafe0c5032f792b3adbea979ba888b6cf6de289e37dbdf679117"
+  },
+  "W136:preflight/features/features.npz": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\preflight\\features\\features.npz",
+   "sha256": "f6bc7516fa6dab0b1837122538f84d2c6d7a2363eafcc3ddb4744cc92e70ea58"
+  },
+  "W136:preflight/preflight.json": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\preflight\\preflight.json",
+   "sha256": "67ab4959dc1656cd2554c5087a420efa0951a2530827f982bf938cbed08c6f9f"
+  },
+  "W136:preflight/readback_A.json": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\preflight\\readback_A.json",
+   "sha256": "f2b4ed448c40335212e1a60f1fed2a1e40d53789d721854ef19e433e4d553be3"
+  },
+  "W136:preflight/readback_B.json": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\preflight\\readback_B.json",
+   "sha256": "721ab7a08c3d4c5d511eddef571577759264c1d62eda6af08e47810b9cdafd64"
+  },
+  "W136:preflight/readback_C.json": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\preflight\\readback_C.json",
+   "sha256": "0925c190caf7b814d75b69e78f6342f000bf5da566229d5efa69e8527c38ab86"
+  },
+  "W136:preflight/readback_D.json": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\preflight\\readback_D.json",
+   "sha256": "d67dc3748876733cf443cbd1dd35e257a4889e4c5eb9610e60d070fff159bfa6"
+  },
+  "W136:preflight/readback_E.json": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\preflight\\readback_E.json",
+   "sha256": "7f9c58c306f548e7938c47493c402638e495075f0c505257a074664cd4425b7b"
+  },
+  "W136:preflight/readback_Pin.json": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\preflight\\readback_Pin.json",
+   "sha256": "787d3bb8c102c316f9b9d361af630b0d1c62787e2e446efe3ad5700d50eb90b9"
+  },
+  "W136:preflight/rig/S1_PROXY_B.glb": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\preflight\\rig\\S1_PROXY_B.glb",
+   "sha256": "42ca579a30074b22319a8dbbe1b33787cfe0437559d12e32aaec322bdff028af"
+  },
+  "W136:preflight/rig/annotation.json": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\preflight\\rig\\annotation.json",
+   "sha256": "2a29ba9b80f8916a3f05b3cc9d2d111ade68d3fbd7e77be1eef402c720f11d04"
+  },
+  "W136:preflight/rig/cond.npy": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\preflight\\rig\\cond.npy",
+   "sha256": "b674dea87f97fe44aa58258c835b4700a5acca62ea60def6995d0342d7ba6494"
+  },
+  "W136:preflight/rig/motions/S1_PROXY_B-Animation-000.npz": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\preflight\\rig\\motions\\S1_PROXY_B-Animation-000.npz",
+   "sha256": "8d62b42ae25e72f30357be24b0ded3dc1e3e099330ec542c19c44cf8dfed4de9"
+  },
+  "W136:preflight/rig/summary.json": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\preflight\\rig\\summary.json",
+   "sha256": "6e22d781157db855f98b2ec22ce989afb62c374600cb5c46ea06c72012528e54"
+  },
+  "W136:review/visual_review_S1.json": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\review\\visual_review_S1.json",
+   "sha256": "bea298b212df937f1947027f15e6de632f08e22c8ea3957ca13f9589693f5cc0"
+  },
+  "W136:run/Bc_S1.blend": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\run\\Bc_S1.blend",
+   "sha256": "12e00d64a96f609ad9e6e6f7818bdf7afb39fd9d574b479763d9c2fea336eab3"
+  },
+  "W136:run/U_S1.blend": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\run\\U_S1.blend",
+   "sha256": "e0fc3fe3a0485f5de97c84f9f3363fad0e0675dc09f9b7effd5eef69aaa432d3"
+  },
+  "W136:run/Upin_S1.blend": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\run\\Upin_S1.blend",
+   "sha256": "5809d1c84b8ecebd6ea25480e7a76aa1310b50371efef22710f65fede518246e"
+  },
+  "W136:run/Urev_S1.blend": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\run\\Urev_S1.blend",
+   "sha256": "8b0b7cbabdac7b378fa8936e361c5a3132a45579daa1ccff4fade89dc97451ba"
+  },
+  "W136:run/abcdeu_S1_30fps.mp4": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\run\\abcdeu_S1_30fps.mp4",
+   "sha256": "e9d78b6b3042031c69d1f9711058700b2daa30c6fc72e773652dec5663bd9e7d"
+  },
+  "W136:run/dump_U.json": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\run\\dump_U.json",
+   "sha256": "e0074b972f8e7003fdec7132b8b6e5244948c05e5ff574815d2b5f7b50ebce2e"
+  },
+  "W136:run/model/infer_record.json": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\run\\model\\infer_record.json",
+   "sha256": "bbc63ec36e5e21e27242e408400a9d15e8891961317404649cecee8d9dbf652d"
+  },
+  "W136:run/model/official/motion_edit/motions/S1_PROXY_B-Animation-000-gt_rep_0-0.npy": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\run\\model\\official\\motion_edit\\motions\\S1_PROXY_B-Animation-000-gt_rep_0-0.npy",
+   "sha256": "fe50b40eee46da4849f465510f462bc7612f2492efc664ee6dabd8ae6be62d05"
+  },
+  "W136:run/model/official/motion_edit/motions/S1_PROXY_B-Animation-000-rep_0-0.npy": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\run\\model\\official\\motion_edit\\motions\\S1_PROXY_B-Animation-000-rep_0-0.npy",
+   "sha256": "e68d14f591cba7076d28048c22f9630f399e65299e2a4493d6dc6f851d76f3fb"
+  },
+  "W136:run/model/raw_model_io.npz": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\run\\model\\raw_model_io.npz",
+   "sha256": "14e80250f79af5d3bdee6f3c8efa5792c61bddfdd6d5f45ee4b60affaaac4d0a"
+  },
+  "W136:run/readback_U.json": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\run\\readback_U.json",
+   "sha256": "64805793b011ebc085a259cc0b8837cc19d4bf7f256af75b862007b529c1e9a3"
+  },
+  "W136:run/run_result.json": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\run\\run_result.json",
+   "sha256": "348f5b889f27efbad5181f6b106a1e4d1f03b324f02f1c53ab34625ba49e8dcc"
+  },
+  "W136_evidence_manifest": {
+   "path": "C:\\Users\\dna10\\animcv-w136\\results\\evidence_manifest.json",
+   "sha256": "b25805a4f5b07bf71e85f671d9fde289e5f7a50513ab8701922be2f7b827a91f"
+  },
+  "W137:assess/assessment.json": {
+   "path": "C:\\Users\\dna10\\animcv-w137\\results\\assess\\assessment.json",
+   "sha256": "0d582a0ca98503430ae1192cc1a59eddcef9f96aaaa8f6b99adb4d7b767f086e"
+  },
+  "W137:declare/declaration.json": {
+   "path": "C:\\Users\\dna10\\animcv-w137\\results\\declare\\declaration.json",
+   "sha256": "9dc6d74eda54bc4cad2ac279456fd33fcaaa2a802314681262fc9f6f93b4a0d7"
+  },
+  "W137:run/T_S1.blend": {
+   "path": "C:\\Users\\dna10\\animcv-w137\\results\\run\\T_S1.blend",
+   "sha256": "95f25850fd5bef24b031a99bfba351a8285133cd8ba82dfe22384ff1ec2f0ab6"
+  },
+  "W137:run/Tc_S1.blend": {
+   "path": "C:\\Users\\dna10\\animcv-w137\\results\\run\\Tc_S1.blend",
+   "sha256": "494d1d796aa4736de996de2e7e124b22e52f542abd24154d6c992f0cf804033d"
+  },
+  "W137:run/dump_T.json": {
+   "path": "C:\\Users\\dna10\\animcv-w137\\results\\run\\dump_T.json",
+   "sha256": "c6e1f5c4cd7fa516c1a8b58a5e23db6bf58ea64b8c65560d9354072103ffaca6"
+  },
+  "W137:run/readback_T.json": {
+   "path": "C:\\Users\\dna10\\animcv-w137\\results\\run\\readback_T.json",
+   "sha256": "7d5945a9dcfd11bae177933f74c37ff8f741ccaea003e9cbace04b62e046e841"
+  },
+  "W137:run/run_result.json": {
+   "path": "C:\\Users\\dna10\\animcv-w137\\results\\run\\run_result.json",
+   "sha256": "e0b83668ddbfb06ba963c5432142543a037aaac15be8cdf5447c8ddd3eaec28b"
+  },
+  "W137_evidence_manifest": {
+   "path": "C:\\Users\\dna10\\animcv-w137\\results\\evidence_manifest.json",
+   "sha256": "8561d239f6a95aa849da92555d35c9d1e38ae79768ac0a997f6bd53c9a5b7a19"
+  }
+ },
+ "case_rule": {
+  "A": "all mechanical gates pass AND GENERATED_EFFECT AND Q1-Q8 pass (unattainable here: Q8 declared NOT REVIEWED)",
+  "B": "a valid model Action exists (all mechanical gates pass) but NO_GENERATED_EFFECT or any of Q1-Q8 fails (improvement absent, unproven or review incomplete)",
+  "C": "real inference executed but: decoder/projection refusal (RIG_PROJECTION_FAILED), M4 fails, any of M1-run, M2, M3, M5, M6, M7, M11, M12 fails, projected unusable continuity (any K arm-local wrist or elbow entry/exit/peak step in 171->172 .. 199->200 > 100 mm), or raw full-body continuity UNUSABLE (RAW_RULE)",
+  "D": "declaration/instrument changed or model output preceded the declaration (DECLARATION_INVALID); a negative control does not fail closed (M10); integrity (M9) fails; the matched control Kc != B (M8) (INTEGRITY_FAILED)",
+  "STOP": "preflight not OK (STATE_CHANGED / DATA_BLOCKED / ACCESS_BLOCKED / RESOURCE_BLOCKED / REPRESENTATION_BLOCKED / CONDITIONING_BLOCKED) or the vendor conditioning refuses the declared keyframes before any sample exists -> the named STOP",
+  "precedence": "STOP > D > C > B > A; a mechanical PASS, synthetic PASS or a video file alone never yields A"
+ },
+ "control": "Kc = PROXY_B through the vendor feature roundtrip (preflight encode stage) and the identical decode/import path (expected == B within 1e-5 m, M8)",
+ "domain": {
+  "channels": [
+   "upperarm_l",
+   "lowerarm_l"
+  ],
+  "frames": [
+   172,
+   199
+  ],
+  "pin_action": [
+   132,
+   140
+  ],
+  "pin_target_m": [
+   -0.0927,
+   0.2199,
+   1.4506
+  ],
+  "pin_tolerance_m": 0.001
+ },
+ "fresh_dump_sha256": {
+  "A": "bfba5c850298a32e0b3babd06f153181b30ab7e10285930f7a6b08bdcab9da41",
+  "B": "8bd39a83860a1ed61e3c4bc8401001461e982ed76b0a4b63d1b3ce4b36f0cdee",
+  "C": "e03e36f7c389ca38a4f3d100b9bd96784b2efc36eca277af78e7010e1d90e512",
+  "D": "653e448a9383618a3780e0796c256b1880d01f0d515c6ff2eb6abaa23930306d",
+  "E": "6e9a327551e65640146397ad76d8130209ba77be649db025e20d917188911d8d",
+  "T": "02b6e1eeae7a443494863362c67836e603d1fe2f8f397b990963d7da3e779b14",
+  "U": "3fc513ff3f75be28267fa807fd292b91015d9e6d309f967362be5becad1703cd"
+ },
+ "fresh_readback_sha256": {
+  "A": "f2b4ed448c40335212e1a60f1fed2a1e40d53789d721854ef19e433e4d553be3",
+  "B": "721ab7a08c3d4c5d511eddef571577759264c1d62eda6af08e47810b9cdafd64",
+  "C": "0925c190caf7b814d75b69e78f6342f000bf5da566229d5efa69e8527c38ab86",
+  "D": "d67dc3748876733cf443cbd1dd35e257a4889e4c5eb9610e60d070fff159bfa6",
+  "E": "7f9c58c306f548e7938c47493c402638e495075f0c505257a074664cd4425b7b",
+  "Pin": "787d3bb8c102c316f9b9d361af630b0d1c62787e2e446efe3ad5700d50eb90b9",
+  "T": "7d5945a9dcfd11bae177933f74c37ff8f741ccaea003e9cbace04b62e046e841",
+  "U": "64805793b011ebc085a259cc0b8837cc19d4bf7f256af75b862007b529c1e9a3"
+ },
+ "generated_effect_rule": "GENERATED_EFFECT iff max over Action 172..199 of max(|elbow_K - elbow_Kc|, |wrist_K - wrist_Kc|) (world, fresh readback) >= 10 mm; otherwise NO_GENERATED_EFFECT",
+ "historical": "A, B, C (W129), D, E (W135), W136 U and W137 T are read-only frozen references; no model is re-run for them",
+ "identities": {
+  "code": {
+   "commit": "e1c219c99b4b94ba48be1fb6a1cbc64ecee4c954",
+   "files_sha256": {
+    "LICENSE": "987057aca9b5c6f338cadfcc2666d74a093c43e6fd02173c5d9ed63ec66cc53d",
+    "kimodo/constraints.py": "852254d06a9c04d9f253bf436f5b4f86fd9fd496a4f5c14124ee72e270c64bd2",
+    "kimodo/model/backbone.py": "c07a8f9b8ea8ab4d67cbdae139418161d4235b92815ee88ac880fe87375f216e",
+    "kimodo/model/cfg.py": "fa969b09b61e8a5fed06b5138b412fda81b76fd821b9807bca2c2cf7bc1e44f7",
+    "kimodo/model/diffusion.py": "b53c14b20756c70766c39bf7066f59e9c91c7e13115e4e453d5b48f80cd9e197",
+    "kimodo/model/kimodo_model.py": "455ea675a4095dbd8f271faf6ce31889ac8223fea765e2cedc8ee451b4dd4c09",
+    "kimodo/model/llm2vec/llm2vec_wrapper.py": "8686174e18d3eca708c28dbfc87f62398b68641c1d5b67e55444caf91f0dbd4e",
+    "kimodo/model/load_model.py": "26669ded0c12e8aa109b24cad34b9f1c6f2b8a04e9485651ef131b25ef43923e",
+    "kimodo/model/loading.py": "8a7c2893be0231e60a502610f95ceaf49bc1b8c482af2471994bdacc257df510",
+    "kimodo/model/twostage_denoiser.py": "64e40719c0af7ef1af72021a031459bbad6d82217fcc61e9bb869b7ae7b82818",
+    "kimodo/motion_rep/reps/base.py": "1711c574dc84921a6116719e7b589af837239c5594ee2249cd2eb69f49485e25",
+    "kimodo/motion_rep/reps/kimodo_motionrep.py": "d46810d54f46dd3b052c7128c67358c09488c5bf4709b67d23bad2fc2bd0447b",
+    "kimodo/sanitize.py": "3fdd260a78a38d4083a2a2919305fa2ac130c213b8dc9e4024ead7ff07d07cc5",
+    "kimodo/skeleton/base.py": "605d2c35d92a36bb9b1dfbabcdcd9645e5da6eaf080cfcf63937a3da32dbbc00",
+    "kimodo/skeleton/definitions.py": "9e4b67ea65a8535d17a2b2567c01f499348dc40845d8b8fb8885fdb0bc411812",
+    "kimodo/skeleton/kinematics.py": "80ada4ca66df1326bf8d1f9f60b6829edbee6364b4921ae0a3c3ee4f05b887e3"
+   },
+   "licence": "Apache-2.0",
+   "repo": "https://github.com/nv-tlabs/kimodo"
+  },
+  "encode_sha256": {
+   "constraints.json": "beedf39049bc3949547e857fef664552785db47af9554847f2cc9f554c4fbf1b",
+   "encode.json": "84b45facb3bd5f380cd02490c51fb494109512f4212bfb853f18d9a33d6e6758",
+   "encoded.npz": "250797328e8af25a7ac0fe5800cf258ce209755687c23b055dc647c736eb5e4f"
+  },
+  "model": {
+   "files_sha256": {
+    "LICENSE": "11ccdcb47db87ac30b63765b5e5154403026c4fbb52c19919d99d912ec454e19",
+    "README.md": "59bea6e02b9c6d25472f75312ee45831594856fe02108ae4a59f9a681ba13405",
+    "config.yaml": "82f1e9f44d0df517d8ebde03d2e9396fd0bf372360714757901c1d97a2626599",
+    "model.safetensors": "fdcef624140a12c0a4840192ce0b75cafb4e73228a893da3864b4a990d3e919e",
+    "stats/motion/body/mean.npy": "d42f35f8bb7ef52fdec66ae29c5cf590bd038f4f1aabd2d560d1d0f78663ed6f",
+    "stats/motion/body/std.npy": "965bbad497726ef4e6c46b519827e2cbcb29f974214b25718d20a725b82279ed",
+    "stats/motion/global_root/mean.npy": "6c110980f9a0386e57a8c186f8eac7f55dc05bade92f44c4b391450ada598da1",
+    "stats/motion/global_root/std.npy": "fb15aeed7143f5f0754611f0acf5fa5f55d1f6492a49c23e490fc62f7bf11fb0",
+    "stats/motion/local_root/mean.npy": "4c36e8e33d6d51e6c8206ac796a52b7b3a4da7f0dc49ebdbb4f130178e3e9d31",
+    "stats/motion/local_root/std.npy": "5f57b41f51ced7832cffa81702f6e04d8694e16475c184baec6c8be0e98c8dba"
+   },
+   "gated": false,
+   "licence": "nvidia-open-model-license",
+   "local_dir": "C:\\Users\\dna10\\animcv-w138\\model\\Kimodo-SOMA-RP-v1.2",
+   "repo": "nvidia/Kimodo-SOMA-RP-v1.2",
+   "revision": "0e3c89024d896064b6851201373f7834784a386b"
+  },
+  "proxyB_clip_sha256": "eb216abb0d2d48c2325c622b68800ecdb7f6d681acd3dbddf2667333df9ac023",
+  "runtime": {
+   "cuda": "12.8",
+   "device": "NVIDIA GeForce RTX 5080",
+   "freeze_sha256": "49b1c76485fbaf497e978c6ff7d92cfd43f38659c0d011cf18b56b68c59399d2",
+   "nvidia_smi": "NVIDIA GeForce RTX 5080, 16303 MiB, 2236 MiB, 596.49",
+   "python": "C:\\Users\\dna10\\animcv-w138\\env\\km311\\Scripts\\python.exe",
+   "torch": "2.7.1+cu128"
+  },
+  "skeleton_npz_sha256": "1e33ac691249f307433484a5ac653c13b42b44c21b12aed4924294c9bc704eae",
+  "text_encoder": "NONE: null encoder (zeros of the vendor shape [B,1,4096], lengths 1) through the documented load_model(text_encoder=...) parameter; prompt ''; the gated meta-llama/Meta-Llama-3-8B-Instruct base and the LLM2Vec adapters are never requested"
+ },
+ "import": {
+  "builder": "unchanged W129 build_variant (refuses any other channel/frame), new opt-in Action from a byte copy of A",
+  "channels": [
+   "upperarm_l",
+   "lowerarm_l"
+  ],
+  "frames": [
+   172,
+   199
+  ],
+  "not_imported": "every other generated joint and every frame outside 172..199 (incl. the generated keyframe frames 163..171, 200..208)",
+  "values": "decoded K basis quaternions, unit-norm, sign-canonical to A's key"
+ },
+ "inference": {
+  "cfg": {
+   "source": "vendor defaults (Kimodo.__call__ default, configuration guide)",
+   "type": "separated",
+   "weight": [
+    2.0,
+    2.0
+   ]
+  },
+  "no": "no seed/prompt/cfg/step/window/keyframe sweep, no second inference, no training/finetuning, no post-hoc smoothing/IK/blending/clamp/threshold change",
+  "one_run": true,
+  "path": "kimodo.load_model('Kimodo-SOMA-RP-v1.2', device='cuda:0', text_encoder=<null>) with CHECKPOINT_DIR = the local verified checkpoint parent, HF offline; ONE Kimodo.__call__('', 46, num_denoising_steps=100, constraint_lst=[fullbody], cfg_weight=[2.0, 2.0], cfg_type='separated', num_samples=None, first_heading_angle=<frame-0 heading>, post_processing=False)",
+  "post_processing": "OFF (declared): the vendor optional post-processor needs a C++ extension and would alter the raw generator output; AnimCV-side preservation never depends on the model",
+  "recorder": "Kimodo._generate wrapped read-only: validates the received motion_mask BEFORE sampling, counts calls (a second call raises), records observed_motion/mask/heading and the returned features; identical arguments forwarded",
+  "seed": 10,
+  "seed_note": "seed 10 = the W136/W137 seed, chosen for consistency, not tuned; kimodo.tools.seed_everything(10) immediately before the call",
+  "steps": 100
+ },
+ "instruction_blob": "8129b0b504cfdca11c313ffcd6c3a53d75e2bd32",
+ "instrument_sha256_lf": {
+  "scripts/w129_motionbricks_harness.py": "ebfa4481e823f999d34c0aba20253e0ec8edd17143ca649207ca2cd4118b3b55",
+  "scripts/w136_unimate_harness.py": "a9b5e981b0156de00fed020a639d5e6686bb6d094c87cf743d29f8f0f87f5d46",
+  "scripts/w137_unimate_inbetween_harness.py": "171fb64acdb120443513b05688e17bd456b109970407849e257bc5896aa572f3",
+  "scripts/w138_generator_qualification.py": "bb7a95f26bc48b56031a7b9f6e378615ff4f093ffdad75d3b5f9b72a56188978",
+  "scripts/w138_kimodo_harness.py": "fe76dc6cf3563425c5a0ae924fca3f1426396a2fc03deba43eb96dbb5eda5453",
+  "scripts/w138_kimodo_infer.py": "be515cd8f2bae1ab3fe66c18c44abf77ce3721940c478b78cf535d8da5ee833d",
+  "src/app/experimental_elbow_prior.py": "13fb31321a5575e4226b18bdc109f2c4a719d997c57ec52fca757c1f4b0080e9",
+  "src/app/experimental_kimodo.py": "90e337005ef6d48550e4a2358091b842ac2db892b5ad4ab971033aeffda5deb5",
+  "src/app/experimental_motionbricks.py": "3172d5afb64b206828892106c983bbed3a1f5dbeabcbaad5c7f7c9aeeae290dc",
+  "src/app/experimental_unimate.py": "f3829077b612cd7c24637dae46778aa6f4b04c02a76ffef93a9d89349e9d0fa9",
+  "src/blender/experimental_action_stage.py": "c977da7d77ed38d8fc90bcc257493edb4cbe62d39f4f84dfa53e66ddf570fb20",
+  "src/blender/experimental_motionbricks_stage.py": "ad1bd44cffbfb729a04051102604cf27672568e2e6f2548c92526fc049f06488",
+  "tests/test_experimental_kimodo.py": "0ec41b77a77bf6de132e2f82143585af3276259bc18f36a408095ddb396dad02"
+ },
+ "mapping": {
+  "decode": "output local_rot_mats (vendor somaskel77 via to_SOMASkeleton77) -> W129 base_basis_from_soma for upperarm_l (LeftArm) and lowerarm_l (LeftForeArm)",
+  "feature_roundtrip_quat_err": {
+   "lowerarm_l": 1.1483810435919395e-07,
+   "upperarm_l": 7.878452816553685e-08
+  },
+  "feature_time_identity": {
+   "lowerarm_l": {
+    "shift+1": 0.22055824038761834,
+    "shift-1": 0.22055820946858878,
+    "shift0": 1.5038148620805103e-07
+   },
+   "upperarm_l": {
+    "shift+1": 0.22078127733370967,
+    "shift-1": 0.22078123889087076,
+    "shift0": 1.0666636884870684e-07
+   }
+  },
+  "mapping": {
+   "A_blender_to_soma": [
+    [
+     1.0,
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     -1.0,
+     0.0
+    ]
+   ],
+   "alignment": {
+    "Chest": {
+     "primary_residual_deg": 0.0,
+     "rest_alignment_deg": 8.938650512337928
+    },
+    "Head": {
+     "primary_residual_deg": 8.537736462515939e-07,
+     "rest_alignment_deg": 18.397639067367198
+    },
+    "Hips": {
+     "primary_residual_deg": 0.0,
+     "rest_alignment_deg": 0.19873527970576116
+    },
+    "LeftArm": {
+     "primary_residual_deg": 0.0,
+     "rest_alignment_deg": 54.832169130337
+    },
+    "LeftFoot": {
+     "primary_residual_deg": 0.0,
+     "rest_alignment_deg": 8.529659654353216
+    },
+    "LeftForeArm": {
+     "primary_residual_deg": 8.537736462515939e-07,
+     "rest_alignment_deg": 65.00085900328074
+    },
+    "LeftHand": {
+     "primary_residual_deg": 8.537736462515939e-07,
+     "rest_alignment_deg": 51.634126181515995
+    },
+    "LeftLeg": {
+     "primary_residual_deg": 0.0,
+     "rest_alignment_deg": 3.3259183810317934
+    },
+    "LeftShin": {
+     "primary_residual_deg": 0.0,
+     "rest_alignment_deg": 2.4479156974641487
+    },
+    "LeftShoulder": {
+     "primary_residual_deg": 0.0,
+     "rest_alignment_deg": 19.667355054250205
+    },
+    "LeftToeBase": {
+     "primary_residual_deg": 0.0,
+     "rest_alignment_deg": 13.927753393781579
+    },
+    "Neck1": {
+     "primary_residual_deg": 0.0,
+     "rest_alignment_deg": 2.8356832430726313
+    },
+    "Neck2": {
+     "primary_residual_deg": 0.0,
+     "rest_alignment_deg": 5.800490681138179
+    },
+    "RightArm": {
+     "primary_residual_deg": 0.0,
+     "rest_alignment_deg": 54.83186099379259
+    },
+    "RightFoot": {
+     "primary_residual_deg": 0.0,
+     "rest_alignment_deg": 8.52947812659919
+    },
+    "RightForeArm": {
+     "primary_residual_deg": 8.537736462515939e-07,
+     "rest_alignment_deg": 65.0008080665039
+    },
+    "RightHand": {
+     "primary_residual_deg": 8.537736462515939e-07,
+     "rest_alignment_deg": 51.770003277754135
+    },
+    "RightLeg": {
+     "primary_residual_deg": 1.4787793334710982e-06,
+     "rest_alignment_deg": 3.32594049067909
+    },
+    "RightShin": {
+     "primary_residual_deg": 8.537736462515939e-07,
+     "rest_alignment_deg": 2.4735553859584605
+    },
+    "RightShoulder": {
+     "primary_residual_deg": 0.0,
+     "rest_alignment_deg": 19.668020347906722
+    },
+    "RightToeBase": {
+     "primary_residual_deg": 0.0,
+     "rest_alignment_deg": 13.927471323000024
+    },
+    "Spine1": {
+     "primary_residual_deg": 0.0,
+     "rest_alignment_deg": 11.064040366133028
+    },
+    "Spine2": {
+     "primary_residual_deg": 8.537736462515939e-07,
+     "rest_alignment_deg": 2.581955531668707
+    }
+   },
+   "coverage": {
+    "Chest": "RIG_REST spine_05: undriven in the frozen Action (UNKNOWN in the video; rest is SYNTHETIC)",
+    "Head": "PROXY of neck_02 (rig REST, undriven)",
+    "Hips": "OBJECT_PROXY: Armature Object rotation = S0 W93 torso-frame hypothesis (GT-free); hips position = thigh-head midpoint, NO root travel observed (SYNTHETIC zero travel)",
+    "Jaw": "SYNTHETIC_SOMA_REFERENCE (no BaseRig counterpart; SOMA rest relative to its parent)",
+    "LeftArm": "DRIVEN from upperarm_l: frozen W102 M1+S0 3D hypothesis via W105 (GT-free; not observed truth)",
+    "LeftEye": "SYNTHETIC_SOMA_REFERENCE (no BaseRig counterpart; SOMA rest relative to its parent)",
+    "LeftFoot": "RIG_REST foot_l: undriven in the frozen Action (UNKNOWN in the video; rest is SYNTHETIC)",
+    "LeftForeArm": "DRIVEN from lowerarm_l: frozen W102 M1+S0 3D hypothesis via W105 (GT-free; not observed truth)",
+    "LeftHand": "RIG_REST hand_l: undriven in the frozen Action (UNKNOWN in the video; rest is SYNTHETIC)",
+    "LeftHandMiddleEnd": "SYNTHETIC_SOMA_REFERENCE (no BaseRig counterpart; SOMA rest relative to its parent)",
+    "LeftHandThumbEnd": "SYNTHETIC_SOMA_REFERENCE (no BaseRig counterpart; SOMA rest relative to its parent)",
+    "LeftLeg": "DRIVEN from thigh_l: frozen W102 M1+S0 3D hypothesis via W105 (GT-free; not observed truth)",
+    "LeftShin": "DRIVEN from calf_l: frozen W102 M1+S0 3D hypothesis via W105 (GT-free; not observed truth)",
+    "LeftShoulder": "RIG_REST clavicle_l: undriven in the frozen Action (UNKNOWN in the video; rest is SYNTHETIC)",
+    "LeftToeBase": "PROXY of foot_l (rig REST, undriven)",
+    "Neck1": "RIG_REST neck_01: undriven in the frozen Action (UNKNOWN in the video; rest is SYNTHETIC)",
+    "Neck2": "RIG_REST neck_02: undriven in the frozen Action (UNKNOWN in the video; rest is SYNTHETIC)",
+    "RightArm": "RIG_REST upperarm_r: undriven in the frozen Action (UNKNOWN in the video; rest is SYNTHETIC)",
+    "RightEye": "SYNTHETIC_SOMA_REFERENCE (no BaseRig counterpart; SOMA rest relative to its parent)",
+    "RightFoot": "RIG_REST foot_r: undriven in the frozen Action (UNKNOWN in the video; rest is SYNTHETIC)",
+    "RightForeArm": "RIG_REST lowerarm_r: undriven in the frozen Action (UNKNOWN in the video; rest is SYNTHETIC)",
+    "RightHand": "RIG_REST hand_r: undriven in the frozen Action (UNKNOWN in the video; rest is SYNTHETIC)",
+    "RightHandMiddleEnd": "SYNTHETIC_SOMA_REFERENCE (no BaseRig counterpart; SOMA rest relative to its parent)",
+    "RightHandThumbEnd": "SYNTHETIC_SOMA_REFERENCE (no BaseRig counterpart; SOMA rest relative to its parent)",
+    "RightLeg": "DRIVEN from thigh_r: frozen W102 M1+S0 3D hypothesis via W105 (GT-free; not observed truth)",
+    "RightShin": "DRIVEN from calf_r: frozen W102 M1+S0 3D hypothesis via W105 (GT-free; not observed truth)",
+    "RightShoulder": "RIG_REST clavicle_r: undriven in the frozen Action (UNKNOWN in the video; rest is SYNTHETIC)",
+    "RightToeBase": "PROXY of foot_r (rig REST, undriven)",
+    "Spine1": "DRIVEN from spine_01: frozen W102 M1+S0 3D hypothesis via W105 (GT-free; not observed truth)",
+    "Spine2": "RIG_REST spine_03: undriven in the frozen Action (UNKNOWN in the video; rest is SYNTHETIC)"
+   },
+   "det_A": 1.0,
+   "hip_scale": 1.0745687405990778,
+   "joint_map": {
+    "Chest": [
+     "BONE",
+     "spine_05"
+    ],
+    "Head": [
+     "PROXY",
+     "neck_02"
+    ],
+    "Hips": [
+     "OBJECT",
+     null
+    ],
+    "LeftArm": [
+     "BONE",
+     "upperarm_l"
+    ],
+    "LeftFoot": [
+     "BONE",
+     "foot_l"
+    ],
+    "LeftForeArm": [
+     "BONE",
+     "lowerarm_l"
+    ],
+    "LeftHand": [
+     "BONE",
+     "hand_l"
+    ],
+    "LeftLeg": [
+     "BONE",
+     "thigh_l"
+    ],
+    "LeftShin": [
+     "BONE",
+     "calf_l"
+    ],
+    "LeftShoulder": [
+     "BONE",
+     "clavicle_l"
+    ],
+    "LeftToeBase": [
+     "PROXY",
+     "foot_l"
+    ],
+    "Neck1": [
+     "BONE",
+     "neck_01"
+    ],
+    "Neck2": [
+     "BONE",
+     "neck_02"
+    ],
+    "RightArm": [
+     "BONE",
+     "upperarm_r"
+    ],
+    "RightFoot": [
+     "BONE",
+     "foot_r"
+    ],
+    "RightForeArm": [
+     "BONE",
+     "lowerarm_r"
+    ],
+    "RightHand": [
+     "BONE",
+     "hand_r"
+    ],
+    "RightLeg": [
+     "BONE",
+     "thigh_r"
+    ],
+    "RightShin": [
+     "BONE",
+     "calf_r"
+    ],
+    "RightShoulder": [
+     "BONE",
+     "clavicle_r"
+    ],
+    "RightToeBase": [
+     "PROXY",
+     "foot_r"
+    ],
+    "Spine1": [
+     "BONE",
+     "spine_01"
+    ],
+    "Spine2": [
+     "BONE",
+     "spine_03"
+    ]
+   },
+   "synthetic_model_joints": [
+    "Jaw",
+    "LeftEye",
+    "RightEye",
+    "LeftHandThumbEnd",
+    "LeftHandMiddleEnd",
+    "RightHandThumbEnd",
+    "RightHandMiddleEnd"
+   ]
+  },
+  "mapping_time_identity": {
+   "lowerarm_l": {
+    "shift+1": 0.2205582617579131,
+    "shift-1": 0.22055825415830282,
+    "shift0": 1.1118410625510222e-07
+   },
+   "upperarm_l": {
+    "shift+1": 0.2207812588154187,
+    "shift-1": 0.22078125869451315,
+    "shift0": 8.261733663861293e-08
+   }
+  },
+  "mask_contract": {
+   "channels_per_row": [
+    95
+   ],
+   "constrained_rows": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    37,
+    38,
+    39,
+    40,
+    41,
+    42,
+    43,
+    44,
+    45
+   ],
+   "n_constrained_rows": 18
+  },
+  "numpy_vs_vendor_fk_max_m": 4.4907144136629995e-07,
+  "skeleton": "Kimodo somaskel77 (names, parents, neutral joints from the pinned package assets)"
+ },
+ "mechanical_gates": {
+  "M0": "selection/identity/rights/access/resources preflight OK: frozen selection matrix (sha 4860bc9f..., committed in 4b64557) selects Kimodo in the no-text mode; pinned clean Kimodo clone e1c219c; local checkpoint files == published LFS SHA-256 at revision 0e3c890 (ungated); licence/README/config byte-identical to the qualification copies; every frozen SHA-256 (W137's 55 identities + W137 manifest + W137 T/Tc/records); fresh A..E/U/T/Pin readbacks world-bit-equal to W137's",
+  "M1": "representation (no model): numpy FK on Kimodo's SOMA77 == vendor FK <= 1e-6 m; vendor 30<-77 slice == the 30 model joints; no mirroring; A == B at all 18 keyframes; PROXY_B direct mapping decode == B keys <= 1e-5 at shift 0 and >= 100x worse at +-1; vendor feature roundtrip (encode/normalise/unnormalise/inverse/30->77) decode == B keys <= 1e-5 at shift 0 and >= 100x worse at +-1; vendor FK of the conditioning == numpy FK <= 1e-5 m",
+  "M10": "negative controls (controls stage) all fail closed",
+  "M11": "native-rate video: 240 frames written and decoded at 30.000 fps",
+  "M12": "import fidelity: K's Blender-stored upperarm_l/lowerarm_l keys at 172..199 equal the imported quaternions <= 1e-6 AND the W129 basis recovered from K's evaluated pose matrices equals them <= 1e-5",
+  "M2": "Action: K and Kc each a separate .blend with exactly 1 separately named Action; 32 CONSTANT F-curves keyed 1..240; scene 30 fps, 1..240",
+  "M3": "footprint: changed stored keys vs A only upperarm_l/lowerarm_l rotation at Action 172..199; every non-left-arm world point and the object matrix bit-equal to A on all 240 integer frames and all subframes; left arm bit-equal outside 172..199 (incl. Action 171 and 200); no subframe change outside [172,200)",
+  "M4": "conditioning: exactly one Kimodo._generate call via the official Kimodo.__call__ with an empty prompt (null encoder called once with [''], vendor zeroes the empty prompt); the motion_mask received by the sampler, validated BEFORE sampling, constrains exactly window rows 0..8 and 37..45 (Action 163..171, 200..208) and NO interior row; the received observed_motion equals the no-model vendor encode-stage observed_motion (<= 1e-5); raw keyframe adherence: mean joint-position error of the raw output over the 18 keyframes x 30 joints <= 0.05 m; interior not a PROXY_B copy (exact-equal joint fraction <= 0.5); the numpy 77-joint FK of the returned rotations equals the vendor 30-joint posed joints on the 26 non-hand-end joints <= 1e-4 m",
+  "M5": "rig validity: upperarm/lowerarm world length range <= 0.1 mm over 171..200 for K; all imported quaternions finite and unit; no decoder refusal (proper rotations)",
+  "M6": "hard pin: K composed onto the W126V-accepted .blend keeps every Action 132..140 hand_l residual equal to W126V's and <= 1e-6 m; pin frames bit-equal; composed footprint as M3 relative to W126V",
+  "M7": "reversibility: K with A's interior keys written back (Krev) is world-bit-equal to A on every integer frame and subframe",
+  "M8": "matched no-generator control: Kc (PROXY_B through the vendor feature roundtrip and the identical decode/import path) equals B within 1e-5 m on every frame",
+  "M9": "integrity: every frozen SHA-256 unchanged after the run; local checkpoint SHA-256 unchanged"
+ },
+ "metrics": [
+  "arm-local wrist (W129 armlocal_quality) and elbow (W135 elbow_metrics) entry/exit/peak/flicks for A,B,C,D,E,U,T,K,Kc",
+  "world wrist path, flex range, hinge (W129 quality); wrist net rise; deviation from B",
+  "K vs Kc (generated effect); K vs U; K vs T",
+  "raw full body (model space): per joint group interior deviation from PROXY_B, entry/exit/peak steps and excess; keyframe adherence; root drift; positions block vs rotations; neck height (collapse)",
+  "raw vs projected (model space)",
+  "world shoulder step (shared, source-derived parent popping)",
+  "source-2D torso camera (diagnostic only)"
+ ],
+ "model_output_exists": false,
+ "outcomes_inspected": false,
+ "pre_declaration_disclosures": [
+  "resumed Batch: the qualification instrument (69d2215) and the frozen selection matrix (4b64557) were committed by an earlier, interrupted run of this Batch and are treated as binding; the checkpoint was downloaded in this run (anonymous, pinned revision) after the selection and verified against the published LFS SHA-256 before any use",
+  "input-only measurements before this declaration (no model): numpy-vs-vendor FK, the direct mapping roundtrip and the vendor float32 feature roundtrip (max quaternion error 1.15e-07); the feature-roundtrip tolerance 1e-5 (= the W136/W137 quaternion tolerance) and the M8 tolerance 1e-5 m (= W137) were confirmed after that measurement",
+  "the window (Action 163..208), the 9+9 keyframe split, no post-processing and the 0.05 m adherence bound were chosen before any output from the vendor documentation (sparse keyframes < 20; fullbody in-betweening benchmarked in the no-text mode)",
+  "the torso-only affine camera is known from W136/W137 to fail its 20 px gate; re-fitted on A only (input-only) and recorded here"
+ ],
+ "preflight_sha256": "aedc2beb34f471098f9246deb4357f435e791610c36f82f2fd38fb44bd5f3f30",
+ "proxy": {
+  "canonical": "root XZ translated to (0,0) at window frame 0 (shift [0.18366174336383392, 0.0, -0.030235878975092115]); first_heading_angle = vendor compute_heading_angle at frame 0 (2.568699 rad); no rotation of the data",
+  "conditioning_content": "vendor FullBodyConstraintSet: all 30 SOMA30 joint positions (vendor FK of the vendor 77->30 slice), the default smooth root 2D (= root XZ), root height and the derived global heading at the 18 keyframes ONLY. Interior: nothing (no position, rotation, root, heading or end-effector).",
+  "label": "PROXY_B",
+  "what": "the frozen W129 B Action (endpoint slerp inside 172..199; == A elsewhere, bit-equal at every keyframe) mapped by the unchanged W129 closed-form Mapping onto Kimodo's own SOMA77 (identity rest, neutral-joint offsets, hip height 1.0052 m, hip scale 1.074569); a GT-free source-derived hypothesis, never observed 3D truth. The far-left-arm 3D of the source is UNKNOWN. BaseRig channels undriven in the frozen Action (right arm, neck, etc.) are rig rest; SOMA joints with no BaseRig counterpart (Jaw, eyes, finger/toe ends) are SOMA rest (SYNTHETIC)."
+ },
+ "quality_criteria": {
+  "Q1": "boundary continuity: K arm-local (clavicle_l frame) wrist AND elbow entry (171->172) and exit (199->200) steps each <= 2 x B's corresponding step + 10 mm",
+  "Q2": "no reversal flicks (consecutive steps both > 20 mm with negative dot) of the arm-local wrist or elbow in 171->172 .. 199->200",
+  "Q3": "interior smoothness: K arm-local wrist peak step <= 2 x B's + 10 mm AND K arm-local elbow peak step <= 2 x B's + 10 mm",
+  "Q4": "rig plausibility (elbow flex/hinge): no interior frame near-straight (> 175 deg) and no interior frame bending opposite to A's dominant hinge normal (W129 quality)",
+  "Q5": "source-2D fidelity: ONLY if the torso-only affine camera (A, Action 156..215) fits with RMS <= 20 px, K's interior mean 2D left-wrist error <= B's; the input-only fit is recorded here; > 20 px -> camera INVALID, source fidelity UNKNOWN, Q5 cannot pass",
+  "Q6": "intended overhead press: K world wrist net rise (Z at 199 minus Z at 172) >= 0.5 x B's net rise (B's rise > 0)",
+  "Q7": "agent still-frame review: K judged more natural AND more faithful to the source overhead press than B, and K not named for a flick, wrong elbow or detour",
+  "Q8": "native-rate perceptual review of the 30 fps video by a human or an agent that actually perceives playback. This agent cannot perceive playback: declared NOT REVIEWED in advance, so Q8 cannot pass and CASE A is unattainable in this run"
+ },
+ "raw_rule": "raw full-body continuity is UNUSABLE iff (a) any raw elbow (LeftForeArm) or wrist (LeftHand) step in 171->172 .. 199->200 exceeds PROXY_B's step at the same transition by > 100 mm, or (b) any joint group's raw entry (171->172) or exit (199->200) step exceeds PROXY_B's at the same transition by > 100 mm. Raw = the vendor 30-joint posed joints of the returned features (rotation path; numpy 77-joint FK cross-check on the 26 joints unaffected by the vendor relaxed-hand insertion <= 1e-4 m) in the canonical model space (metres, Kimodo SOMA proportions); PROXY_B = the same 30-joint FK of the conditioning clip. NOTE: unlike W137, raw frame 171/200 are the model's own (soft-constrained) poses, not exact copies.",
+ "repo_head_at_declaration": "26796b03d76655adea4dab1f5ef13d86f9ca163c",
+ "resumed_from_commits": [
+  "69d22159bbbbe2d39b58545ec580a0c14625be5f",
+  "4b64557ea33589a1ee0bb6383a7f31d526138df0"
+ ],
+ "review_protocol": "UNBLINDED agent review of fixed-time contact sheets (entry 170-175, middle 183-188, exit 196-201, overview 171..198 step 3) with source crop, A, B, C, D, E, U, T, K; still frames only; written to a review JSON before assess. The 30 fps video is encoded and machine-decoded but NOT perceived at native rate by this agent (Q8 NOT REVIEWED). No human/animator review.",
+ "rights": {
+  "access_judgement": "E2 holds ONLY for the vendor's no-text (constraints-only) mode: the vendor code sets the text feature of an empty prompt to zero with zero length, the encoder returns a (B,1,4096) feature, so a null encoder passed through the documented `text_encoder=` parameter yields the identical denoiser input and no Llama weight is requested. Text-conditioned Kimodo remains ACCESS_BLOCKED. This reading is the agent's and is recorded for human review.",
+  "caveats": [
+   "NVIDIA Open Model License s2.1: rights terminate if a Guardrail (incl. an authentication mechanism) 'contained in the Model' is bypassed. The gated repository is Meta's Llama 3 base on Hugging Face, not a mechanism contained in the Kimodo checkpoint; the declared mode never requests it. Documentary reading by the agent, flagged for human review.",
+   "s2.3 requires use consistent with NVIDIA's Trustworthy AI terms (page fetched and hashed, not analysed clause by clause)",
+   "training data is proprietary to the licensor (Bones Rigplay 1); the card states provenance for all datasets"
+  ],
+  "code_licence": "Apache-2.0 (LICENSE at the pinned commit)",
+  "determination": "PERMITTED_NONCOMMERCIAL_RESEARCH_EVALUATION (frozen W138 matrix E1c/E1w VERIFIED_TRUE; documentary reading by the agent, not legal advice)",
+  "gated_text_encoder": {
+   "anonymous_head_status": 401,
+   "authenticated_head_status": 403,
+   "class": "NOT_GRANTED",
+   "repository": "meta-llama/Meta-Llama-3-8B-Instruct",
+   "x_error_code": "GatedRepo"
+  },
+  "intended_use": "private, local, non-commercial technical research evaluation on one machine in the Republic of Korea; one inference; no redistribution of weights or model outputs; no training/finetuning; no production or commercial use",
+  "network": "none at inference (HF_HUB_OFFLINE=1, empty HF_HOME, no token in the environment, text-encoder URL unroutable)",
+  "weight_licence": "nvidia-open-model-license"
+ },
+ "run_starting_commit": "0d82883a063205ed0597ab7d7d9e5b1d01da31e0",
+ "schema": "animcv_exp_w138_declaration_v1",
+ "selection_matrix": {
+  "mode": "no_text_constraints_only",
+  "path": "examples/experimental_kimodo/w138_selection_matrix.json",
+  "selected": "Kimodo",
+  "sha256": "4860bc9f9ea5d39c426e00d1d4cc73a24bc9c85c276f03cdf29bff4ec792c9dd"
+ },
+ "source_2d_camera_input_only": {
+  "camera": "affine 2x4, least squares over Action 156..215 torso points (both shoulders = upperarm heads, both hips = thigh heads) of A",
+  "fit_rms_px": 23.324098496374866,
+  "n_fit_points": 240,
+  "valid": false
+ },
+ "stop_conditions": [
+  "STATE_CHANGED",
+  "RIGHTS_UNRESOLVED",
+  "ACCESS_BLOCKED",
+  "RESOURCE_BLOCKED",
+  "DATA_BLOCKED",
+  "REPRESENTATION_BLOCKED",
+  "CONDITIONING_BLOCKED",
+  "DECLARATION_INVALID",
+  "RIG_PROJECTION_FAILED",
+  "INTEGRITY_FAILED",
+  "no tuning or second run after any model output"
+ ],
+ "time": "2026-11-13T00:00:57Z",
+ "time_rule": "native 30 fps; Action = SOURCE - 78; generated window Action 163..208 (SOURCE 241..286, 46 frames), index i <-> Action 163+i; keyframes = indices 0..8 and 37..45 (Action 163..171, 200..208; 18 < 20); interior Action 172..199 = SOURCE 250..277 = indices 9..36 (28 frames) carries NO constraint; Action 171 and 200 stay frozen in the Blender Action",
+ "unusable_step_mm": 100.0
+}

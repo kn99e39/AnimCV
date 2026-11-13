@@ -23,3 +23,6 @@ __pycache__/
 # Reassembled from datasets/mpi_inf_3dhp/**/annot.mat.part-* by
 # scripts/training/reassemble_mpi_inf_3dhp.sh; only the split parts are committed.
 datasets/mpi_inf_3dhp/**/annot.mat
+
+# Human review material (local only, not versioned)
+/user_eval/

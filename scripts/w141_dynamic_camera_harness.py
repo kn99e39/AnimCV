@@ -442,6 +442,9 @@ def stage_declare(a):
              "oracle); afterwards the nearer occluder was moved closer to the camera (y -1.0 -> -1.6, start x -1.4 -> -0.9, speed 0.90 -> 0.85) to "
              "raise image occupancy; no estimator, matching or GT-scored output existed at that point; the occluders were not adjusted to "
              "improve detection",
+             "the first preflight run crashed in build_masks because Blender writes the oracle masks as 3-channel grey PNGs (MASK_CONTRACT "
+             "refused a (480, 640, 3) array); read_mask now accepts a grey 3-channel image (refusing non-grey) and the preflight was re-run "
+             "from scratch; the crashed run is kept at results/preflight_crash1_oracle_mask_channels (no estimator output, no GT involved)",
              "the RGB masks and their occupancy statistics were computed in the preflight (no GT involved) before this declaration; DILATE_PX, "
              "thresholds and area-control offsets were fixed in the instrument code before the masks were generated"],
          "instrument_sha256_lf": {f: lf_sha(f) for f in INSTRUMENTS}}

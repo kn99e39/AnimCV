@@ -525,3 +525,6 @@ A re-run of `declare` gets a new timestamp and therefore a new SHA; the official
 - The Kimodo runtime stays separate from the AnimCV venv.
 - Only the declared no-text path's dependencies were installed (no gradio, viser, SOMA-X or C++ `motion_correction`).
 - The gated Llama 3 base and the LLM2Vec adapters were never downloaded or requested.
+
+AUTOMATION_BATCH_STATUS: COMPLETE
+BATCH_NUMBER: 138

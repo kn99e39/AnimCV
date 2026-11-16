@@ -1,0 +1,11 @@
+{
+  "schema": "animcv_w145_execution_freeze_v1",
+  "declaration_sha256": "a56771110ae15cc86c8cecf95f9a2e2a28835a80ea41e36f7e7f07c516618293",
+  "official_outputs_exist": false,
+  "files_sha256_lf": {
+    "scripts/w145_measure.py": "564be36de0aa5ebbf4e4367420f68b43299405f10605bc1cd921b72394ab6eb3",
+    "scripts/w145_synthetic.py": "f165ea207981ee4d310febf1f1c0c83f690465c46c876aff45b0fa60ac354c57",
+    "scripts/w145_blender_probe.py": "12437d0604496d26ded07572f5ce4652d4ba384bec6bfa2ae6a42adbb540a52d"
+  },
+  "note": "Execution implementations frozen before their first S1 conditioning/model response or synthetic-sequence outcomes; policy remains declaration_v2."
+}

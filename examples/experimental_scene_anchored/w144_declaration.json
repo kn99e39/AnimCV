@@ -1,0 +1,85 @@
+{
+  "schema": "animcv_w144_prospective_declaration_v1",
+  "date": "2026-11-16",
+  "head": "e001952bc42e6711b4582ae87e1ae0f010336a9e",
+  "preflight_sha256": "702af1e75ee8043338788d6160a7aa9620726590c4377109375aa8c5c123f0a4",
+  "branch": "Dual_Stage_Generator",
+  "outcomes_seen": false,
+  "disclosure": "Historical W129/W136-W143 results known; schema and source inspected, no W144 trajectory metrics or corrections evaluated before declaration. Initial preflight compared 240 decoded frames against all 1631 stored hashes (harness range bug); retained failed preflight.json, corrected to source[79:319] before declaration. No source bytes changed.",
+  "regimes": {
+    "S1": "real_animcv_observation; frozen M1 RTMDet/RTMPose + S0 learned 3D, GT-free replay",
+    "synthetic": "oracle_geometry"
+  },
+  "budget": {
+    "primary_cpu_blender_seconds": 7200,
+    "scratch_bytes": 8589934592,
+    "candidate_max": 1,
+    "gpu": false,
+    "training": false
+  },
+  "frames": {
+    "source": [
+      79,
+      318
+    ],
+    "action": [
+      1,
+      240
+    ],
+    "fps": 30,
+    "rule": "action=source-78; action time=(action-1)/30; source nominal time=source/30; container quantization separately reported"
+  },
+  "metrics": {
+    "position": "Euclidean step and second difference (px observations; metres evaluated rig); acceleration second difference *900, speed step *30; no velocity-only error classification",
+    "rotation": "SO(3) geodesic active local-to-parent rotation increment in degrees; object scale removed",
+    "source": "raw landmarks xy pixel and detector confidence >=0.3; canonical virtual pelvis/thorax marked derived; unavailable or self-occluded never treated as GT",
+    "continuity": "all 239 edges; 0.25/0.5/0.75/0.999 subframe samples; CONSTANT expected holds",
+    "2d_jumps": "displacement >20 px/frame with adjacent valid confidence; flag only, not proof of error",
+    "geometry": "recompute frozen fixed_slot for every prediction; Python rest-relative FK vs Blender heads/tails <=1e-5 m; local/parent parity; length constancy",
+    "camera": "W143 frozen NOMINAL_UNCALIBRATED, no metric translation; report image-space background flow separately; no S1 reprojection fidelity gate"
+  },
+  "selection": {
+    "fixed": [
+      [
+        1,
+        12
+      ],
+      [
+        163,
+        208
+      ],
+      [
+        168,
+        175
+      ],
+      [
+        196,
+        203
+      ],
+      [
+        229,
+        240
+      ]
+    ],
+    "baseline": "top 5 left shoulder step destination frames, ties earlier; +/-3 frames; quiet=12-frame window with smallest summed left shoulder steps; large source motion=12-frame window with largest confident wrist pixel path; uncertain=12-frame window with most invalid input joints; ties earlier"
+  },
+  "counterfactual": "for EVERY edge, hold one factor at previous value in current state; inject current factor into previous state; full actual Blender FK; factors object translation/rotation, spine_01, clavicles, left arm, thighs. Joint object+spine intervention and both conditional orders, never unique causal percentages. No saved diagnostic Actions.",
+  "synthetic": "known camera/root transforms, torso articulation, upstream pose jump and duplicated-parent defect; numerical oracle only; no oracle S1 values",
+  "candidate_rule": "At most one, only if identity/frame/axis/composition defect is demonstrated against frozen intended contract OR independent source/scene evidence constrains the corrective state without invented depth or pose. No correction based only on reduced steps; no smoothing/freeze as repair. If no supported correction, skip explicitly.",
+  "candidate_gates": [
+    "verified mechanism and independent source constraint",
+    "new reversible copy, no historical change",
+    "FK <=1e-5 m",
+    "source action/timing preserved",
+    "no new source-inconsistent motion",
+    "identified discontinuity reduced",
+    "uncertainty explicit"
+  ],
+  "judgment": "SUPPORTED only mechanism + source-consistent real Blender improvement and all candidate gates; PARTIALLY_SUPPORTED partial attribution/improvement with unresolved questions; NOT_YET_SUPPORTED no useful source-consistent camera-anchored improvement; BLOCKED prerequisite failure. Diagnostic attribution separate from correction.",
+  "instrument_sha256_lf": {
+    "src/app/experimental_scene_anchored_trace.py": "55ddd70a908d4076c7cd7e720f04d2028672d37d599b795aab1141917cc8f3f4",
+    "scripts/w144_blender_trace.py": "52a3117c229e2555e3d765f6f6c79314606f39f275536f04d7d53ac64061ebdd",
+    "scripts/w144_harness.py": "75902c18ebd7b95f6c68be0d6b8d8da87146a0a0f001e85c6c488a063a514cc4",
+    "tests/test_w144_scene_anchored_trace.py": "ecea305facae85df7dad7aea689862f98476135316fc58f1e9cdfc312fabe022"
+  }
+}

@@ -1,0 +1,201 @@
+{
+  "schema": "animcv_w145_prospective_declaration_v1",
+  "date": "2026-11-16",
+  "time_utc": "2026-11-16T08:35:27.667361+00:00",
+  "branch": "Dual_Stage_Generator",
+  "starting_head": "e001952bc42e6711b4582ae87e1ae0f010336a9e",
+  "W144_preservation_commit": "53361a9c6de737910817a97d8ffbc159c8203723",
+  "head_at_declaration": "53361a9c6de737910817a97d8ffbc159c8203723",
+  "W144_source_files_unchanged": [
+    "src/app/experimental_scene_anchored_trace.py",
+    "tests/test_w144_scene_anchored_trace.py",
+    "examples/experimental_scene_anchored/w144_declaration.json",
+    "docs/144_WORKLOG_SCENE_ANCHORED_S1_ROOT_TORSO_SHOULDER_ATTRIBUTION.md",
+    "scripts/w144_analyze.py",
+    "scripts/w144_blender_trace.py",
+    "scripts/w144_finalize.py",
+    "scripts/w144_harness.py",
+    "scripts/w144_review_artifacts.py",
+    "scripts/w144_source_controls.py"
+  ],
+  "W144_verified_evidence_files": 539,
+  "W144_manifest_sha256": "94288096c4d7b99dd9d17bfb016bae22bcd73c34bd1e2189eab9fc8e60b4fffd",
+  "historical_inventory_files": 3226,
+  "identities": {
+    "observations_sha256": "7988bf4da320d4def763c81b9d9210905f70b7854e54d71974482392c2510f51",
+    "model_sha256": "6c12fea9f84ea0493fada8b9acc96cd5c70fdd5d9114603e954f9412f4247b44",
+    "original_A_sha256": "0803ab2bf31210fbb729bc81b76931729fdc3e12cce27b9507a5b8caf1d12402",
+    "source_sha256": "de8feb9d515daa2bfaeed7167fdcc62028dd3f6450872c4fd81f8fb03dd6359c"
+  },
+  "regimes": {
+    "S1": "real_animcv_observation, frozen M1/S0 replay",
+    "synthetic": "oracle_geometry pose-token controls, not rendered perception"
+  },
+  "outcomes_seen": false,
+  "supersedes_declaration_sha256": "fdf06c4c74d72475804e5b76d9768086aa9789c4acfc1c9fefb24cfe69926782",
+  "disclosures": [
+    "W144 results and source sheets already known; no W145 official model output, conditioning statistics or synthetic-sequence outcomes yet.",
+    "First declaration followed a unit run with 15 pass / 1 fail: a true 30deg turn from frontal projection moved hips less than the declared 2px support cutoff, so it abstained. Algorithm, thresholds and experiment gates are UNCHANGED. The clear-turn unit fixture now starts obliquely; a separate test explicitly requires abstention for the ambiguous frontal 30deg turn. Original declaration is retained.",
+    "No source-wide constant side-facing assumption. Diagnostic qualification emits null instead of propagating a held pose. It is not a repair or full temporal orientation estimator."
+  ],
+  "frames": {
+    "source": [
+      79,
+      318
+    ],
+    "action": [
+      1,
+      240
+    ],
+    "fps": 30,
+    "mapping": "action=source-78"
+  },
+  "windows": [
+    [
+      1,
+      12
+    ],
+    [
+      11,
+      22
+    ],
+    [
+      21,
+      27
+    ],
+    [
+      135,
+      146
+    ],
+    [
+      168,
+      180
+    ],
+    [
+      196,
+      203
+    ],
+    [
+      206,
+      217
+    ],
+    [
+      229,
+      240
+    ]
+  ],
+  "perturbations": {
+    "3d_joints": [
+      0,
+      1,
+      4,
+      8,
+      11,
+      14
+    ],
+    "3d_mm": [
+      1,
+      2,
+      5
+    ],
+    "directions": "one joint, one Cartesian axis, both signs; all 240 frames",
+    "analytic": "differentiate normalization/projection/cross product; central finite difference epsilon=1e-6 m; report operator spectral norm in deg/mm, conditioning and invalidity separately",
+    "2d_direct_joints": [
+      1,
+      4,
+      11,
+      14
+    ],
+    "2d_px": [
+      1
+    ],
+    "directions_2d": "each direct joint, x/y, +/-; all 240 frames, fixed cached crop vs recomputed crop; derived midpoints updated",
+    "selected_model_actions": [
+      16,
+      22,
+      23,
+      26,
+      27,
+      140,
+      171,
+      172,
+      177,
+      200,
+      211,
+      240
+    ],
+    "source_interventions": [
+      "previous hip xy only",
+      "previous shoulder xy only",
+      "forward/back-valid LK texture endpoints for hips/shoulders only"
+    ],
+    "texture": "frozen W144 LK diagnostics: 21px, 3 levels, 30 iterations, epsilon .01, min eigen1e-4, FB<=1px; texture is not anatomical GT"
+  },
+  "s0_cpu": {
+    "device": "cpu",
+    "threads": 4,
+    "batch_size": 512,
+    "dtype": "float32",
+    "amp": false,
+    "signs": "neutral_sign_states",
+    "weights_unchanged": true,
+    "repeat_max_abs_m": 1e-07,
+    "cached_max_abs_m": 1e-05,
+    "cached_frame_angle_deg": 0.05,
+    "if_mismatch": "retain diagnostic response as CPU numerical variant; do not claim exact frozen-output attribution; no S1 correction eligibility from incompatible model"
+  },
+  "qualifier": {
+    "purpose": "single frozen measurement-qualification diagnostic; no repaired matrices for unqualified frames",
+    "sigma_m": 0.002,
+    "max_condition_deg": 5.0,
+    "texture_max_px": 3.0,
+    "unsupported_turn_deg": 10.0,
+    "quiet_source_px": 2.0,
+    "confidence": 0.3,
+    "logic": "geometric sensitivity / original frame validity / input visibility / texture disagreement / unconfirmed large depth turn on quiet source; no max turn speed, smoothing or hold"
+  },
+  "synthetic": {
+    "frames_each": 90,
+    "seed": 145,
+    "cases": [
+      "stationary",
+      "articulated_arms",
+      "gradual_turn_180",
+      "rapid_turn_90",
+      "false_3d_flip_1_and_10_frames",
+      "observation_jump",
+      "missing_and_LR_swap",
+      "depth_ambiguity_degeneracy",
+      "pelvis_fixed_torso_twist",
+      "pelvis_fixed_torso_bend"
+    ],
+    "projection": "orthographic diagnostic image x=320+100*X, y=240-100*Z; camera stationary. Pose-token controls; simulated texture is oracle-projected point motion, explicitly not rendered/perceived.",
+    "truth": "known pelvis orientation and independent torso orientation; no synthetic root/GT supplied to authentic S1"
+  },
+  "gates": {
+    "synthetic_stationary_error_max_deg": 0.1,
+    "synthetic_clear_turn_p95_deg": 1.0,
+    "synthetic_clear_coverage": 0.95,
+    "false_flip_qualification_rejection": 0.9,
+    "degenerate_abstention": 0.95,
+    "recovery_frames": 2,
+    "pelvis_torso_max_error_deg": 1.0,
+    "geometry_FK_tolerance_m": 1e-05,
+    "real_thresholds": "full 240 source identity; no new unexplained flip; preserve genuine motion/source timing; source-visible evidence required independently, not displacement-only"
+  },
+  "candidate_eligibility": "No real-rig corrected candidate unless diagnosis AND all appropriate synthetic turn/false-flip/ambiguity/pelvis-torso controls support a specific independently source-constrained replacement. Measurement abstention alone is not an Action. At most one candidate; any algorithm/parameters declared in an additive prospective protocol BEFORE its outcomes, no sweeps.",
+  "budget": {
+    "primary_seconds": 7200,
+    "scratch_bytes": 8589934592,
+    "new_training": 0,
+    "GPU_experiments": 0,
+    "new_downloads": 0,
+    "real_candidate_max": 1
+  },
+  "classification": "SUPPORTED: validated mechanism + useful source-consistent real Blender candidate; PARTIALLY SUPPORTED: useful conditioning/attribution but fidelity/generalization/observability unresolved; NOT YET SUPPORTED: tested approach does not establish reliable improvement; BLOCKED: prerequisite prevents valid experiment.",
+  "instrument_sha256_lf": {
+    "scripts/w145_body_frame_core.py": "3885f64fc205f1a4a2a4af9e3c0a871cf1f86ac7bb30711e7c2c4e430171af94",
+    "scripts/w145_harness.py": "de2a00ebcd9034f9178848fc3648b1c0ae888be7f163a0e3b6a3bd71b4b10993",
+    "tests/test_w145_body_frame_attribution.py": "c10bc97266ede308d5dcdedc811415250cc50f0e8ba7dc43a5e5d47f2eff7642"
+  }
+}
